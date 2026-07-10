@@ -187,6 +187,8 @@ Wine-derived changes are maintained as a reviewable patch series until a dedicat
 
 ## Roadmap
 
+The gated v0.1 execution roadmap is tracked in [`ROADMAP.md`](ROADMAP.md).
+
 - **A — Specification:** canonical state, ARM64X fixtures, ABI tests.
 - **B — Engine bake-off:** select an established AArch64 correctness engine.
 - **C — Standalone GEM:** execute ARM64EC and round-trip through Blink.
