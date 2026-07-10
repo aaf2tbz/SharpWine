@@ -1,0 +1,2 @@
+Wine-derived patches in third_party/patches/wine are distributed under LGPL-2.1-or-later, consistent with Wine upstream.
+See https://gitlab.winehq.org/wine/wine/-/blob/master/LICENSE for the complete license text.

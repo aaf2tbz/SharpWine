@@ -1,0 +1,25 @@
+name: Runtime bug
+description: Report a reproducible GEM, ARM64EC, mapping, or transition failure
+title: "[bug] "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: Reproduction
+      description: Provide a minimal, legal, redistributable reproduction.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected and actual state
+      description: Include architecture, PC, x18/TEB, transition state, and bounded logs.
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Safety checks
+      options:
+        - label: The report contains no credentials, proprietary binaries, or private paths.
+          required: true
+        - label: The log is no larger than 2 MiB.
+          required: true

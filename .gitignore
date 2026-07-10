@@ -1,0 +1,10 @@
+/build/
+/cmake-build-*/
+__pycache__/
+*.py[cod]
+.DS_Store
+compile_commands.json
+.clangd/
+.cache/
+*.log
+*.dSYM/

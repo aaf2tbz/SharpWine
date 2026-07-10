@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "components": {
+    "wine": {
+      "repository": "https://gitlab.winehq.org/wine/wine.git",
+      "revision": "996020f",
+      "version": "wine-11.12-development-base",
+      "license": "LGPL-2.1-or-later"
+    }
+  }
+}
