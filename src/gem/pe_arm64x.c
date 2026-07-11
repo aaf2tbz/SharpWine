@@ -629,9 +629,6 @@ static enum gem_pe_status parse_redirections(struct parser_state *state,
             if (source == previous->source_rva)
                 return GEM_PE_ERROR_OVERLAPPING_RANGES;
         }
-        if (!code_range_contains_any(image, source, GEM_PE_RVA_X64, GEM_PE_RVA_X64) ||
-            !code_range_contains_any(image, destination, GEM_PE_RVA_ARM64, GEM_PE_RVA_ARM64EC))
-            return GEM_PE_ERROR_BAD_CHPE_METADATA;
         redirection->source_rva = source;
         redirection->destination_rva = destination;
     }

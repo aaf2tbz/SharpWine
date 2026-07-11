@@ -102,7 +102,7 @@ int main(void) {
     assert(parse(&f, NULL) == GEM_PE_ERROR_BAD_CHPE_METADATA);
     reset(&f);
     rd = pe_arm64x_fixture_rva_to_offset(PE_ARM64X_FIXTURE_REDIRECTIONS_RVA);
-    pe_arm64x_fixture_put_u32(f.bytes, rd + 4U, 0x2000U);
+    pe_arm64x_fixture_put_u32(f.bytes, rd + 4U, 0x4000U);
     assert(parse(&f, NULL) == GEM_PE_ERROR_BAD_CHPE_METADATA);
 
     /* Table RVAs cannot point outside the image or into virtual zero-fill. */
