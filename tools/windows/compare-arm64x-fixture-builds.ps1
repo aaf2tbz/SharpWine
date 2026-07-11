@@ -49,11 +49,11 @@ $ea = Read-Evidence $EvidenceA $ManifestA $a
 $eb = Read-Evidence $EvidenceB $ManifestB $b
 $comparisons = [ordered]@{
     producerLock = @($a.producerLock, $b.producerLock)
-    source = @(Canonical $a.source, Canonical $b.source)
-    outputs = @(Canonical $a.outputs, Canonical $b.outputs)
+    source = @((Canonical $a.source), (Canonical $b.source))
+    outputs = @((Canonical $a.outputs), (Canonical $b.outputs))
     dllSha256 = @($a.outputs.dll.sha256, $b.outputs.dll.sha256)
     hostSha256 = @($a.outputs.host.sha256, $b.outputs.host.sha256)
-    parser = @(Canonical $ea.parser, Canonical $eb.parser)
+    parser = @((Canonical $ea.parser), (Canonical $eb.parser))
 }
 foreach ($name in $comparisons.Keys) {
     if ($comparisons[$name][0] -cne $comparisons[$name][1]) { Fail "normalized $name differs between clean builds" }
