@@ -31,7 +31,7 @@ try { $parser = $raw | ConvertFrom-Json -ErrorAction Stop }
 catch { Fail "repository inspector returned invalid JSON: $($_.Exception.Message)" }
 Exact $parser @('schemaVersion', 'machine', 'sectionCount', 'imageBase', 'imageSize', 'entryPointRva', 'loadConfig', 'chpeMetadata', 'counts', 'codeRanges', 'entryRanges', 'redirections') 'parser result'
 if ($parser.schemaVersion -ne 1) { Fail 'parser result schemaVersion is not 1' }
-if ($parser.machine -ne 0xa64e) { Fail 'linked DLL is not PE32+ ARM64X' }
+if ($parser.machine -ne 0xaa64) { Fail 'linked DLL is not an ARM64 image with checked CHPE metadata' }
 foreach ($field in @('sectionCount', 'imageBase', 'imageSize', 'entryPointRva')) { Natural $parser.$field "parser result $field" }
 Exact $parser.loadConfig @('rva', 'size', 'fileOffset') 'loadConfig'
 Exact $parser.chpeMetadata @('rva', 'version', 'minimumSize', 'fileOffset') 'chpeMetadata'
