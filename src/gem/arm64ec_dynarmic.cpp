@@ -138,9 +138,10 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
             SetFault(vaddr, GEM_ARM64EC_ACCESS_WRITE, error);
             return;
         }
+        /* Clearing Dynarmic's code cache from inside a generated-code memory
+         * callback can invalidate the block that is still executing. Defer the
+         * invalidation until Step() has returned to the adapter. */
         cache_dirty = true;
-        if (jit != nullptr)
-            jit->ClearCache();
     }
 
     bool MemoryWriteExclusive8(Dynarmic::A64::VAddr vaddr, std::uint8_t value,
@@ -307,9 +308,9 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
             SetFault(vaddr, GEM_ARM64EC_ACCESS_WRITE, error);
             return;
         }
+        /* Step() owns the active generated block; defer cache invalidation
+         * until control has returned from that block. */
         cache_dirty = true;
-        if (jit != nullptr)
-            jit->ClearCache();
     }
 
     template <typename T>
