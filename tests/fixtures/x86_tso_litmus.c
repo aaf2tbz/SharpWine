@@ -5,6 +5,7 @@ typedef unsigned long u64;
 typedef unsigned int u32;
 
 #define SYS_write 1
+#define SYS_sched_yield 24
 #define SYS_exit 60
 #define SYS_clone 56
 #define CLONE_VM 0x100
@@ -33,6 +34,11 @@ static _Alignas(16) unsigned char g_code[16] = {0xb8, 1, 0, 0, 0, 0xc3};
 static unsigned char g_stacks[WORKERS][65536];
 static volatile u32 g_tids[WORKERS];
 
+static inline long syscall0(long n) {
+    long r;
+    __asm__ volatile("syscall" : "=a"(r) : "a"(n) : "rcx", "r11", "memory");
+    return r;
+}
 static inline long syscall1(long n, long a) {
     long r;
     __asm__ volatile("syscall" : "=a"(r) : "a"(n), "D"(a) : "rcx", "r11", "memory");
@@ -77,8 +83,9 @@ static void outu(u64 x) {
     }
     out(b, n);
 }
-static inline void pause_cpu(void) {
+static inline void yield_cpu(void) {
     __asm__ volatile("pause" ::: "memory");
+    (void)syscall0(SYS_sched_yield);
 }
 static inline void full_fence(void) {
     __asm__ volatile("mfence" ::: "memory");
@@ -100,7 +107,7 @@ __attribute__((used, noinline)) void worker(long id) {
     for (;;) {
         u32 round;
         while ((round = g_round) == seen)
-            pause_cpu();
+            yield_cpu();
         seen = round;
         switch (g_test) {
         case 1:
@@ -165,7 +172,7 @@ __attribute__((used, noinline)) void worker(long id) {
                 g_x = 1;
             } else if (id == 1) {
                 while (!g_x)
-                    pause_cpu();
+                    yield_cpu();
                 serialize_cpu();
                 g_result[1][0] = (u32)call_generated_code();
             }
@@ -210,7 +217,7 @@ static void begin(u32 test) {
     g_test = test;
     ++g_round;
     while (g_done != WORKERS)
-        pause_cpu();
+        yield_cpu();
 }
 
 void _start(void) {
@@ -220,26 +227,31 @@ void _start(void) {
         if (spawn(top, i) <= 0)
             die(80 + (int)i);
     }
+    outs("stage=workers\n");
     for (u32 i = 0; i < MSWR_TSO_ROUNDS; ++i) {
         begin(1);
         if (!g_result[0][0] && !g_result[1][0])
             ++sb00;
     }
+    outs("stage=sb\n");
     for (u32 i = 0; i < MSWR_TSO_ROUNDS; ++i) {
         begin(2);
         if (g_result[0][0] && g_result[1][0])
             ++lb11;
     }
+    outs("stage=lb\n");
     for (u32 i = 0; i < MSWR_TSO_ROUNDS; ++i) {
         begin(3);
         if (g_result[1][0] && !g_result[1][1])
             ++mp10;
     }
+    outs("stage=mp\n");
     for (u32 i = 0; i < MSWR_TSO_ROUNDS; ++i) {
         begin(4);
         if (g_result[2][0] && !g_result[2][1] && g_result[3][0] && !g_result[3][1])
             ++iriw;
     }
+    outs("stage=iriw\n");
     begin(5);
     u64 locked = g_locked;
     for (u32 i = 0; i < MSWR_TSO_ROUNDS; ++i) {
@@ -247,6 +259,7 @@ void _start(void) {
         if (!g_result[0][0] && !g_result[1][0])
             ++fence00;
     }
+    outs("stage=locked-fence\n");
     u64 smc = 0;
     for (u32 i = 0; i < 10000; ++i)
         if (call_generated_code() != 1)
@@ -257,11 +270,12 @@ void _start(void) {
     for (u32 i = 0; i < 10000; ++i)
         if (call_generated_code() != 2)
             ++smc;
+    outs("stage=smc\n");
     g_test = 99;
     ++g_round;
     for (int i = 0; i < WORKERS; ++i)
         while (g_tids[i])
-            pause_cpu();
+            yield_cpu();
     outs("MSWR_TSO_V1 sb00=");
     outu(sb00);
     outs(" lb11=");
