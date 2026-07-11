@@ -531,6 +531,10 @@ static enum gem_pe_status parse_code_map(struct parser_state *state,
         const uint32_t start = start_offset & ~UINT32_C(3);
         uint32_t end = 0;
         struct gem_pe_arm64x_code_range *range = &image->code_ranges[i];
+#ifdef MSWR_PE_ARM64X_DIAGNOSTICS
+        fprintf(stderr, "code-map[%zu]: encoded=%#x start=%#x length=%#x type=%u\n", i,
+                start_offset, start, length, type);
+#endif
 
         if (length == 0U || type == 3U)
             return GEM_PE_ERROR_BAD_CHPE_METADATA;
@@ -555,8 +559,13 @@ static enum gem_pe_status parse_code_map(struct parser_state *state,
                 if (section == NULL || !section_is_executable(section) ||
                     !checked_add_u32(section->virtual_address, section_virtual_extent(section),
                                      &section_end) ||
-                    section_end <= cursor)
+                    section_end <= cursor) {
+#ifdef MSWR_PE_ARM64X_DIAGNOSTICS
+                    fprintf(stderr, "code-map[%zu]: non-executable/unmapped cursor=%#x end=%#x\n",
+                            i, cursor, end);
+#endif
                     return GEM_PE_ERROR_BAD_CHPE_METADATA;
+                }
                 cursor = section_end < end ? section_end : end;
             }
         }
