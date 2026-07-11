@@ -297,8 +297,8 @@ int wmain(int argc, wchar_t **argv) {
     bool passed = true;
     for (const auto &stage : stages)
         passed = passed && stage.passed;
-    std::FILE *output = _wfopen(argv[4], L"wb");
-    if (output == nullptr)
+    std::FILE *output = nullptr;
+    if (_wfopen_s(&output, argv[4], L"wb") != 0 || output == nullptr)
         Fail("cannot create execution evidence");
     std::fprintf(output,
                  "{\"schemaVersion\":1,\"distribution\":\"build-tree-only\","
