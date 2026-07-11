@@ -3,6 +3,9 @@
 
 #include <stdlib.h>
 #include <string.h>
+#ifdef MSWR_PE_ARM64X_DIAGNOSTICS
+#include <stdio.h>
+#endif
 
 #define PE_DOS_HEADER_MIN_SIZE ((size_t)64)
 #define PE_SIGNATURE UINT32_C(0x00004550)
@@ -687,6 +690,9 @@ enum gem_pe_status gem_pe_arm64x_parse(const uint8_t *bytes, size_t byte_count,
     struct chpe_metadata_fields fields;
     size_t load_config_dir_offset = 0;
     enum gem_pe_status status = GEM_PE_OK;
+#ifdef MSWR_PE_ARM64X_DIAGNOSTICS
+    const char *stage = "options";
+#endif
 
     if (out_image == NULL)
         return GEM_PE_ERROR_INVALID_ARGUMENT;
@@ -705,6 +711,23 @@ enum gem_pe_status gem_pe_arm64x_parse(const uint8_t *bytes, size_t byte_count,
         return GEM_PE_ERROR_LIMIT_EXCEEDED;
     state.image->byte_count = byte_count;
 
+#ifdef MSWR_PE_ARM64X_DIAGNOSTICS
+#define MSWR_PARSE_STAGE(name, expression)                                                         \
+    do {                                                                                           \
+        if (status == GEM_PE_OK) {                                                                 \
+            stage = (name);                                                                        \
+            status = (expression);                                                                 \
+        }                                                                                          \
+    } while (0)
+    MSWR_PARSE_STAGE("headers", parse_headers(&state, &load_config_dir_offset));
+    MSWR_PARSE_STAGE("load-config/chpe",
+                     parse_load_config_and_chpe(&state, load_config_dir_offset, &fields));
+    MSWR_PARSE_STAGE("allocation", allocate_metadata_arrays(&state, &fields));
+    MSWR_PARSE_STAGE("code-map", parse_code_map(&state, &fields));
+    MSWR_PARSE_STAGE("entry-ranges", parse_entry_ranges(&state, &fields));
+    MSWR_PARSE_STAGE("redirections", parse_redirections(&state, &fields));
+#undef MSWR_PARSE_STAGE
+#else
     status = parse_headers(&state, &load_config_dir_offset);
     if (status == GEM_PE_OK)
         status = parse_load_config_and_chpe(&state, load_config_dir_offset, &fields);
@@ -716,8 +739,12 @@ enum gem_pe_status gem_pe_arm64x_parse(const uint8_t *bytes, size_t byte_count,
         status = parse_entry_ranges(&state, &fields);
     if (status == GEM_PE_OK)
         status = parse_redirections(&state, &fields);
+#endif
 
     if (status != GEM_PE_OK) {
+#ifdef MSWR_PE_ARM64X_DIAGNOSTICS
+        fprintf(stderr, "parse-stage: %s (%s)\n", stage, gem_pe_status_string(status));
+#endif
         gem_pe_arm64x_image_destroy(state.image);
         return status;
     }
