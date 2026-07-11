@@ -24,11 +24,19 @@ $vcVersion = (Get-ChildItem -LiteralPath $vcRoot -Directory | Sort-Object Name -
 if ([string]::IsNullOrEmpty($vcVersion)) { Fail 'VC tools version is absent' }
 $toolRoot = Join-Path $vcRoot "$vcVersion\bin\Hostarm64"
 $tools = @{}
-foreach ($target in @('arm64', 'arm64ec', 'x64')) {
+foreach ($target in @('arm64', 'x64')) {
   $cl = Join-Path $toolRoot "$target\cl.exe"; $link = Join-Path $toolRoot "$target\link.exe"; $lib = Join-Path $toolRoot "$target\lib.exe"
   foreach ($path in @($cl, $link, $lib)) { if (-not (Test-Path -LiteralPath $path)) { Fail "missing $target tool $path" } }
   $tools[$target] = @{ cl = @{ version = (Get-Item $cl).VersionInfo.FileVersion; sha256 = Hash $cl }; link = @{ version = (Get-Item $link).VersionInfo.FileVersion; sha256 = Hash $link }; lib = @{ version = (Get-Item $lib).VersionInfo.FileVersion; sha256 = Hash $lib } }
 }
+$arm64Cl = Join-Path $toolRoot 'arm64\cl.exe'
+$arm64Link = Join-Path $toolRoot 'arm64\link.exe'
+$clHelp = & $arm64Cl '/?' 2>&1 | Out-String
+$linkHelp = & $arm64Link '/?' 2>&1 | Out-String
+if ($clHelp -notmatch '(?i)/arm64EC') { Fail '/arm64EC is not supported by the selected ARM64 compiler' }
+if ($linkHelp -notmatch '(?i)ARM64EC') { Fail '/MACHINE:ARM64EC is not supported by the selected ARM64 linker' }
+if ($linkHelp -notmatch '(?i)ARM64X') { Fail '/MACHINE:ARM64X is not supported by the selected ARM64 linker' }
+$tools['arm64ec'] = @{ compiler = 'shared-arm64-cl'; compilerMode = '/arm64EC'; linker = 'shared-arm64-link'; linkerMode = '/MACHINE:ARM64EC'; cl = $tools.arm64.cl; link = $tools.arm64.link; lib = $tools.arm64.lib }
 $dumpbin = Join-Path $toolRoot 'x64\dumpbin.exe'; if (-not (Test-Path $dumpbin)) { Fail 'dumpbin.exe is absent' }
 $sdkRoot = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots').'KitsRoot10'
 if ([string]::IsNullOrEmpty($sdkRoot)) { Fail 'Windows 11 SDK is absent' }
@@ -43,8 +51,6 @@ $sdkCandidates = Get-ChildItem (Join-Path $sdkRoot 'Lib') -Directory |
   Sort-Object Build, Name -Descending
 $sdkVersion = ($sdkCandidates | Select-Object -First 1).Name
 if ([string]::IsNullOrEmpty($sdkVersion)) { Fail 'Windows 11 SDK 10.0.22000.0 or newer libraries are absent' }
-$linkHelp = & (Join-Path $toolRoot 'arm64\link.exe') '/?' 2>&1 | Out-String
-if ($linkHelp -notmatch 'ARM64X') { Fail '/MACHINE:ARM64X is not supported by selected linker' }
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
 $manifest = [ordered]@{ schemaVersion = 1; runner = @{ processorArchitecture = $env:PROCESSOR_ARCHITECTURE; osArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString(); nativeMachine = ('0x{0:X4}' -f $nativeMachine); osVersion = [Environment]::OSVersion.VersionString; imageVersion = $env:ImageVersion; imageOS = $env:ImageOS }; visualStudio = @{ version = $installation.catalog.productDisplayVersion; installationVersion = $installation.installationVersion }; vcToolsVersion = $vcVersion; windowsSdkVersion = $sdkVersion; tools = $tools; dumpbin = @{ version = (Get-Item $dumpbin).VersionInfo.FileVersion; sha256 = Hash $dumpbin }; documentation = @('https://learn.microsoft.com/en-us/windows/arm/arm64x-build', 'https://learn.microsoft.com/en-us/windows/arm/arm64ec-build', 'https://learn.microsoft.com/en-us/windows/arm/arm64ec'); sourceLicense = 'Apache-2.0'; distribution = 'build-tree-only' }
 $manifestPath = Join-Path $BuildDir 'arm64x-toolchain-probe.manifest.json'; $manifest | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 $manifestPath
