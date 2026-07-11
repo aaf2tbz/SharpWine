@@ -15,6 +15,15 @@ target_compile_options(arm64x_fixture PRIVATE /W4 /WX /guard:cf)
 target_link_options(arm64x_fixture PRIVATE /WX /DYNAMICBASE /GUARD:CF /Brepro)
 set_target_properties(arm64x_fixture PROPERTIES OUTPUT_NAME arm64x_fixture)
 
+get_filename_component(mswr_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+add_executable(
+  arm64x_fixture_inspector
+  "${mswr_root}/tools/ci/pe-arm64x-inspector.c"
+  "${mswr_root}/src/gem/pe_arm64x.c")
+target_include_directories(arm64x_fixture_inspector PRIVATE "${mswr_root}/include")
+target_compile_definitions(arm64x_fixture_inspector PRIVATE _CRT_SECURE_NO_WARNINGS)
+target_compile_options(arm64x_fixture_inspector PRIVATE /W4 /WX)
+
 if(BUILD_AS_ARM64X STREQUAL "ARM64EC")
   if(NOT DEFINED MSWR_X64_CL OR NOT EXISTS "${MSWR_X64_CL}")
     message(FATAL_ERROR "MSWR_X64_CL must identify the pinned x64 compiler")

@@ -105,17 +105,62 @@ jobs:
       - shell: pwsh
         run: >-
           Get-Content -Raw "${{ runner.temp }}\arm64x-probe\arm64x-toolchain-probe.manifest.json"
-      - name: Build linked ARM64X fixture
+      - name: Test fail-closed fixture manifests
+        shell: pwsh
+        run: >-
+          pwsh -File tools/windows/test-arm64x-fixture-manifests.ps1
+          -TestDir "${{ runner.temp }}\arm64x-manifest-tests"
+      - name: Require two absent clean-build directories
+        shell: pwsh
+        run: |
+          foreach ($path in @("${{ runner.temp }}\arm64x-fixture-a", "${{ runner.temp }}\arm64x-fixture-b")) {
+            if (Test-Path -LiteralPath $path) { throw "clean-build directory already exists: $path" }
+          }
+      - name: Build linked ARM64X fixture A
         shell: pwsh
         run: >-
           pwsh -File tools/windows/build-arm64x-fixture.ps1
           -SourceRoot "${{ github.workspace }}"
-          -BuildDir "${{ runner.temp }}\arm64x-fixture"
+          -BuildDir "${{ runner.temp }}\arm64x-fixture-a"
           -LockFile "docs/architecture/adr/microsoft-arm64x-fixture.provenance.json"
-      - name: Execute ARM64EC validation host
+      - name: Build linked ARM64X fixture B
         shell: pwsh
         run: >-
-          & "${{ runner.temp }}\arm64x-fixture\arm64ec\Release\arm64x_fixture_host.exe"
+          pwsh -File tools/windows/build-arm64x-fixture.ps1
+          -SourceRoot "${{ github.workspace }}"
+          -BuildDir "${{ runner.temp }}\arm64x-fixture-b"
+          -LockFile "docs/architecture/adr/microsoft-arm64x-fixture.provenance.json"
+      - name: Inspect linked ARM64X fixture A with repository parser
+        shell: pwsh
+        run: >-
+          pwsh -File tools/windows/inspect-arm64x-fixture.ps1
+          -ManifestPath "${{ runner.temp }}\arm64x-fixture-a\arm64x-fixture-build.manifest.json"
+          -Inspector "${{ runner.temp }}\arm64x-fixture-a\arm64\Release\arm64x_fixture_inspector.exe"
+          -EvidencePath "${{ runner.temp }}\arm64x-fixture-a\arm64x-fixture-inspection.json"
+      - name: Inspect linked ARM64X fixture B with repository parser
+        shell: pwsh
+        run: >-
+          pwsh -File tools/windows/inspect-arm64x-fixture.ps1
+          -ManifestPath "${{ runner.temp }}\arm64x-fixture-b\arm64x-fixture-build.manifest.json"
+          -Inspector "${{ runner.temp }}\arm64x-fixture-b\arm64\Release\arm64x_fixture_inspector.exe"
+          -EvidencePath "${{ runner.temp }}\arm64x-fixture-b\arm64x-fixture-inspection.json"
+      - name: Compare and print normalized clean-build evidence
+        shell: pwsh
+        run: |
+          pwsh -File tools/windows/compare-arm64x-fixture-builds.ps1 `
+            -ManifestA "${{ runner.temp }}\arm64x-fixture-a\arm64x-fixture-build.manifest.json" `
+            -EvidenceA "${{ runner.temp }}\arm64x-fixture-a\arm64x-fixture-inspection.json" `
+            -ManifestB "${{ runner.temp }}\arm64x-fixture-b\arm64x-fixture-build.manifest.json" `
+            -EvidenceB "${{ runner.temp }}\arm64x-fixture-b\arm64x-fixture-inspection.json" `
+            -OutputPath "${{ runner.temp }}\arm64x-reproducibility.json"
+          Get-Content -Raw -LiteralPath "${{ runner.temp }}\arm64x-reproducibility.json"
+      - name: Execute both ARM64EC validation hosts
+        shell: pwsh
+        run: |
+          foreach ($name in @('a', 'b')) {
+            & "${{ runner.temp }}\arm64x-fixture-$name\arm64ec\Release\arm64x_fixture_host.exe"
+            if ($LASTEXITCODE -ne 0) { throw "validation host $name exited with $LASTEXITCODE" }
+          }
       - name: Reject generated binary leakage
         shell: pwsh
         run: |
