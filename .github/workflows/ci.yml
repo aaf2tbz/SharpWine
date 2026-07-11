@@ -25,7 +25,12 @@ jobs:
           python-version: "3.13"
       - run: python3 tools/ci/check-repository.py
       - run: python3 tools/ci/test-check-repository.py
-      - run: python3 -m py_compile tools/ci/check-repository.py tools/ci/test-check-repository.py
+      - run: >-
+          python3 -m py_compile
+          tools/audit_blink_memory_order.py
+          tools/ci/check-repository.py
+          tools/ci/run-blink-tso-conformance.py
+          tools/ci/test-check-repository.py
 
   formatting:
     name: Formatting
@@ -85,6 +90,50 @@ jobs:
       - run: arch -arm64 ctest --test-dir build-engine --output-on-failure -L gem.engine
       - run: tools/ci/audit-zero-rosetta.sh build-engine
 
+  blink-tso:
+    name: Blink x86-TSO conformance (native macOS ARM64)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - run: test "$(uname -m)" = "arm64"
+      - run: test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = "0"
+      - run: brew install make llvm
+      - name: Fetch and verify pinned Blink source
+        env:
+          BLINK_REVISION: f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580
+          BLINK_SHA256: e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af
+        run: |
+          archive="${{ runner.temp }}/blink.tar.gz"
+          source="${{ runner.temp }}/blink-source"
+          test ! -e "$source"
+          curl --fail --location --silent --show-error \
+            "https://github.com/jart/blink/archive/${BLINK_REVISION}.tar.gz" --output "$archive"
+          printf '%s  %s\n' "$BLINK_SHA256" "$archive" | shasum -a 256 -c -
+          mkdir "$source"
+          tar -xzf "$archive" -C "$source" --strip-components=1
+      - name: Audit pinned Blink memory-order implementation
+        run: >-
+          python3 tools/audit_blink_memory_order.py
+          --source "${{ runner.temp }}/blink-source"
+          --provenance docs/architecture/adr/0006-x86-tso-correctness-contract.provenance.json
+          --output "${{ runner.temp }}/blink-memory-order-inventory.json"
+      - name: Build native ARM64 Blink
+        working-directory: ${{ runner.temp }}/blink-source
+        run: |
+          ./configure
+          gmake -j"$(sysctl -n hw.ncpu)" o//blink/blink
+      - run: tools/ci/audit-zero-rosetta.sh "${{ runner.temp }}/blink-source/o/blink"
+      - name: Run bounded interpreter/JIT memory-order comparison
+        run: >-
+          python3 tools/ci/run-blink-tso-conformance.py
+          --blink "${{ runner.temp }}/blink-source/o/blink/blink"
+          --clang "$(brew --prefix llvm)/bin/clang"
+          --source tests/fixtures/x86_tso_litmus.c
+          --build-dir "${{ runner.temp }}/blink-tso"
+          --output "${{ runner.temp }}/blink-tso/evidence.json"
+          --jit-timeout 10
 
   arm64x-toolchain-probe:
     name: ARM64X toolchain probe (native Windows ARM64)

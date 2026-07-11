@@ -44,10 +44,11 @@ acquire/release does not by itself establish x86's single observed store order, 
 plain JIT accesses create an unaccepted host-language data-race assumption. The checked inventory
 tool fails if any reviewed source changes before this analysis is updated.
 
-Until interpreter and JIT litmus suites pass, GEM must select a deterministic serialized
-interpreter fallback for concurrent x64 execution. JIT execution remains an optimization candidate,
-not the oracle. No hardware-TSO path is enabled: current evidence provides no supported,
-queryable, per-thread macOS API suitable for this runtime.
+Until interpreter and JIT litmus suites pass, GEM must select the bounded interpreter as its
+deterministic fallback for concurrent x64 execution. JIT execution remains an optimization
+candidate, not the oracle. If the JIT times out, crashes, or admits a forbidden result, mode
+selection must fail over to a separately passing interpreter run. No hardware-TSO path is enabled:
+current evidence provides no supported, queryable, per-thread macOS API suitable for this runtime.
 
 ## Required conformance
 
