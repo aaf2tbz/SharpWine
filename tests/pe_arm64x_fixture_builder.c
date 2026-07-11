@@ -90,7 +90,7 @@ int pe_arm64x_fixture_build(uint32_t version, struct pe_arm64x_fixture *f) {
     er = pe_arm64x_fixture_rva_to_offset(0x3300U);
     pe_arm64x_fixture_put_u32(p, er, 0x1800U);
     pe_arm64x_fixture_put_u32(p, er + 4U, 0x1900U);
-    pe_arm64x_fixture_put_u32(p, er + 8U, 0x1400U);
+    pe_arm64x_fixture_put_u32(p, er + 8U, 0x1800U);
     rd = pe_arm64x_fixture_rva_to_offset(0x3400U);
     pe_arm64x_fixture_put_u32(p, rd, 0x1800U);
     pe_arm64x_fixture_put_u32(p, rd + 4U, 0x1000U);
