@@ -9,7 +9,14 @@ if(NOT DEFINED BUILD_AS_ARM64X)
   message(FATAL_ERROR "BUILD_AS_ARM64X must be ARM64 or ARM64EC")
 endif()
 
-add_library(arm64x_fixture SHARED fixture.c fixture.def)
+set(fixture_exports fixture.def)
+if(BUILD_AS_ARM64X STREQUAL "ARM64")
+  set(fixture_exports "${CMAKE_CURRENT_BINARY_DIR}/fixture_arm64.def")
+  file(
+    WRITE "${fixture_exports}"
+    "LIBRARY arm64x_fixture\nEXPORTS\n    fixture_integer\n    fixture_floating\n    fixture_aggregate\n    fixture_variadic\n    fixture_import_probe\n")
+endif()
+add_library(arm64x_fixture SHARED fixture.c "${fixture_exports}")
 target_compile_definitions(arm64x_fixture PRIVATE ARM64X_FIXTURE_EXPORTS)
 target_compile_options(arm64x_fixture PRIVATE /W4 /WX /guard:cf)
 target_link_options(arm64x_fixture PRIVATE /WX /DYNAMICBASE /GUARD:CF /Brepro)
