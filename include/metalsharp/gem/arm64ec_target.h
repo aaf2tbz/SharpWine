@@ -77,9 +77,9 @@ gem_arm64ec_checker_dispatch(const struct gem_arm64ec_target_map *map,
                              struct gem_thread_context *context,
                              struct gem_arm64ec_target_result *out_target);
 
-/* Reads exactly four bytes through GEM in one checked operation. No reviewed
- * authority currently establishes their encoding, so successful reads stop
- * deterministically as unsupported and do not modify out_result. */
+/* Resolves the documented four-byte entry-thunk descriptor transactionally.
+ * descriptor_va is function_va - 4; the little-endian displacement has its
+ * low two tag bits cleared and is added to function_va with checked arithmetic. */
 enum gem_arm64ec_target_status
 gem_arm64ec_descriptor_resolve(const struct gem_arm64ec_target_map *map, struct gem_memory *memory,
                                uint64_t descriptor_va, const struct gem_arm64ec_cfg_policy *policy,

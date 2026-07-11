@@ -22,17 +22,22 @@ CHPE/load-config data or claim that COFF relocation semantics are linked-image s
 The metadata target-map and descriptor-resolution APIs are deliberately limited implementation
 groundwork. `gem_arm64ec_target_resolve` classifies only checked CHPE/code-map records, follows
 redirections transactionally, and retains executable-section semantics by owning an immutable
-parser clone. It currently accepts only the PE preferred image base because GEM has no checked
-relocation loader; a different loaded base fails closed. CFG authorization is a separate fail-closed policy call; it does not influence ISA
+parser clone. It translates metadata at a caller-supplied loaded base but does not load or relocate
+bytes; execution at a nonpreferred base is permitted only from an already materialized, checked
+loader view. CFG authorization is a separate fail-closed policy call; it does not influence ISA
 dispatch. When attached to the Dynarmic runtime, the map is checked both before each step and in
 the code-fetch callback. ARM64 and ARM64EC ranges may execute; an x64 range returns exactly at the
 resolved boundary without fetching x64 bytes or invoking Blink. The unchecked legacy transition
 sentinel is disabled in this mode.
 
 `gem_arm64ec_descriptor_resolve` performs one checked four-byte GEM read, including a cross-page
-read, but returns `descriptor-unsupported` without mutating its output after a successful read.
-No reviewed authority currently binds the encoding, so decoding it would be a guess. These APIs
-must be validated against an authentic linked image before any ARM64EC checker, entry-thunk,
+read. Microsoft documents the descriptor at `function_va - 4`: clear its low two tag bits and add
+the remaining relative value to `function_va`. Native run `29159938430` reproduced that rule for
+the linked fixture: for example `0x1800029b0 + (0x00000f81 & ~3) == 0x180003930`, the mapped
+`$ientry_thunk$cdecl$i8$i8`; floating, aggregate, and variadic records resolved identically.
+Resolution and optional CFG authorization commit output only after all checked arithmetic,
+metadata, executable-range, and policy checks pass. These APIs must be validated against an
+authentic linked image before any ARM64EC checker, entry-thunk,
 exit-thunk, descriptor, CFG, or transition behavior is accepted. Instruction bytes and raw COFF
 sections are never ISA evidence.
 
@@ -74,7 +79,9 @@ supply ISA classification or substitute for that evidence.
 ## Consequences
 
 The source-only linked fixture pipeline is accepted as the authentic producer for subsequent
-same-job conformance. Synthetic metadata remains supplemental malformed/boundary coverage only.
+same-job conformance. Run `29159938430` also captured the linked function bodies, generated entry
+and exit thunk symbols, checker call sites, and descriptor words used by the checked resolver.
+Synthetic metadata remains supplemental malformed/boundary coverage only.
 The repository continues to contain only Apache-2.0 source and build-tree research outputs; it
 contains no copied Windows binary fixture. Dynarmic conformance remains governed by ADR 0004,
 Blink is not introduced for the issue #11 boundary, and Milestone 4 remains open until authentic

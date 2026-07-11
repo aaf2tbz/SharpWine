@@ -192,18 +192,36 @@ gem_arm64ec_descriptor_resolve(const struct gem_arm64ec_target_map *map, struct 
                                uint64_t descriptor_va, const struct gem_arm64ec_cfg_policy *policy,
                                struct gem_arm64ec_target_result *out_result) {
     uint8_t descriptor[4];
+    uint32_t encoded;
+    uint64_t function_va;
+    uint64_t thunk_va;
+    struct gem_arm64ec_target_result result;
+    enum gem_arm64ec_target_status status;
     enum gem_memory_error error;
-    (void)policy;
     if (map == NULL || memory == NULL || out_result == NULL)
         return GEM_ARM64EC_TARGET_INVALID_ARGUMENT;
-    if (descriptor_va > UINT64_MAX - (sizeof(descriptor) - 1U))
+    if (descriptor_va > UINT64_MAX - sizeof(descriptor))
         return GEM_ARM64EC_TARGET_OVERFLOW;
     error = gem_memory_read(memory, descriptor_va, descriptor, sizeof(descriptor));
     if (error != GEM_MEMORY_OK)
         return GEM_ARM64EC_TARGET_MEMORY_FAULT;
-    /* Deliberately do not interpret descriptor until its encoding is backed by
-     * reviewed public authority or native evidence. */
-    return GEM_ARM64EC_TARGET_DESCRIPTOR_UNSUPPORTED;
+    encoded = (uint32_t)descriptor[0] | ((uint32_t)descriptor[1] << 8U) |
+              ((uint32_t)descriptor[2] << 16U) | ((uint32_t)descriptor[3] << 24U);
+    function_va = descriptor_va + sizeof(descriptor);
+    if (!add_u64(function_va, encoded & ~UINT32_C(3), &thunk_va))
+        return GEM_ARM64EC_TARGET_OVERFLOW;
+    status = gem_arm64ec_target_resolve(map, thunk_va, &result);
+    if (status != GEM_ARM64EC_TARGET_OK)
+        return status;
+    if (result.kind == GEM_ARM64EC_TARGET_X64_BOUNDARY)
+        return GEM_ARM64EC_TARGET_NOT_EXECUTABLE;
+    if (policy != NULL) {
+        status = gem_arm64ec_cfg_authorize(policy, result.resolved_va);
+        if (status != GEM_ARM64EC_TARGET_OK)
+            return status;
+    }
+    *out_result = result;
+    return GEM_ARM64EC_TARGET_OK;
 }
 
 const char *gem_arm64ec_target_status_name(enum gem_arm64ec_target_status status) {

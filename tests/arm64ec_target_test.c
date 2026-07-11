@@ -131,8 +131,11 @@ static void test_descriptor_transaction(void) {
     struct gem_arm64ec_target_result result;
     struct gem_arm64ec_target_result unchanged;
     uint64_t pages = UINT64_C(0x90000000);
+    uint64_t image_page = PE_ARM64X_FIXTURE_IMAGE_BASE + UINT64_C(0x1000);
     const uint64_t descriptor = UINT64_C(0x90000ffd);
+    const uint64_t valid_descriptor = PE_ARM64X_FIXTURE_IMAGE_BASE + UINT64_C(0x13fc);
     const uint8_t bytes[4] = {1U, 2U, 3U, 4U};
+    const uint8_t valid_bytes[4] = {1U, 2U, 0U, 0U};
 
     assert(memory != NULL && pe_arm64x_fixture_build(2U, &fixture));
     assert(gem_pe_arm64x_parse(fixture.bytes, fixture.size, NULL, &image) == GEM_PE_OK);
@@ -151,10 +154,23 @@ static void test_descriptor_transaction(void) {
                              GEM_PAGE_READWRITE) == GEM_MEMORY_OK);
     assert(gem_memory_write(memory, descriptor + 3U, bytes + 3U, 1U) == GEM_MEMORY_OK);
     assert(gem_arm64ec_descriptor_resolve(map, memory, descriptor, NULL, &result) ==
-           GEM_ARM64EC_TARGET_DESCRIPTOR_UNSUPPORTED);
+           GEM_ARM64EC_TARGET_OUTSIDE_IMAGE);
     assert(memcmp(&result, &unchanged, sizeof(result)) == 0);
+    assert(gem_memory_reserve(memory, &image_page, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_memory_commit(memory, image_page, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_memory_write(memory, valid_descriptor, valid_bytes, sizeof(valid_bytes)) ==
+           GEM_MEMORY_OK);
+    assert(gem_arm64ec_descriptor_resolve(map, memory, valid_descriptor, NULL, &result) ==
+           GEM_ARM64EC_TARGET_OK);
+    assert(result.requested_va == PE_ARM64X_FIXTURE_IMAGE_BASE + 0x1600U &&
+           result.resolved_va == PE_ARM64X_FIXTURE_IMAGE_BASE + 0x1600U &&
+           result.kind == GEM_ARM64EC_TARGET_ARM64EC);
+    memset(&result, 0x3c, sizeof(result));
+    unchanged = result;
     assert(gem_arm64ec_descriptor_resolve(map, memory, UINT64_MAX - 2U, NULL, &result) ==
            GEM_ARM64EC_TARGET_OVERFLOW);
+    assert(memcmp(&result, &unchanged, sizeof(result)) == 0);
 
     gem_memory_destroy(memory);
     gem_arm64ec_target_map_destroy(map);
