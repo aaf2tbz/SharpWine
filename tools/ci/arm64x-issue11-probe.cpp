@@ -32,6 +32,7 @@ struct StageResult {
     std::uint64_t transitions{};
     std::uint64_t descriptor{};
     std::uint64_t thunk{};
+    std::uint64_t checker{};
 };
 
 struct Broker {
@@ -41,6 +42,7 @@ struct Broker {
     unsigned checker_calls{};
     unsigned dispatch_calls{};
     bool entry_stage{};
+    std::uint64_t checker_va{};
 };
 
 void Trace(const char *message) {
@@ -67,6 +69,46 @@ std::vector<std::uint8_t> ReadFile(const wchar_t *path) {
     if (!stream.read(reinterpret_cast<char *>(bytes.data()), length))
         Fail("cannot read linked DLL");
     return bytes;
+}
+
+struct EntryMap {
+    std::array<std::uint32_t, 4> rvas{};
+    std::uint32_t checker_slot_rva{};
+};
+
+EntryMap ReadEntryMap(const wchar_t *path) {
+    std::FILE *input = nullptr;
+    if (_wfopen_s(&input, path, L"rb") != 0 || input == nullptr)
+        Fail("cannot open native ARM64EC entry map");
+    std::array<unsigned long long, 5> values{};
+    const int matched = fscanf_s(input,
+                                 "MSWR_ARM64EC_ENTRY_MAP_V1\n"
+                                 "integer %I64x\n"
+                                 "floating %I64x\n"
+                                 "aggregate %I64x\n"
+                                 "variadic %I64x\n"
+                                 "checkerSlot %I64x",
+                                 &values[0], &values[1], &values[2], &values[3], &values[4]);
+    int trailing = 0;
+    do {
+        trailing = std::fgetc(input);
+    } while (trailing == '\r' || trailing == '\n' || trailing == ' ' || trailing == '\t');
+    if (std::fclose(input) != 0 || matched != 5 || trailing != EOF)
+        Fail("native ARM64EC entry map is malformed");
+    EntryMap result{};
+    for (std::size_t index = 0; index < result.rvas.size(); ++index) {
+        if (values[index] > UINT32_MAX)
+            Fail("native ARM64EC entry RVA overflows");
+        result.rvas[index] = static_cast<std::uint32_t>(values[index]);
+        for (std::size_t prior = 0; prior < index; ++prior) {
+            if (result.rvas[prior] == result.rvas[index])
+                Fail("native ARM64EC entry map contains duplicate RVAs");
+        }
+    }
+    if (values[4] > UINT32_MAX)
+        Fail("native ARM64EC checker slot RVA overflows");
+    result.checker_slot_rva = static_cast<std::uint32_t>(values[4]);
+    return result;
 }
 
 std::uint32_t GemProtection(DWORD protection) {
@@ -124,8 +166,11 @@ bool InsideImage(const Broker &broker, std::uint64_t address) {
 gem_arm64ec_boundary_action Boundary(void *opaque, std::uint64_t pc, gem_thread_context *context,
                                      gem_arm64ec_boundary_kind *kind) {
     auto &broker = *static_cast<Broker *>(opaque);
-    if (InsideImage(broker, pc))
+    if (InsideImage(broker, pc)) {
+        if (!broker.entry_stage && pc == broker.checker_va)
+            ++broker.checker_calls;
         return GEM_ARM64EC_BOUNDARY_NOT_HANDLED;
+    }
 
     if (!broker.entry_stage && broker.checker_calls == 0U) {
         gem_arm64ec_target_result target{};
@@ -169,6 +214,11 @@ StageResult RunExitStage(const char *name, std::uint64_t export_va, std::uint64_
     gem_arm64ec_stop_info stop{};
     InitContext(context, export_va, reinterpret_cast<std::uint64_t>(NtCurrentTeb()));
     context.x[0] = x0;
+    context.x[1] = 3U;
+    context.x[2] = static_cast<std::uint64_t>(-5);
+    context.x[3] = 17U;
+    context.x[4] = context.sp - 0x80U;
+    context.x[5] = 9U;
     broker.entry_stage = false;
     broker.checker_calls = 0U;
     broker.dispatch_calls = 0U;
@@ -180,8 +230,12 @@ StageResult RunExitStage(const char *name, std::uint64_t export_va, std::uint64_
     result.boundary = context.pc;
     result.retired = stop.instructions_retired;
     result.transitions = gem_arm64ec_runtime_transition_count(runtime);
+    result.checker = broker.checker_va;
+    gem_arm64ec_target_result boundary{};
     result.passed = reason == GEM_STOP_ARCH_TRANSITION && broker.checker_calls == 1U &&
-                    broker.dispatch_calls == 1U && context.pc == context.x[9] &&
+                    gem_arm64ec_target_resolve(broker.map, context.pc, &boundary) ==
+                        GEM_ARM64EC_TARGET_OK &&
+                    boundary.kind == GEM_ARM64EC_TARGET_X64_BOUNDARY &&
                     context.x[18] == context.teb && stop.access == GEM_ARM64EC_ACCESS_NONE;
     return result;
 }
@@ -225,21 +279,23 @@ void PrintStage(std::FILE *output, const StageResult &stage, bool comma) {
     std::fprintf(output,
                  "%s{\"name\":\"%s\",\"passed\":%s,\"startVa\":%llu,\"boundaryVa\":%llu,"
                  "\"instructionsRetired\":%llu,\"transitions\":%llu,\"descriptorVa\":%llu,"
-                 "\"entryThunkVa\":%llu}",
+                 "\"entryThunkVa\":%llu,\"checkerVa\":%llu}",
                  comma ? "," : "", stage.name, stage.passed ? "true" : "false",
                  static_cast<unsigned long long>(stage.start),
                  static_cast<unsigned long long>(stage.boundary),
                  static_cast<unsigned long long>(stage.retired),
                  static_cast<unsigned long long>(stage.transitions),
                  static_cast<unsigned long long>(stage.descriptor),
-                 static_cast<unsigned long long>(stage.thunk));
+                 static_cast<unsigned long long>(stage.thunk),
+                 static_cast<unsigned long long>(stage.checker));
 }
 } // namespace
 
 int wmain(int argc, wchar_t **argv) {
-    if (argc != 5)
-        Fail("usage: probe <dll> <dll-sha256> <inspection-sha256> <output-json>");
+    if (argc != 6)
+        Fail("usage: probe <dll> <dll-sha256> <inspection-sha256> <entry-map> <output-json>");
     const auto file_bytes = ReadFile(argv[1]);
+    const auto entry_map = ReadEntryMap(argv[4]);
     gem_pe_arm64x_image *image = nullptr;
     if (gem_pe_arm64x_parse(file_bytes.data(), file_bytes.size(), nullptr, &image) != GEM_PE_OK)
         Fail("repository parser rejected linked DLL");
@@ -275,29 +331,36 @@ int wmain(int argc, wchar_t **argv) {
     gem_arm64ec_runtime *runtime = gem_arm64ec_runtime_create(memory, &config);
     if (runtime == nullptr || !gem_arm64ec_runtime_attach_arm64x(runtime, image, loaded_base))
         Fail("cannot create metadata-bound Dynarmic runtime");
-    Broker broker{map, loaded_base, loaded_base + summary.size_of_image};
+    std::uint64_t checker_va = 0U;
+    if (gem_memory_read(memory, loaded_base + entry_map.checker_slot_rva, &checker_va,
+                        sizeof(checker_va)) != GEM_MEMORY_OK)
+        Fail("cannot read checked ARM64EC checker slot");
+    gem_arm64ec_target_result checker{};
+    if (gem_arm64ec_target_resolve(map, checker_va, &checker) != GEM_ARM64EC_TARGET_OK ||
+        checker.kind != GEM_ARM64EC_TARGET_ARM64EC || checker.resolved_va != checker_va)
+        Fail("native checker is not classified as ARM64EC metadata");
+    Broker broker{map, loaded_base, loaded_base + summary.size_of_image, 0U, 0U, false, checker_va};
     if (!gem_arm64ec_runtime_set_boundary_broker(runtime, Boundary, &broker))
         Fail("cannot install transition broker");
     Trace("created metadata-bound Dynarmic runtime");
 
     struct ExportStage {
         const char *stage;
-        const char *symbol;
         std::uint64_t x0;
     };
     constexpr std::array<ExportStage, 4> exports = {
-        {{"integerExit", "fixture_indirect_x64", 12U},
-         {"floatingExit", "fixture_indirect_x64_floating", 0U},
-         {"aggregateExit", "fixture_indirect_x64_aggregate", 0U},
-         {"variadicExit", "fixture_indirect_x64_variadic", 4U}}};
+        {{"integerExit", 12U}, {"floatingExit", 0U}, {"aggregateExit", 0U},
+         {"variadicExit", 4U}}};
     std::array<StageResult, 5> stages{};
     for (std::size_t i = 0; i < exports.size(); ++i) {
-        const auto address =
-            reinterpret_cast<std::uint64_t>(GetProcAddress(module, exports[i].symbol));
-        if (address == 0U)
-            Fail("linked fixture export is absent");
+        gem_arm64ec_target_result entry{};
+        const auto entry_va = loaded_base + entry_map.rvas[i];
+        if (gem_arm64ec_target_resolve(map, entry_va, &entry) != GEM_ARM64EC_TARGET_OK ||
+            entry.kind != GEM_ARM64EC_TARGET_ARM64EC || entry.redirection_hops != 1U)
+            Fail("native ARM64EC entry is not backed by checked redirection metadata");
         Trace(exports[i].stage);
-        stages[i] = RunExitStage(exports[i].stage, address, exports[i].x0, runtime, broker);
+        stages[i] =
+            RunExitStage(exports[i].stage, entry.resolved_va, exports[i].x0, runtime, broker);
         Trace(stages[i].passed ? "exit stage passed" : "exit stage returned failure evidence");
     }
     const auto integer_export =
@@ -312,7 +375,7 @@ int wmain(int argc, wchar_t **argv) {
     for (const auto &stage : stages)
         passed = passed && stage.passed;
     std::FILE *output = nullptr;
-    if (_wfopen_s(&output, argv[4], L"wb") != 0 || output == nullptr)
+    if (_wfopen_s(&output, argv[5], L"wb") != 0 || output == nullptr)
         Fail("cannot create execution evidence");
     std::fprintf(output,
                  "{\"schemaVersion\":1,\"distribution\":\"build-tree-only\","

@@ -182,7 +182,8 @@ jobs:
         shell: pwsh
         run: |
           foreach ($name in @('a', 'b')) {
-            & "${{ runner.temp }}\arm64x-fixture-$name\arm64ec\Release\arm64x_fixture_host.exe"
+            $root = "${{ runner.temp }}\arm64x-fixture-$name"
+            & "$root\arm64ec\Release\arm64x_fixture_host.exe" "$root\arm64ec-entry-map.txt"
             if ($LASTEXITCODE -ne 0) { throw "validation host $name exited with $LASTEXITCODE" }
           }
       - name: Build native pinned-Dynarmic issue 11 probe
@@ -220,7 +221,7 @@ jobs:
             $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
             $inspectionHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $inspectionPath).Hash.ToLowerInvariant()
             & $probe "$root\arm64ec\Release\arm64x_fixture.dll" $manifest.outputs.dll.sha256 `
-              $inspectionHash "$root\arm64x-issue11-execution.json"
+              $inspectionHash "$root\arm64ec-entry-map.txt" "$root\arm64x-issue11-execution.json"
             if ($LASTEXITCODE -ne 0) { throw "issue 11 execution probe $name exited with $LASTEXITCODE" }
           }
           pwsh -File tools/windows/validate-arm64x-issue11-evidence.ps1 `

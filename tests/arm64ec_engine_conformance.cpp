@@ -748,6 +748,29 @@ void TestPrefetchBoundaryBroker() {
     EXPECT(gem_arm64ec_runtime_transition_count(fixture.runtime) == 0U);
 }
 
+void TestMetadataBrokerResumeToHostReturn() {
+    Fixture fixture;
+    pe_arm64x_fixture pe_fixture{};
+    gem_pe_arm64x_image *image = nullptr;
+    constexpr u64 image_base = PE_ARM64X_FIXTURE_IMAGE_BASE;
+    constexpr u64 helper = 0x600000000000ULL;
+    EXPECT(pe_arm64x_fixture_build(2U, &pe_fixture));
+    EXPECT(gem_pe_arm64x_parse(pe_fixture.bytes, pe_fixture.size, nullptr, &image) == GEM_PE_OK);
+    EXPECT(gem_arm64ec_runtime_attach_arm64x(fixture.runtime, image, image_base));
+    gem_pe_arm64x_image_destroy(image);
+    pe_arm64x_fixture_destroy(&pe_fixture);
+
+    BoundaryProbe probe{helper, 0};
+    EXPECT(gem_arm64ec_runtime_set_boundary_broker(fixture.runtime, BrokerBoundary, &probe));
+    gem_thread_context context{};
+    InitContext(context, helper);
+    context.x[30] = kHostReturn;
+    EXPECT(Run(fixture, context, 8) == GEM_STOP_HOST_RETURN);
+    EXPECT(context.pc == kHostReturn);
+    EXPECT(probe.calls == 1U);
+    EXPECT(gem_arm64ec_runtime_transition_count(fixture.runtime) == 1U);
+}
+
 void TestSelfModifyingCodeAndCacheMaintenance() {
     Fixture fixture;
     MapCode(fixture.memory, kCode, {MOV_X2_1, RET}, GEM_PAGE_EXECUTE_READWRITE);
@@ -813,6 +836,7 @@ int main() {
     TestForbiddenRegisters();
     TestForbiddenPriorityAndInvalidation();
     TestPrefetchBoundaryBroker();
+    TestMetadataBrokerResumeToHostReturn();
     TestSelfModifyingCodeAndCacheMaintenance();
     return 0;
 }

@@ -24,9 +24,9 @@ function Natural($Value, [string]$Context) {
         Fail "$Context is not a natural number"
     }
 }
-function Is-X64-Rva($Parser, [uint64]$Rva) {
+function Is-Code-Rva($Parser, [uint64]$Rva, [string]$Isa) {
     foreach ($range in @($Parser.codeRanges)) {
-        if ($range.isa -ceq 'x64' -and $Rva -ge [uint64]$range.startRva -and $Rva -lt [uint64]$range.endRva) { return $true }
+        if ($range.isa -ceq $Isa -and $Rva -ge [uint64]$range.startRva -and $Rva -lt [uint64]$range.endRva) { return $true }
     }
     return $false
 }
@@ -52,17 +52,26 @@ function Validate-Pair([string]$InspectionPath, [string]$ExecutionPath, [string]
 
     $required = @('integerExit', 'floatingExit', 'aggregateExit', 'variadicExit', 'entryInteger')
     $seen = @{}
+    $exitBoundaries = @{}
+    $checkerVa = $null
     foreach ($stage in @($execution.stages)) {
         Exact $stage @('name', 'passed', 'startVa', 'boundaryVa', 'instructionsRetired', 'transitions',
-            'descriptorVa', 'entryThunkVa') "execution stage $Name"
+            'descriptorVa', 'entryThunkVa', 'checkerVa') "execution stage $Name"
         if ($required -cnotcontains $stage.name -or $seen.ContainsKey($stage.name)) { Fail "execution stage $Name has an unknown or duplicate name" }
         $seen[$stage.name] = $stage
-        foreach ($field in @('startVa', 'boundaryVa', 'instructionsRetired', 'transitions', 'descriptorVa', 'entryThunkVa')) { Natural $stage.$field "execution stage $Name/$($stage.name)/$field" }
+        foreach ($field in @('startVa', 'boundaryVa', 'instructionsRetired', 'transitions', 'descriptorVa', 'entryThunkVa', 'checkerVa')) { Natural $stage.$field "execution stage $Name/$($stage.name)/$field" }
         if ($stage.passed -cne $true -or $stage.instructionsRetired -le 0 -or $stage.transitions -gt 8) { Fail "execution stage $Name/$($stage.name) did not pass bounded execution" }
         if ($stage.name -like '*Exit') {
+            if ($exitBoundaries.ContainsKey([string]$stage.boundaryVa)) { Fail "execution stage $Name/$($stage.name) reused an x64 boundary" }
+            $exitBoundaries[[string]$stage.boundaryVa] = $true
+            if ($null -eq $checkerVa) { $checkerVa = $stage.checkerVa }
+            elseif ($stage.checkerVa -ne $checkerVa) { Fail "execution stage $Name/$($stage.name) used a different checker" }
             if ($stage.boundaryVa -lt $execution.loadedBase) { Fail "execution stage $Name/$($stage.name) has an invalid boundary" }
             $rva = [uint64]$stage.boundaryVa - [uint64]$execution.loadedBase
-            if (-not (Is-X64-Rva $inspection.parser $rva)) { Fail "execution stage $Name/$($stage.name) did not stop at checked x64 metadata" }
+            if (-not (Is-Code-Rva $inspection.parser $rva 'x64')) { Fail "execution stage $Name/$($stage.name) did not stop at checked x64 metadata" }
+            if ($stage.checkerVa -lt $execution.loadedBase) { Fail "execution stage $Name/$($stage.name) has an invalid checker" }
+            $checkerRva = [uint64]$stage.checkerVa - [uint64]$execution.loadedBase
+            if (-not (Is-Code-Rva $inspection.parser $checkerRva 'arm64ec')) { Fail "execution stage $Name/$($stage.name) did not execute a metadata-classified ARM64EC checker" }
         } else {
             if ($stage.descriptorVa -eq 0 -or $stage.entryThunkVa -eq 0) { Fail "entry stage $Name lacks descriptor evidence" }
         }
@@ -80,6 +89,7 @@ function Normalize($Execution) {
             transitions = $stage.transitions
             descriptorRva = if ([uint64]$stage.descriptorVa -ge [uint64]$Execution.loadedBase) { [uint64]$stage.descriptorVa - [uint64]$Execution.loadedBase } else { 0 }
             thunkRva = if ([uint64]$stage.entryThunkVa -ge [uint64]$Execution.loadedBase) { [uint64]$stage.entryThunkVa - [uint64]$Execution.loadedBase } else { 0 }
+            checkerRva = if ([uint64]$stage.checkerVa -ge [uint64]$Execution.loadedBase) { [uint64]$stage.checkerVa - [uint64]$Execution.loadedBase } else { 0 }
         }
     }
     return ($records | ConvertTo-Json -Depth 5 -Compress)

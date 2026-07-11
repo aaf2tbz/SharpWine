@@ -308,9 +308,9 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
             SetFault(vaddr, GEM_ARM64EC_ACCESS_WRITE, error);
             return;
         }
-        /* Step() owns the active generated block; defer cache invalidation
-         * until control has returned from that block. */
         cache_dirty = true;
+        if (jit != nullptr)
+            jit->ClearCache();
     }
 
     template <typename T>
@@ -553,6 +553,7 @@ extern "C" enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runt
     while (retired < budget) {
         std::uint64_t pc_before = jit.GetPC();
         gem_arm64ec_target_kind target_kind = GEM_ARM64EC_TARGET_ARM64EC;
+        bool broker_resumed = false;
         if (runtime->boundary_broker != nullptr) {
             gem_thread_context broker_context = *context;
             gem_arm64ec_boundary_kind boundary_kind = GEM_ARM64EC_BOUNDARY_CHECK_ICALL;
@@ -592,7 +593,22 @@ extern "C" enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runt
                 ImportContext(jit, broker_context);
                 *context = broker_context;
                 pc_before = broker_context.pc;
+                broker_resumed = true;
             }
+        }
+        if (pc_before == runtime->config.host_return_sentinel &&
+            (runtime->target_map == nullptr || broker_resumed)) {
+            ExportContext(jit, *context);
+            SetStopInfo(*runtime, GEM_STOP_HOST_RETURN, retired, 0, GEM_ARM64EC_ACCESS_NONE,
+                        GEM_MEMORY_OK, 0);
+            return GEM_STOP_HOST_RETURN;
+        }
+        if (pc_before == runtime->config.arch_transition_sentinel &&
+            (runtime->target_map == nullptr || broker_resumed)) {
+            ExportContext(jit, *context);
+            SetStopInfo(*runtime, GEM_STOP_ARCH_TRANSITION, retired, 0, GEM_ARM64EC_ACCESS_NONE,
+                        GEM_MEMORY_OK, 0);
+            return GEM_STOP_ARCH_TRANSITION;
         }
         if (runtime->target_map != nullptr) {
             gem_arm64ec_target_result target{};
@@ -618,19 +634,6 @@ extern "C" enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runt
                 pc_before = target.resolved_va;
             }
         }
-        if (pc_before == runtime->config.host_return_sentinel) {
-            ExportContext(jit, *context);
-            SetStopInfo(*runtime, GEM_STOP_HOST_RETURN, retired, 0, GEM_ARM64EC_ACCESS_NONE,
-                        GEM_MEMORY_OK, 0);
-            return GEM_STOP_HOST_RETURN;
-        }
-        if (pc_before == runtime->config.arch_transition_sentinel) {
-            ExportContext(jit, *context);
-            SetStopInfo(*runtime, GEM_STOP_ARCH_TRANSITION, retired, 0, GEM_ARM64EC_ACCESS_NONE,
-                        GEM_MEMORY_OK, 0);
-            return GEM_STOP_ARCH_TRANSITION;
-        }
-
         std::uint32_t instruction = 0;
         gem_memory_error fetch_error = GEM_MEMORY_OK;
         if (!FetchInstruction(*runtime, pc_before, instruction, fetch_error)) {

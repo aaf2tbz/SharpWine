@@ -9,3 +9,4 @@ EXPORTS
     fixture_indirect_x64_aggregate
     fixture_indirect_x64_variadic
     fixture_import_probe
+    fixture_checker_slot

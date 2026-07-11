@@ -9,6 +9,7 @@ extern int32_t fixture_x64_target(int32_t value);
 extern double fixture_x64_floating_target(double value);
 extern arm64x_fixture_pair fixture_x64_aggregate_target(arm64x_fixture_pair value);
 extern int64_t fixture_x64_variadic_target(uint32_t count, ...);
+extern void (*__os_arm64x_check_icall)(void);
 #endif
 
 int32_t fixture_integer(int32_t value) {
@@ -67,6 +68,9 @@ int64_t fixture_indirect_x64_variadic(uint32_t count, ...) {
     fourth = va_arg(values, int32_t);
     va_end(values);
     return target(count, first, second, third, fourth);
+}
+uintptr_t fixture_checker_slot(void) {
+    return (uintptr_t)&__os_arm64x_check_icall;
 }
 #endif
 
