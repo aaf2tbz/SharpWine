@@ -95,8 +95,9 @@ function Resolve-Arm64xManifestArtifact {
         if (($cursor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "artifact path contains a reparse point: '$RelativePath'" }
         $cursorPath = $cursor.FullName.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
         if ([string]::Equals($cursorPath, $base, [StringComparison]::OrdinalIgnoreCase)) { break }
-        $cursor = $cursor.Parent
-        if ($null -eq $cursor) { throw "artifact path has no confined parent: '$RelativePath'" }
+        $parentPath = Split-Path -Parent $cursor.FullName
+        if ([string]::IsNullOrEmpty($parentPath)) { throw "artifact path has no confined parent: '$RelativePath'" }
+        $cursor = Get-Item -LiteralPath $parentPath -Force
     }
     return $resolved
 }
