@@ -99,7 +99,7 @@ jobs:
           persist-credentials: false
       - run: test "$(uname -m)" = "arm64"
       - run: test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = "0"
-      - run: brew install make llvm
+      - run: brew install make llvm lld
       - name: Fetch and verify pinned Blink source
         env:
           BLINK_REVISION: f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580
@@ -130,6 +130,7 @@ jobs:
           python3 tools/ci/run-blink-tso-conformance.py
           --blink "${{ runner.temp }}/blink-source/o/blink/blink"
           --clang "$(brew --prefix llvm)/bin/clang"
+          --linker "$(brew --prefix lld)/bin/ld.lld"
           --source tests/fixtures/x86_tso_litmus.c
           --build-dir "${{ runner.temp }}/blink-tso"
           --output "${{ runner.temp }}/blink-tso/evidence.json"

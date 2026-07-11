@@ -86,6 +86,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--blink", required=True, type=Path)
     parser.add_argument("--clang", required=True, type=Path)
+    parser.add_argument("--linker", required=True, type=Path)
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--build-dir", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
@@ -113,7 +114,7 @@ def main() -> int:
         "-fno-pic",
         "-nostdlib",
         "-static",
-        "-fuse-ld=lld",
+        f"--ld-path={args.linker}",
         "-Wl,-e,_start",
         "-Wl,-N",
         f"-DMSWR_TSO_ROUNDS={args.rounds}",
