@@ -63,3 +63,24 @@ jobs:
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DMSWR_WARNINGS_AS_ERRORS=ON
       - run: cmake --build build --parallel
       - run: ctest --test-dir build --output-on-failure
+
+  arm64ec-engine:
+    name: ARM64EC engine conformance (native macOS ARM64)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - run: test "$(uname -m)" = "arm64"
+      - run: test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = "0"
+      - run: brew install boost
+      - run: >-
+          arch -arm64 cmake -S . -B build-engine
+          -DCMAKE_BUILD_TYPE=Debug
+          -DMSWR_WARNINGS_AS_ERRORS=ON
+          -DMSWR_ENABLE_ARM64EC_ENGINE=ON
+          -DMSWR_ENGINE_CONFORMANCE=ON
+          -DMSWR_ZERO_ROSETTA_AUDIT=ON
+      - run: arch -arm64 cmake --build build-engine --parallel
+      - run: arch -arm64 ctest --test-dir build-engine --output-on-failure -L gem.engine
+      - run: tools/ci/audit-zero-rosetta.sh build-engine

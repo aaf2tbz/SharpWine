@@ -6,6 +6,19 @@
       "revision": "996020f",
       "version": "wine-11.12-development-base",
       "license": "LGPL-2.1-or-later"
+    },
+    "dynarmic": {
+      "repository": "https://github.com/lioncash/dynarmic.git",
+      "revision": "a41c380246d3d9f9874f0f792d234dc0cc17c180",
+      "version": "6.7.0",
+      "license": "ISC",
+      "source_archive_sha256": "cc0dfec19b7cfb80a649bd994bd0569c0482de1f49448773d2899f30b6a180c3",
+      "distribution": "optional CMake FetchContent source/build outside tracked tree",
+      "adr": "docs/architecture/adr/0004-aarch64-correctness-engine.md",
+      "transitive_dependencies": [
+        {"name": "mcl", "license": "MIT", "bundled": true, "upstream": "dynarmic/externals/mcl"},
+        {"name": "fmt", "license": "MIT", "bundled": true, "upstream": "dynarmic/externals/fmt"}
+      ]
     }
   }
 }

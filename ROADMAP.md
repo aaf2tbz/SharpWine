@@ -62,16 +62,18 @@ Status: substantially complete.
 
 ## Milestone 3 — Correctness-engine selection
 
+Status: complete; corrected native ARM64 conformance gate passed on 2026-07-10.
+
 Evaluate established engines with one shared conformance harness. A candidate is not selected by convenience or benchmark alone.
 
-- [ ] Document candidate versions, build provenance, licenses, and distribution implications.
-- [ ] Test AArch64 GPR, SIMD, flags, atomics, exclusive operations, FP control, faults, and single-step behavior.
-- [ ] Test explicit x18 get/set without relying on host x18.
-- [ ] Test low-address callbacks and 4 KiB guest protections.
-- [ ] Test deterministic instruction budgets and stop reasons.
-- [ ] Test self-modifying code and cache invalidation behavior.
-- [ ] Select the correctness engine through an architecture decision record.
-- [ ] Wrap it behind `gem_run_arm64ec(context, budget)` so it cannot own canonical state.
+- [x] Document candidate versions, build provenance, licenses, and distribution implications.
+- [x] Test AArch64 GPR, SIMD, flags, atomics, exclusive operations, FP control, faults, and single-step behavior.
+- [x] Test explicit x18 get/set without relying on host x18.
+- [x] Test low-address callbacks and 4 KiB guest protections.
+- [x] Test deterministic instruction budgets and stop reasons.
+- [x] Test self-modifying code and cache invalidation behavior.
+- [x] Select the correctness engine through an architecture decision record.
+- [x] Wrap it behind `gem_run_arm64ec(context, budget)` so it cannot own canonical state.
 
 Preferred evaluation order:
 
@@ -79,7 +81,7 @@ Preferred evaluation order:
 2. Another established full AArch64 virtual CPU if licensing or embedding blocks the first.
 3. Frida Gum Stalker and QBDI only as accelerated engines after the oracle exists.
 
-**Exit gate:** one engine passes the mandatory conformance suite on native ARM64 macOS with no Rosetta dependency.
+**Exit gate:** passed — pinned FetchContent Debug build, all 11 CTest tests, and the zero-Rosetta audit passed on native ARM64 macOS on 2026-07-10.
 
 ## Milestone 4 — ARM64EC checker and thunk execution
 

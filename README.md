@@ -117,12 +117,12 @@ This repository intentionally excludes Wine prefixes, SDKs, toolchain archives, 
 
 - LLVM/Clang and LLD with ARM64EC/ARM64X support
 - LLVM MinGW for Wine’s embedded x86_64 ARM64EC slices
-- a reviewed AArch64 virtual-CPU correctness engine
+- Dynarmic 6.7.0 as the reviewed AArch64 virtual-CPU correctness engine (optional fetched build)
 - Blink for x86_64 Windows execution
 - Frida Gum Stalker or QBDI only as validated fast-engine candidates
 - native ARM64 DXMT, Winemetal, and supporting media/audio libraries after runtime gates pass
 
-Third-party engines are not accepted until instruction coverage, register fidelity, fault behavior, macOS ARM64 support, deterministic fallback, and distribution licensing have been reviewed.
+Third-party engines are not accepted until instruction coverage, register fidelity, fault behavior, macOS ARM64 support, deterministic fallback, and distribution licensing have been reviewed. The selected Milestone 3 engine decision is recorded in [`docs/architecture/adr/0004-aarch64-correctness-engine.md`](docs/architecture/adr/0004-aarch64-correctness-engine.md).
 
 ## Build and test
 
@@ -138,6 +138,19 @@ Run every local required gate:
 
 ```sh
 tools/ci/run-all.sh
+```
+
+Run the optional ARM64EC engine conformance gate (requires CMake to find Boost and fetch the pinned Dynarmic revision):
+
+```sh
+cmake -S . -B build/engine \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DMSWR_WARNINGS_AS_ERRORS=ON \
+  -DMSWR_ENABLE_ARM64EC_ENGINE=ON \
+  -DMSWR_ENGINE_CONFORMANCE=ON \
+  -DMSWR_ZERO_ROSETTA_AUDIT=ON
+cmake --build build/engine --parallel
+ctest --test-dir build/engine --output-on-failure -L gem.engine
 ```
 
 Use another build directory if desired:

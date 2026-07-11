@@ -397,6 +397,28 @@ enum gem_memory_error gem_memory_write(struct gem_memory *m, uint64_t a, const v
 enum gem_memory_error gem_memory_fetch(struct gem_memory *m, uint64_t a, void *b, size_t n) {
     return access_memory(m, a, b, n, false, true, false);
 }
+enum gem_memory_error gem_memory_peek(struct gem_memory *m, uint64_t a, void *b, size_t n) {
+    size_t done = 0;
+    if (!m || (n && !b) || a > UINT64_MAX - n)
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    if (!n)
+        return GEM_MEMORY_OK;
+    while (done < n) {
+        const uint64_t q = (a + done) & ~UINT64_C(4095);
+        size_t z = 4096 - ((a + done) & 4095U);
+        struct page *p;
+        if (z > n - done)
+            z = n - done;
+        p = at(m, q);
+        if (!p)
+            return GEM_MEMORY_NOT_RESERVED;
+        if (!p->backing)
+            return GEM_MEMORY_NOT_COMMITTED;
+        memcpy((uint8_t *)b + done, p->backing->data + ((a + done) & 4095U), z);
+        done += z;
+    }
+    return GEM_MEMORY_OK;
+}
 bool gem_memory_is_executable(struct gem_memory *m, uint64_t a, size_t n) {
     return access_memory(m, a, NULL, n, false, true, true) == GEM_MEMORY_OK;
 }

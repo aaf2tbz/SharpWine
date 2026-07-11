@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "decision": "accepted",
+  "component": "dynarmic",
+  "version": "6.7.0",
+  "revision": "a41c380246d3d9f9874f0f792d234dc0cc17c180",
+  "repository": "https://github.com/lioncash/dynarmic.git",
+  "source_archive_url": "https://github.com/lioncash/dynarmic/archive/a41c380246d3d9f9874f0f792d234dc0cc17c180.tar.gz",
+  "source_archive_sha256": "cc0dfec19b7cfb80a649bd994bd0569c0482de1f49448773d2899f30b6a180c3",
+  "upstream_project_name": "Dynarmic",
+  "upstream_cmake_project_version": "6.7.0",
+  "license": {
+    "spdx": "ISC",
+    "upstream_license_path": "LICENSE.txt",
+    "distribution_assessment": "Permissive, Apache-2.0-compatible optional dependency fetched and built outside the tracked tree."
+  },
+  "transitive_dependencies": [
+    {"name": "mcl", "license": "MIT", "source": "dynarmic/externals/mcl", "bundled": true},
+    {"name": "fmt", "license": "MIT", "source": "dynarmic/externals/fmt", "bundled": true}
+  ],
+  "integration": {
+    "fetch_mechanism": "CMake FetchContent archive URL with SHA-256 verification",
+    "conformance_mode": "MSWR_FETCH_DYNARMIC=ON is required",
+    "system_mode": "non-conformance developer mode only"
+  },
+  "selected_backend_contract": {
+    "canonical_cpu_state": "gem_thread_context",
+    "canonical_memory": "gem_memory checked callbacks",
+    "host_x18_dependency": false,
+    "fastmem_enabled": false,
+    "page_table_fast_path_enabled": false,
+    "execution_budget_mode": "Dynarmic A64 Jit::Step loop, one guest instruction per budget unit"
+  },
+  "validation": {
+    "status": "passed on native ARM64 macOS on 2026-07-10",
+    "commands": [
+      "cmake -S . -B /tmp/mswr-engine-debug -DCMAKE_BUILD_TYPE=Debug -DMSWR_ENABLE_ARM64EC_ENGINE=ON -DMSWR_FETCH_DYNARMIC=ON -DMSWR_ENGINE_CONFORMANCE=ON -DMSWR_ZERO_ROSETTA_AUDIT=ON",
+      "cmake --build /tmp/mswr-engine-debug -j2",
+      "ctest --test-dir /tmp/mswr-engine-debug --output-on-failure",
+      "tools/ci/audit-zero-rosetta.sh /tmp/mswr-engine-debug",
+      "tools/ci/check-format.sh",
+      "python3 tools/ci/check-repository.py",
+      "git diff --check"
+    ],
+    "result": "build succeeded; CTest: 11/11 passed; native zero-Rosetta audit passed; format, repository hygiene, and diff checks passed",
+    "scope": "includes deterministic pre-side-effect rejection for documented disallowed GPR/SIMD operands, fetch/fault priority, and explicit invalidation"
+  }
+}

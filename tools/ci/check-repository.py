@@ -10,7 +10,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_FILE = 2 * 1024 * 1024
-TEXT_SUFFIXES = {".c", ".h", ".md", ".json", ".yml", ".yaml", ".txt", ".cmake", ".sh", ".py"}
+TEXT_SUFFIXES = {
+    ".c",
+    ".cpp",
+    ".h",
+    ".md",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".txt",
+    ".cmake",
+    ".sh",
+    ".py",
+}
 TEXT_FILENAMES = {"CMakeLists.txt", "LICENSE", ".gitignore", ".editorconfig", ".clang-format"}
 FORBIDDEN_PARTS = {"build", ".cache", "__pycache__", ".wine"}
 FORBIDDEN_TEXT = ("/Users/averyfelts", "/Volumes/AverySSD", "gho_", "github_pat_")
