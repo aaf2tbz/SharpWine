@@ -34,7 +34,7 @@ function Read-Evidence([string]$Path, [string]$ManifestPath, $Manifest) {
     foreach ($range in @($value.parser.codeRanges)) { Exact $range @('startRva', 'endRva', 'isa', 'startOffset', 'endByteOffset') 'parser code range' }
     foreach ($range in @($value.parser.entryRanges)) { Exact $range @('startRva', 'endRva', 'entryPointRva', 'startOffset', 'endByteOffset', 'entryPointOffset') 'parser entry range' }
     foreach ($record in @($value.parser.redirections)) { Exact $record @('sourceRva', 'destinationRva', 'sourceOffset', 'destinationOffset') 'parser redirection' }
-    if ($value.parser.schemaVersion -ne 1 -or $value.parser.machine -ne 0xa64e) { Fail 'parser evidence contract or machine is invalid' }
+    if ($value.parser.schemaVersion -ne 1 -or $value.parser.machine -ne 0xaa64) { Fail 'parser evidence contract or metadata-classified ARM64 machine is invalid' }
     if ($value.parser.loadConfig.rva -le 0 -or $value.parser.chpeMetadata.rva -le 0) { Fail 'parser evidence lacks required metadata mappings' }
     if ($value.parser.counts.codeRanges -ne @($value.parser.codeRanges).Count -or $value.parser.counts.entryRanges -ne @($value.parser.entryRanges).Count -or $value.parser.counts.redirections -ne @($value.parser.redirections).Count) { Fail 'parser evidence record counts are invalid' }
     $classes = @($value.parser.codeRanges | ForEach-Object { $_.isa })
