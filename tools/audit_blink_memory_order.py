@@ -39,7 +39,13 @@ REQUIRED_SNIPPETS = {
     "blink/alui.c": ["atomic_compare_exchange_weak_explicit", "LockBus(p);"],
     "blink/string.c": ["atomic_thread_fence(memory_order_acquire);", "atomic_thread_fence(memory_order_release);"],
     "blink/jit.c": ["pthread_jit_write_protect_np", "memory_order_acquire", "memory_order_release"],
-    "blink/memory.c": ["AddPageToSmcQueue(m, virt);", "FindPageTableEntry"],
+    "blink/memory.c": [
+        "AddPageToSmcQueue(m, virt);",
+        "FindPageTableEntry",
+        "ThrowSegmentationFault(m, v);",
+        "u8 *BeginStore(",
+        "void EndStore(",
+    ],
 }
 
 
@@ -98,6 +104,8 @@ def main() -> int:
             "guestFences": "C sequentially-consistent fence",
             "lockedOperations": "C atomics and hashed bus-lock fallback",
             "selfModifyingCode": "release attention flag and JIT-page reset",
+            "faultOrdering": "checked translation with BeginStore/EndStore staging",
+            "hostCompilerAssumptions": "C atomics in the interpreter and plain typed JIT accesses",
         },
         "acceptance": "inventory-only; concurrent interpreter and JIT remain unproven",
     }

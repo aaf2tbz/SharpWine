@@ -37,7 +37,9 @@ interpreter and JIT are **not yet accepted** as the correctness path:
 - the AArch64-capable JIT's `NativeLoad*` and `NativeStore*` helpers use plain pointer accesses;
 - guest fences use a sequentially consistent C fence;
 - locked read/modify/write paths use C atomics where available and hashed bus locks otherwise; and
-- self-modifying-code invalidation uses an attention flag and JIT-page reset protocol.
+- self-modifying-code invalidation uses an attention flag and JIT-page reset protocol; and
+- scalar fault paths translate before access, while wider stores use `BeginStore`/`EndStore`
+  staging. This is inventory evidence only; cross-page transaction acceptance remains issue #13.
 
 These are source facts, not proof that ARM64 execution satisfies x86-TSO. In particular, C
 acquire/release does not by itself establish x86's single observed store order, and concurrent
