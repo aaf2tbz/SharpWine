@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
-project(metalsharp_wine_runtime VERSION 0.1.0 LANGUAGES C)
+project(metalsharp_wine_runtime VERSION 0.1.0 LANGUAGES C CXX)
 
 include(CTest)
 
@@ -21,7 +21,8 @@ function(mswr_enable_warnings target)
     endif()
 endfunction()
 
-add_library(metalsharp_gem STATIC src/gem/context.c src/gem/pe_arm64x.c)
+add_library(metalsharp_gem STATIC src/gem/context.c src/gem/context_conversion.c
+                                  src/gem/context_serialization.c src/gem/memory.c src/gem/pe_arm64x.c)
 target_include_directories(metalsharp_gem PUBLIC include)
 target_compile_features(metalsharp_gem PUBLIC c_std_11)
 mswr_enable_warnings(metalsharp_gem)
@@ -36,6 +37,18 @@ if(BUILD_TESTING)
     target_link_libraries(context_layout_test PRIVATE metalsharp_gem)
     mswr_enable_warnings(context_layout_test)
     add_test(NAME gem.context_layout COMMAND context_layout_test)
+
+    add_executable(gem_headers_cxx_test tests/gem_headers_cxx_test.cpp)
+    target_link_libraries(gem_headers_cxx_test PRIVATE metalsharp_gem)
+    mswr_enable_warnings(gem_headers_cxx_test)
+    add_test(NAME gem.headers_cxx COMMAND gem_headers_cxx_test)
+
+    foreach(test_name context_conversion_test context_serialization_test memory_test)
+        add_executable(${test_name} tests/${test_name}.c)
+        target_link_libraries(${test_name} PRIVATE metalsharp_gem)
+        mswr_enable_warnings(${test_name})
+        add_test(NAME gem.${test_name} COMMAND ${test_name})
+    endforeach()
 
     add_library(pe_arm64x_fixture STATIC tests/pe_arm64x_fixture_builder.c)
     target_include_directories(pe_arm64x_fixture PUBLIC tests)

@@ -55,8 +55,8 @@ The context also carries ARM64EC/x64 mapped GPRs, PC, SP, NZCV/RFLAGS, v0-v15/XM
 
 GEM owns Windows virtual addresses and logical guest protections:
 
-- safe high addresses may use identity mappings as an optimization;
-- exceptional low addresses, including `0x7ffe0000`, use aliases or engine callbacks;
+- safe high addresses may use validated identity mappings as an optimization while retaining checks;
+- exceptional low addresses, including `0x7ffe0000`, use logical aliases or engine callbacks;
 - guest-page protections remain independent of the 16 KiB host page size;
 - ARM64X code ranges come from a bounds-checked, copied-ownership CHPE v1/v2 metadata parser;
 - engines access memory through checked GEM translation APIs unless an identity fast path is proven safe.
@@ -215,6 +215,7 @@ The detailed plan is in [`docs/architecture/deterministic-vcpu-plan.md`](docs/ar
 ## Documentation and references
 
 - [GEM ABI contract](docs/architecture/gem-abi.md)
+- [GEM logical guest memory](docs/architecture/guest-memory.md)
 - [Deterministic virtual-CPU plan](docs/architecture/deterministic-vcpu-plan.md)
 - [Redistributable fixture policy](docs/fixtures.md)
 - [ADR 0001: Engine ownership](docs/architecture/adr/0001-engine-ownership.md)

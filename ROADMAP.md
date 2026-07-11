@@ -48,15 +48,15 @@ Status: substantially complete.
 
 ## Milestone 2 — Canonical context and memory subsystem
 
-- [ ] Finalize `gem_thread_context` with fixed-width layout and explicit version.
-- [ ] Implement pure ARM64EC ↔ x64 register conversion routines.
-- [ ] Implement NZCV/RFLAGS and FPCR/FPSR/MXCSR conversion with exhaustive table tests.
-- [ ] Implement a logical guest page table independent of host page size.
-- [ ] Implement checked read, write, execute, protect, map, unmap, and alias operations.
-- [ ] Support high-address identity fast paths only after validation.
-- [ ] Support low aliases including KUSER shared data at `0x7ffe0000`.
-- [ ] Model Windows write-copy, guard, reserve, commit, and execute protections needed by the standalone fixture.
-- [ ] Add 4 KiB guest-page tests on a 16 KiB host.
+- [x] Finalize `gem_thread_context` with fixed-width layout and explicit version.
+- [x] Implement pure ARM64EC ↔ x64 register conversion routines.
+- [x] Implement NZCV/RFLAGS and FPCR/FPSR/MXCSR conversion with exhaustive table tests.
+- [x] Implement a logical guest page table independent of host page size.
+- [x] Implement checked read, write, execute, protect, map, unmap, and alias operations.
+- [x] Support high-address identity fast paths only after validation.
+- [x] Support low aliases including KUSER shared data at `0x7ffe0000`.
+- [x] Model Windows write-copy, guard, reserve, commit, and execute protections needed by the standalone fixture.
+- [x] Add 4 KiB guest-page tests on a 16 KiB host.
 
 **Exit gate:** canonical state and memory behavior pass without executing guest instructions.
 

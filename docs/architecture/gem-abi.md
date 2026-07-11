@@ -86,7 +86,7 @@ x13, x14, x23, x24 and x28 are disallowed in ARM64EC guest code. The engine must
 - Full XMM6-XMM15 preservation is enforced across x64-origin entry thunks.
 - NZCV maps to the documented x64 SF/ZF/CF/OF subset; subtraction carry inversion is handled at transition materialization.
 - PF, AF and DF remain explicit x64 state because they have no direct ARM64 PSTATE representation.
-- FPCR/FPSR and MXCSR are stored independently and converted only by tested routines.
+- FPCR/FPSR and MXCSR are stored independently and converted only by tested routines. IOC/IDC/DZC/OFC/UFC/IXC map explicitly to IE/DE/ZE/OE/UE/PE; ARM trap enables invert MXCSR masks, rounding encodings are translated, and FZ maps to FZ. x86 DAZ is rejected by checked conversion because ARM64 has no equivalent. ARM DN, QC, and all other architecture-only bits remain in their independently stored ARM fields; they are never silently folded into MXCSR.
 
 ## Required context fields
 
