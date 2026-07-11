@@ -246,12 +246,6 @@ static bool code_range_contains_class(const struct gem_pe_arm64x_image *image, u
     return range != NULL && range->isa == isa && end <= range->end_rva;
 }
 
-static bool code_range_contains_any(const struct gem_pe_arm64x_image *image, uint32_t rva,
-                                    enum gem_pe_rva_class isa_a, enum gem_pe_rva_class isa_b) {
-    const struct gem_pe_arm64x_code_range *range = find_code_range(image, rva);
-    return range != NULL && (range->isa == isa_a || range->isa == isa_b);
-}
-
 static enum gem_pe_status copy_options(const struct gem_pe_arm64x_parse_options *options,
                                        struct gem_pe_arm64x_parse_options *out_options) {
     if (options == NULL) {
