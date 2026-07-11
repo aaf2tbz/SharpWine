@@ -125,11 +125,11 @@ prerequisites for the Milestone 5 hybrid round trip and cannot be bypassed by la
 - [x] Inventory Blink interpreter/JIT loads, stores, locked operations, fences, self-modifying-code handling, fault ordering, and host-compiler assumptions.
 - [x] Add bounded Store Buffering, Load Buffering, Message Passing, IRIW, locked-operation, and self-modifying-code litmus tests under contention.
 - [x] Compare interpreter and JIT behavior; reject the timed-out concurrent JIT and retain the passing bounded interpreter fallback.
-- [ ] Prove atomic and transactional behavior for misaligned and cross-4-KiB-page guest accesses.
+- [x] Prove atomic and transactional behavior for misaligned and cross-4-KiB-page guest accesses.
 - [x] Keep hardware TSO optional; the native probe found no supported, queryable, per-thread API.
 - [x] Do not depend on private TSO symbols, kernel extensions, Rosetta process state, or an unverified Virtualization.framework control.
-- [ ] Preserve distinct logical permissions for 4 KiB guest pages sharing a 16 KiB host page through checked GEM translation.
-- [ ] Reject temporary host-page permission widening, guessed `ucontext_t` debug-state mutation, and process-global signal single-stepping as correctness mechanisms.
+- [x] Preserve distinct logical permissions for 4 KiB guest pages sharing a 16 KiB host page through checked GEM translation.
+- [x] Reject temporary host-page permission widening, guessed `ucontext_t` debug-state mutation, and process-global signal single-stepping as correctness mechanisms.
 - [ ] Evaluate Mach exceptions or direct mappings only as optional accelerations after race, reentrancy, fault, and multithreaded conformance tests pass.
 
 **Exit gate:** memory-order litmus tests and 4 KiB protection/fault tests pass repeatedly on native

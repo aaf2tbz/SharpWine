@@ -1,6 +1,6 @@
 # ADR 0007: 4 KiB guest-page isolation on 16 KiB hosts
 
-- Status: Proposed
+- Status: Accepted
 - Issue: [#13](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/issues/13)
 
 ## Context
@@ -12,10 +12,10 @@ adjacent guest pages.
 
 GEM already owns a sparse checked 4 KiB page table and validates complete accesses before copying
 bytes. Its page list, backing reference counts, guard consumption, write-copy detachment, and
-protection changes are currently single-threaded. Issue #13 requires those operations to remain
+protection changes were single-threaded before this decision. Issue #13 requires those operations to remain
 transactional and deterministic under concurrent access.
 
-## Proposed decision
+## Decision
 
 Use a per-`gem_memory` cross-platform mutex to make the checked software path linearizable. Every
 public operation that observes or mutates page-table state will hold the same lock for its complete
@@ -46,14 +46,24 @@ remains active after destruction begins.
 
 ## Validation checklist
 
-- [ ] Four 4 KiB logical pages share one verified 16 KiB host backing on native ARM64 macOS.
-- [ ] Read, write, execute, guard, and no-access policies remain independent per logical page.
-- [ ] Reserve, commit, decommit, alias, and write-copy behavior remains independent per logical page.
-- [ ] Misaligned and cross-page failures leave guest memory and caller outputs unchanged.
-- [ ] Concurrent guard access has exactly one guard consumer and deterministic checked results.
-- [ ] Concurrent write-copy detachment preserves the source and commits every accepted write.
-- [ ] Repeated concurrent denied accesses produce no partial mutation or neighboring-page exposure.
-- [ ] No host permission widening, signal single-stepping, guessed debug state, or private VM control
+- [x] Four 4 KiB logical pages share one verified 16 KiB host backing on native ARM64 macOS.
+- [x] Read, write, execute, guard, and no-access policies remain independent per logical page.
+- [x] Reserve, commit, decommit, alias, and write-copy behavior remains independent per logical page.
+- [x] Misaligned and cross-page failures leave guest memory and caller outputs unchanged.
+- [x] Concurrent guard access has exactly one guard consumer and deterministic checked results.
+- [x] Concurrent write-copy detachment preserves the source and commits every accepted write.
+- [x] Repeated concurrent denied accesses produce no partial mutation or neighboring-page exposure.
+- [x] No host permission widening, signal single-stepping, guessed debug state, or private VM control
       is used.
-- [ ] Linux GCC/Clang, macOS Apple Clang, native Windows ARM64, formatting, and repository policy pass.
-- [ ] The dedicated native ARM64 macOS 16 KiB-page stress lane passes repeatedly with zero Rosetta.
+- [x] Linux GCC/Clang, macOS Apple Clang, native Windows ARM64, formatting, and repository policy pass.
+- [x] The dedicated native ARM64 macOS 16 KiB-page stress lane passes repeatedly with zero Rosetta.
+
+## Acceptance evidence
+
+Native CI run [29171803452](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/actions/runs/29171803452)
+passed every job: repository policy, formatting, Linux GCC and Clang, macOS Apple Clang, native
+Windows ARM64/ARM64X toolchain, x86-TSO conformance, ARM64EC engine conformance, and the dedicated
+native ARM64 macOS 16 KiB page-isolation lane. That lane verified `uname -m = arm64`,
+`sysctl -n hw.pagesize = 16384`, and `sysctl -in sysctl.proc_translated = 0`, then ran
+`ctest --output-on-failure --repeat until-fail:100 -L page-isolation` (100 repeated page-isolation
+passes) followed by `tools/ci/audit-zero-rosetta.sh` (zero-Rosetta audit passed).
