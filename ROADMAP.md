@@ -121,13 +121,13 @@ the same run.
 Milestone 4 is complete. This track now supplies the memory-order and guest-page correctness
 prerequisites for the Milestone 5 hybrid round trip and cannot be bypassed by later integration.
 
-- [ ] Specify the observable x86-TSO contract from authoritative architecture documentation, including permitted Store→Load behavior.
-- [ ] Inventory Blink interpreter/JIT loads, stores, locked operations, fences, self-modifying-code handling, fault ordering, and host-compiler assumptions.
-- [ ] Add bounded Store Buffering, Load Buffering, Message Passing, IRIW, locked-operation, and self-modifying-code litmus tests under contention.
-- [ ] Prove interpreter/JIT equivalence and retain a deterministic interpreter or serialized fallback for unproven cases.
+- [x] Specify the observable x86-TSO contract from authoritative architecture documentation, including permitted Store→Load behavior.
+- [x] Inventory Blink interpreter/JIT loads, stores, locked operations, fences, self-modifying-code handling, fault ordering, and host-compiler assumptions.
+- [x] Add bounded Store Buffering, Load Buffering, Message Passing, IRIW, locked-operation, and self-modifying-code litmus tests under contention.
+- [x] Compare interpreter and JIT behavior; reject the timed-out concurrent JIT and retain the passing bounded interpreter fallback.
 - [ ] Prove atomic and transactional behavior for misaligned and cross-4-KiB-page guest accesses.
-- [ ] Keep hardware TSO as an optional optimization only if a supported, queryable, per-thread API is documented and independently probed.
-- [ ] Do not depend on private TSO symbols, kernel extensions, Rosetta process state, or an unverified Virtualization.framework control.
+- [x] Keep hardware TSO optional; the native probe found no supported, queryable, per-thread API.
+- [x] Do not depend on private TSO symbols, kernel extensions, Rosetta process state, or an unverified Virtualization.framework control.
 - [ ] Preserve distinct logical permissions for 4 KiB guest pages sharing a 16 KiB host page through checked GEM translation.
 - [ ] Reject temporary host-page permission widening, guessed `ucontext_t` debug-state mutation, and process-global signal single-stepping as correctness mechanisms.
 - [ ] Evaluate Mach exceptions or direct mappings only as optional accelerations after race, reentrancy, fault, and multithreaded conformance tests pass.

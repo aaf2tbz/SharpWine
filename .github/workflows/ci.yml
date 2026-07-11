@@ -31,6 +31,7 @@ jobs:
           tools/ci/check-repository.py
           tools/ci/run-blink-tso-conformance.py
           tools/ci/test-check-repository.py
+          tools/ci/validate-blink-tso-evidence.py
 
   formatting:
     name: Formatting
@@ -135,6 +136,10 @@ jobs:
           --build-dir "${{ runner.temp }}/blink-tso"
           --output "${{ runner.temp }}/blink-tso/evidence.json"
           --jit-timeout 10
+      - name: Independently validate memory-order evidence
+        run: >-
+          python3 tools/ci/validate-blink-tso-evidence.py
+          "${{ runner.temp }}/blink-tso/evidence.json"
 
   arm64x-toolchain-probe:
     name: ARM64X toolchain probe (native Windows ARM64)

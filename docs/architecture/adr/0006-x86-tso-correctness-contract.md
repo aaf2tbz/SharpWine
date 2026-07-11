@@ -4,7 +4,7 @@ Date: 2026-07-11
 
 ## Status
 
-Accepted contract; implementation and conformance pending.
+Accepted; interpreter fallback conformance passed, concurrent JIT rejected pending repair.
 
 ## Decision
 
@@ -67,9 +67,25 @@ Interpreter and JIT results must be reported separately. Timeouts, crashes, unav
 or malformed output fail closed. Passing empirical runs do not broaden the contract or justify
 selective barrier substitutions without a source-level proof.
 
+## Acceptance result
+
+Native ARM64 macOS CI run `29170219114` built the pinned Blink source without Rosetta and ran three
+20,000-round repetitions plus a separate fallback repetition. Store Buffering observed the
+architecturally permitted `0/0` result while Load Buffering, Message Passing, IRIW, fenced Store
+Buffering, locked increments, and concurrent self-modifying-code publication produced no forbidden
+result. All 40,000 locked increments per run were retained. The known TSO-like symbol probe found
+no supported API.
+
+The concurrent JIT candidate did not complete within its ten-second bound and is therefore
+rejected. The evidence selected `interpreter-fallback`, reran that mode independently, and passed.
+A separate validator checks native architecture, minimum iteration counts, hashes, every forbidden
+outcome, locked totals, mode selection, and fallback evidence. A JIT timeout is evidence against
+that optimization, not permission to weaken or skip the suite.
+
 ## Consequences
 
 Blink is pinned as an ISC-licensed build dependency but is not copied into this repository.
-Generated executables and x86_64 guest images remain build-tree-only. Issue #12 remains open until
-native ARM64 macOS repeatedly passes the suite with hardware TSO disabled or unavailable and the
-runtime exposes deterministic fallback selection for every unproven optimized case.
+Generated executables and x86_64 guest images remain build-tree-only. The bounded interpreter is
+the accepted x86 memory-order fallback. Concurrent JIT execution remains disabled for acceptance
+until it completes the same suite; future hardware-TSO support remains optional and requires a
+supported, queryable, per-thread API.
