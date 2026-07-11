@@ -743,7 +743,7 @@ enum gem_pe_status gem_pe_arm64x_parse(const uint8_t *bytes, size_t byte_count,
 
     if (status != GEM_PE_OK) {
 #ifdef MSWR_PE_ARM64X_DIAGNOSTICS
-        fprintf(stderr, "parse-stage: %s (%s)\n", stage, gem_pe_status_string(status));
+        fprintf(stderr, "parse-stage: %s (%s)\n", stage, gem_pe_status_name(status));
 #endif
         gem_pe_arm64x_image_destroy(state.image);
         return status;
