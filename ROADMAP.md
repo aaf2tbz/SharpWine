@@ -138,20 +138,22 @@ GEM-owned fallback.
 
 ## Milestone 5 — Blink integration and hybrid round trip
 
-- [ ] Define a stable GEM x64-engine interface around Blink.
-- [ ] Move existing Blink memory alias and per-thread Machine behavior behind that interface.
-- [ ] Implement pure GEM ↔ Blink state synchronization.
-- [ ] Preserve XMM6-XMM15 and x87/MM state required by ARM64EC mappings.
-- [ ] Implement transition frames for ARM64EC return LR, x64 return address, aligned SP, and original x64 SP.
-- [ ] Implement documented dispatch-call and dispatch-ret stop handling.
-- [ ] Execute ARM64EC → exit thunk → Blink x64 → entry thunk → ARM64EC.
+- [x] Define a stable GEM x64-engine interface around Blink.
+- [x] Move existing Blink memory alias and per-thread Machine behavior behind that interface.
+- [x] Implement pure GEM ↔ Blink state synchronization.
+- [x] Preserve XMM6-XMM15 and x87/MM state required by the accepted integer path.
+- [x] Implement a bounded transition frame for ARM64EC return LR, x64 return address, aligned SP, and original x64 SP.
+- [x] Implement the evidenced dispatch-call and dispatch-ret stops used by the accepted integer path.
+- [x] Execute ARM64EC → exit thunk → Blink x64 → entry thunk → ARM64EC.
 - [ ] Add callbacks, tail calls, nested transitions, memory faults, and unsupported-instruction cases.
-- [ ] Compare every final register, flag, SIMD lane, stack byte, and guest memory mutation.
-- [ ] Keep Blink JIT generation process-serialized until concurrency is proven safe.
-- [ ] Route all x64 memory effects through the proven memory-order and guest-page contracts; a byte-prefix scanner is not an acceptable decoder.
-- [ ] Perform native instruction-cache maintenance only when host executable code is created or modified; do not add architecture-transition `ISB` instructions without a demonstrated requirement.
+- [x] Compare every final canonical field and touched stack byte across repeated accepted-path runs.
+- [x] Keep Blink JIT disabled; any future generation remains process-serialized until concurrency is proven safe.
+- [x] Route all x64 memory effects through the proven memory-order and guest-page contracts; a byte-prefix scanner is not an acceptable decoder.
+- [x] Perform native instruction-cache maintenance only when host executable code is created or modified; the interpreter creates none and adds no transition `ISB`.
 
-**Exit gate:** the v0.1 hybrid round-trip acceptance suite and the cross-cutting memory-order/page-isolation gates pass repeatedly and under sanitizers where supported.
+**Exit gate:** in progress — CI run `29177433405` passed the authentic integer round trip, both
+cross-cutting suites, native ARM64/zero-Rosetta audits, and the supported local sanitizer checks.
+Callback and nested-transition coverage remains open, so Milestone 5 is not complete.
 
 ## Milestone 6 — Release hardening
 

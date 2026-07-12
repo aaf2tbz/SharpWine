@@ -5,8 +5,12 @@ EXPORTS
     fixture_aggregate
     fixture_variadic
     fixture_indirect_x64
+    fixture_authentic_roundtrip
+    fixture_roundtrip_arm_finish
     fixture_indirect_x64_floating
     fixture_indirect_x64_aggregate
     fixture_indirect_x64_variadic
     fixture_import_probe
     fixture_checker_slot
+    fixture_dispatch_call_slot
+    fixture_dispatch_ret_slot

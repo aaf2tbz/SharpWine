@@ -89,6 +89,75 @@ void gem_fp_from_mxcsr(uint32_t mxcsr, uint32_t *fpcr, uint32_t *fpsr) {
     (void)gem_fp_from_mxcsr_checked(mxcsr, fpcr, fpsr);
 }
 
+bool gem_context_x64_materialize(const struct gem_thread_context *source,
+                                 struct gem_x64_context *destination) {
+    if (!gem_context_is_valid(source) || source->isa != GEM_ISA_X64 || destination == NULL)
+        return false;
+    memset(destination, 0, sizeof(*destination));
+    destination->gpr[GEM_X64_RAX] = source->x[8];
+    destination->gpr[GEM_X64_RCX] = source->x[0];
+    destination->gpr[GEM_X64_RDX] = source->x[1];
+    destination->gpr[GEM_X64_RBX] = source->x[27];
+    destination->gpr[GEM_X64_RSP] = source->sp;
+    destination->gpr[GEM_X64_RBP] = source->x[29];
+    destination->gpr[GEM_X64_RSI] = source->x[25];
+    destination->gpr[GEM_X64_RDI] = source->x[26];
+    destination->gpr[GEM_X64_R8] = source->x[2];
+    destination->gpr[GEM_X64_R9] = source->x[3];
+    destination->gpr[GEM_X64_R10] = source->x[4];
+    destination->gpr[GEM_X64_R11] = source->x[5];
+    destination->gpr[GEM_X64_R12] = source->x[19];
+    destination->gpr[GEM_X64_R13] = source->x[20];
+    destination->gpr[GEM_X64_R14] = source->x[21];
+    destination->gpr[GEM_X64_R15] = source->x[22];
+    destination->rip = source->pc;
+    destination->rflags = source->x64_rflags;
+    destination->mxcsr = source->x64_mxcsr;
+    destination->fcw = source->x64_fcw;
+    destination->fsw = source->x64_fsw;
+    memcpy(destination->xmm, source->v, sizeof(destination->xmm));
+    memcpy(destination->x87, source->x87, sizeof(destination->x87));
+    destination->teb = source->teb;
+    return true;
+}
+
+bool gem_context_x64_commit(const struct gem_x64_context *source,
+                            struct gem_thread_context *destination) {
+    struct gem_thread_context result;
+    if (source == NULL || !gem_context_is_valid(destination) || destination->isa != GEM_ISA_X64 ||
+        source->teb != destination->teb)
+        return false;
+    result = *destination;
+    result.x[8] = source->gpr[GEM_X64_RAX];
+    result.x[0] = source->gpr[GEM_X64_RCX];
+    result.x[1] = source->gpr[GEM_X64_RDX];
+    result.x[27] = source->gpr[GEM_X64_RBX];
+    result.sp = source->gpr[GEM_X64_RSP];
+    result.x[29] = source->gpr[GEM_X64_RBP];
+    result.x[25] = source->gpr[GEM_X64_RSI];
+    result.x[26] = source->gpr[GEM_X64_RDI];
+    result.x[2] = source->gpr[GEM_X64_R8];
+    result.x[3] = source->gpr[GEM_X64_R9];
+    result.x[4] = source->gpr[GEM_X64_R10];
+    result.x[5] = source->gpr[GEM_X64_R11];
+    result.x[19] = source->gpr[GEM_X64_R12];
+    result.x[20] = source->gpr[GEM_X64_R13];
+    result.x[21] = source->gpr[GEM_X64_R14];
+    result.x[22] = source->gpr[GEM_X64_R15];
+    result.pc = source->rip;
+    result.x64_rflags = source->rflags;
+    result.x64_mxcsr = source->mxcsr;
+    result.x64_fcw = source->fcw;
+    result.x64_fsw = source->fsw;
+    memcpy(result.v, source->xmm, sizeof(result.v));
+    memcpy(result.x87, source->x87, sizeof(result.x87));
+    result.x[18] = result.teb;
+    if (!gem_context_is_valid(&result))
+        return false;
+    *destination = result;
+    return true;
+}
+
 bool gem_context_arm64ec_to_x64(const struct gem_thread_context *source,
                                 struct gem_x64_context *destination) {
     if (!gem_context_is_valid(source) || source->isa != GEM_ISA_ARM64EC || destination == NULL)

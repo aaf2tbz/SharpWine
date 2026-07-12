@@ -324,6 +324,7 @@ static enum gem_pe_status parse_headers(struct parser_state *state,
     file_alignment = read_u32le_unchecked(state->bytes, optional_offset + 36U);
     image->summary.size_of_image = read_u32le_unchecked(state->bytes, optional_offset + 56U);
     image->size_of_headers = read_u32le_unchecked(state->bytes, optional_offset + 60U);
+    image->summary.size_of_headers = image->size_of_headers;
     number_of_rva_and_sizes = read_u32le_unchecked(state->bytes, optional_offset + 108U);
 
     if (section_alignment == 0U || file_alignment == 0U || section_alignment < file_alignment ||
@@ -801,6 +802,10 @@ enum gem_pe_status gem_pe_arm64x_get_summary(const struct gem_pe_arm64x_image *i
     return GEM_PE_OK;
 }
 
+size_t gem_pe_arm64x_section_count(const struct gem_pe_arm64x_image *image) {
+    return image == NULL ? 0U : (size_t)image->summary.section_count;
+}
+
 size_t gem_pe_arm64x_code_range_count(const struct gem_pe_arm64x_image *image) {
     return image == NULL ? 0U : image->summary.code_range_count;
 }
@@ -811,6 +816,19 @@ size_t gem_pe_arm64x_entry_range_count(const struct gem_pe_arm64x_image *image) 
 
 size_t gem_pe_arm64x_redirection_count(const struct gem_pe_arm64x_image *image) {
     return image == NULL ? 0U : image->summary.redirection_count;
+}
+
+enum gem_pe_status gem_pe_arm64x_get_section(const struct gem_pe_arm64x_image *image, size_t index,
+                                             struct gem_pe_arm64x_section *out_section) {
+    const struct pe_section *section;
+    if (image == NULL || out_section == NULL || index >= image->summary.section_count)
+        return GEM_PE_ERROR_INVALID_ARGUMENT;
+    section = &image->sections[index];
+    out_section->virtual_address = section->virtual_address;
+    out_section->virtual_size = section->virtual_size;
+    out_section->raw_size = section->raw_size;
+    out_section->characteristics = section->characteristics;
+    return GEM_PE_OK;
 }
 
 enum gem_pe_status gem_pe_arm64x_get_code_range(const struct gem_pe_arm64x_image *image,

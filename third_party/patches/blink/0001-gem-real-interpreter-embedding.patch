@@ -1,0 +1,456 @@
+diff --git a/blink/machine.h b/blink/machine.h
+index be17a8a..ffc24c2 100644
+--- a/blink/machine.h
++++ b/blink/machine.h
+@@ -440,0 +441 @@ struct Machine {               //
++  bool gemembed;                         // structured embedding mode
+@@ -479,0 +481 @@ nexgen32e_f GetOp(long);
++bool GemIsAllowedHandler(nexgen32e_f);
+diff --git a/blink/machine.c b/blink/machine.c
+index ad309eb..cd1e92b 100644
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2092,0 +2093,7 @@ nexgen32e_f GetOp(long op) {
++bool GemIsAllowedHandler(nexgen32e_f handler) {
++  return handler == OpNop || handler == OpMovZvqpIvqp ||
++         handler == OpMovEvqpGvqp || handler == OpMovGvqpEvqp ||
++         handler == OpBsuwiImm || handler == OpAlui || handler == OpJcc || handler == OpJmp ||
++         handler == OpRet;
++}
++
+diff --git a/blink/throw.c b/blink/throw.c
+index a2f8a88..5943ee3 100644
+--- a/blink/throw.c
++++ b/blink/throw.c
+@@ -64,0 +65,6 @@ void HaltMachine(struct Machine *m, int code) {
++  if (m->gemembed) {
++    m->trapno = code;
++    if (!m->faultaddr) m->faultaddr = m->ip;
++    unassert(m->canhalt);
++    siglongjmp(m->onhalt, code);
++  }
+diff --git a/blink/gem_embed.h b/blink/gem_embed.h
+new file mode 100644
+index 0000000..b557c06
+--- /dev/null
++++ b/blink/gem_embed.h
+@@ -0,0 +1,76 @@
++/*
++ * Copyright 2022 Justine Alexandra Roberts Tunney
++ * Copyright 2026 MetalSharp Wine Runtime contributors
++ *
++ * Permission to use, copy, modify, and/or distribute this software for
++ * any purpose with or without fee is hereby granted, provided that the
++ * above copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
++ * WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
++ * WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
++ * AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
++ * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
++ * PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
++ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
++ * PERFORMANCE OF THIS SOFTWARE.
++ */
++#ifndef BLINK_GEM_EMBED_H_
++#define BLINK_GEM_EMBED_H_
++#include <stddef.h>
++#include <stdint.h>
++#define BLINK_GEM_ABI_VERSION      1u
++#define BLINK_GEM_MAX_SHADOW_PAGES 64u
++enum blink_gem_access {
++  BLINK_GEM_ACCESS_FETCH = 1,
++  BLINK_GEM_ACCESS_READ = 2,
++  BLINK_GEM_ACCESS_WRITE = 3
++};
++enum blink_gem_outcome {
++  BLINK_GEM_RETIRED = 0,
++  BLINK_GEM_MEMORY_FAULT = 1,
++  BLINK_GEM_UNSUPPORTED = 2,
++  BLINK_GEM_INVALID = 3
++};
++struct blink_gem_state {
++  uint32_t abi_version, size;
++  uint64_t gpr[16], rip, rflags;
++  uint8_t xmm[16][16];
++  uint32_t mxcsr;
++  uint16_t fcw, fsw;
++  uint8_t x87[8][16];
++  uint64_t gs_base;
++};
++struct blink_gem_result {
++  enum blink_gem_outcome outcome;
++  uint32_t retired;
++  uint64_t fault_address;
++  enum blink_gem_access access;
++  uint32_t memory_error, engine_status;
++};
++struct blink_gem_write {
++  uint64_t address;
++  const uint8_t* data;
++  size_t size;
++};
++typedef uint32_t (*blink_gem_snapshot_fn)(void*, uint64_t, uint8_t[4096],
++                                          uint32_t*);
++typedef uint32_t (*blink_gem_validate_fn)(void*, uint64_t, size_t,
++                                          enum blink_gem_access);
++typedef uint32_t (*blink_gem_commit_fn)(void*, const struct blink_gem_write*,
++                                        size_t, uint64_t*);
++struct blink_gem_callbacks {
++  uint32_t abi_version, size;
++  blink_gem_snapshot_fn snapshot;
++  blink_gem_validate_fn validate;
++  blink_gem_commit_fn commit;
++};
++struct blink_gem_machine;
++struct blink_gem_machine* blink_gem_machine_create(
++    const struct blink_gem_callbacks*, void*);
++void blink_gem_machine_destroy(struct blink_gem_machine*);
++struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine*,
++                                               const struct blink_gem_state*,
++                                               struct blink_gem_state*);
++const char* blink_gem_embedding_version(void);
++#endif
+diff --git a/blink/gem_embed.c b/blink/gem_embed.c
+new file mode 100644
+index 0000000..0d92da7
+--- /dev/null
++++ b/blink/gem_embed.c
+@@ -0,0 +1,337 @@
++/*
++ * Copyright 2022 Justine Alexandra Roberts Tunney
++ * Copyright 2026 MetalSharp Wine Runtime contributors
++ *
++ * Permission to use, copy, modify, and/or distribute this software for
++ * any purpose with or without fee is hereby granted, provided that the
++ * above copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
++ * WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
++ * WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
++ * AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
++ * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
++ * PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
++ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
++ * PERFORMANCE OF THIS SOFTWARE.
++ */
++#include "blink/gem_embed.h"
++
++#include <setjmp.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "blink/builtin.h"
++#include "blink/endian.h"
++#include "blink/flag.h"
++#include "blink/flags.h"
++#include "blink/linux.h"
++#include "blink/machine.h"
++#include "blink/map.h"
++#include "blink/rde.h"
++#include "blink/x86.h"
++
++_Noreturn void TerminateSignal(struct Machine* m, int sig, int code) {
++  (void)m;
++  (void)sig;
++  (void)code;
++  abort();
++}
++
++struct shadow_page {
++  uint64_t address;
++  uint8_t* host;
++  uint8_t before[4096];
++  uint32_t protection;
++};
++struct blink_gem_machine {
++  struct System* system;
++  struct Machine* machine;
++  struct blink_gem_callbacks cb;
++  void* opaque;
++  struct shadow_page pages[BLINK_GEM_MAX_SHADOW_PAGES];
++  size_t page_count;
++};
++
++static struct blink_gem_result result(enum blink_gem_outcome o) {
++  struct blink_gem_result r;
++  memset(&r, 0, sizeof(r));
++  r.outcome = o;
++  return r;
++}
++static int canonical(uint64_t a) {
++  return (a >> 48) == ((a & (UINT64_C(1) << 47)) ? UINT64_C(0xffff) : 0);
++}
++static int hostprot(uint32_t p) {
++  int r = 0;
++  if (p & 1) r |= PROT_READ;
++  if (p & 2) r |= PROT_WRITE;
++  if (p & 4) r |= PROT_READ | PROT_EXEC;
++  return r;
++}
++static uint64_t pageflags(uint32_t p) {
++  return PAGE_FILE | PAGE_U | ((p & 2) ? PAGE_RW : 0) | ((p & 4) ? 0 : PAGE_XD);
++}
++static struct shadow_page* find_page(struct blink_gem_machine* g, uint64_t a) {
++  size_t i;
++  a &= ~UINT64_C(4095);
++  for (i = 0; i < g->page_count; ++i)
++    if (g->pages[i].address == a) return g->pages + i;
++  return 0;
++}
++static int refresh_page(struct blink_gem_machine* g, struct shadow_page* p,
++                        uint32_t* error) {
++  uint32_t prot = 0;
++  uint8_t bytes[4096];
++  *error = g->cb.snapshot(g->opaque, p->address, bytes, &prot);
++  if (*error) return 0;
++  if (ProtectVirtual(g->system, p->address, 4096,
++                     PROT_READ | PROT_WRITE | PROT_EXEC, false) == -1)
++    return 0;
++  memcpy(p->host, bytes, 4096);
++  memcpy(p->before, bytes, 4096);
++  p->protection = prot;
++  if (ProtectVirtual(g->system, p->address, 4096, hostprot(prot), false) == -1)
++    return 0;
++  return 1;
++}
++static void drop_page(struct blink_gem_machine* g, size_t index) {
++  FreeVirtual(g->system, g->pages[index].address, 4096);
++  memmove(g->pages + index, g->pages + index + 1,
++          (g->page_count - index - 1) * sizeof(g->pages[0]));
++  --g->page_count;
++  ResetTlb(g->machine);
++  ResetInstructionCache(g->machine);
++}
++
++static int add_page(struct blink_gem_machine* g, uint64_t address,
++                    uint32_t* error) {
++  struct shadow_page* p;
++  uint32_t prot = 0;
++  uint8_t bytes[4096];
++  address &= ~UINT64_C(4095);
++  if (g->page_count == BLINK_GEM_MAX_SHADOW_PAGES) {
++    *error = 0xffffffffu;
++    return 0;
++  }
++  *error = g->cb.snapshot(g->opaque, address, bytes, &prot);
++  if (*error) return 0;
++  if (ReserveVirtual(g->system, address, 4096, pageflags(prot), -1, 0, false,
++                     true) == -1) {
++    *error = 0xfffffffeu;
++    return 0;
++  }
++  p = g->pages + g->page_count++;
++  p->address = address;
++  p->protection = prot;
++  p->host = LookupAddress2(g->machine, address, 0, 0);
++  if (!p->host) {
++    *error = 0xfffffffeu;
++    return 0;
++  }
++  if (ProtectVirtual(g->system, address, 4096,
++                     PROT_READ | PROT_WRITE | PROT_EXEC, false) == -1)
++    return 0;
++  memcpy(p->host, bytes, 4096);
++  memcpy(p->before, bytes, 4096);
++  if (ProtectVirtual(g->system, address, 4096, hostprot(prot), false) == -1)
++    return 0;
++  ResetTlb(g->machine);
++  ResetInstructionCache(g->machine);
++  return 1;
++}
++static void import_state(struct Machine* m, const struct blink_gem_state* s) {
++  size_t i;
++  m->ip = s->rip;
++  for (i = 0; i < 16; ++i) Write64(m->weg[i], s->gpr[i]);
++  ImportFlags(m, s->rflags);
++  memcpy(m->xmm, s->xmm, sizeof(m->xmm));
++  m->mxcsr = s->mxcsr;
++  m->fpu.cw = s->fcw;
++  m->gs.base = s->gs_base;
++}
++static void export_state(const struct Machine* m,
++                         const struct blink_gem_state* in,
++                         struct blink_gem_state* out) {
++  size_t i;
++  *out = *in;
++  for (i = 0; i < 16; ++i) out->gpr[i] = Read64(m->weg[i]);
++  out->rip = m->ip;
++  out->rflags = ExportFlags(m->flags);
++  memcpy(out->xmm, m->xmm, sizeof(out->xmm));
++  out->mxcsr = m->mxcsr;
++  out->fcw = (uint16_t)m->fpu.cw;
++  out->gs_base = m->gs.base;
++}
++static enum blink_gem_access fault_access(struct Machine* m, int fetch) {
++  uint64_t a = m->faultaddr;
++  if (fetch) return BLINK_GEM_ACCESS_FETCH;
++  if (m->writesize > 0 && a >= (uint64_t)m->writeaddr &&
++      a < (uint64_t)m->writeaddr + (uint64_t)m->writesize)
++    return BLINK_GEM_ACCESS_WRITE;
++  return BLINK_GEM_ACCESS_READ;
++}
++
++struct blink_gem_machine* blink_gem_machine_create(
++    const struct blink_gem_callbacks* cb, void* opaque) {
++  struct blink_gem_machine* g;
++  if (!cb || cb->abi_version != 1 || cb->size != sizeof(*cb) || !cb->snapshot ||
++      !cb->validate || !cb->commit)
++    return 0;
++  g = calloc(1, sizeof(*g));
++  if (!g) return 0;
++  g->cb = *cb;
++  g->opaque = opaque;
++  FLAG_nolinear = true;
++  g->system = NewSystem(XED_MACHINE_MODE_LONG);
++  if (!g->system) goto Fail;
++  g->system->cr3 = AllocatePageTable(g->system);
++  if (!g->system->cr3) goto Fail;
++  g->machine = NewMachine(g->system, 0);
++  if (!g->machine) goto Fail;
++  g->machine->gemembed = true;
++  return g;
++Fail:
++  if (g->machine)
++    FreeMachine(g->machine);
++  else if (g->system)
++    FreeSystem(g->system);
++  free(g);
++  return 0;
++}
++void blink_gem_machine_destroy(struct blink_gem_machine* g) {
++  if (g) {
++    if (g->machine) FreeMachine(g->machine);
++    free(g);
++  }
++}
++
++struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
++                                               const struct blink_gem_state* in,
++                                               struct blink_gem_state* out) {
++  struct Machine* m;
++  struct blink_gem_result r;
++  struct blink_gem_write writes[BLINK_GEM_MAX_SHADOW_PAGES];
++  size_t i, nwrites;
++  uint32_t error = 0;
++  int rc, retries;
++  volatile int fetching;
++  uint64_t fetch_address = 0, fetch_size = 0, commit_fault = 0;
++  if (!g || !in || !out || in->abi_version != 1 || in->size != sizeof(*in) ||
++      !canonical(in->rip) || !canonical(in->gpr[4]) || !canonical(in->gs_base))
++    return result(BLINK_GEM_INVALID);
++  m = g->machine;
++  for (retries = 0; retries < (int)BLINK_GEM_MAX_SHADOW_PAGES + 1; ++retries) {
++    for (i = 0; i < g->page_count;) {
++      if (refresh_page(g, g->pages + i, &error)) {
++        ++i;
++      } else {
++        drop_page(g, i);
++      }
++    }
++    import_state(m, in);
++    m->readaddr = m->writeaddr = 0;
++    m->readsize = m->writesize = 0;
++    m->faultaddr = 0;
++    m->oplen = 0;
++    ResetInstructionCache(m);
++    fetching = 1;
++    if (!(rc = sigsetjmp(m->onhalt, 1))) {
++      m->canhalt = true;
++      LoadInstruction(m, m->ip);
++      fetch_address = m->ip;
++      fetch_size = Oplength(m->xedd->op.rde);
++      if (!GemIsAllowedHandler(GetOp(Mopcode(m->xedd->op.rde)))) {
++        m->canhalt = false;
++        return result(BLINK_GEM_UNSUPPORTED);
++      }
++      fetching = 0;
++      ExecuteInstruction(m);
++      m->canhalt = false;
++    } else {
++      m->canhalt = false;
++      if (rc != kMachineSegmentationFault && rc != kMachineDecodeError &&
++          rc != kMachineUndefinedInstruction) {
++        r = result(BLINK_GEM_UNSUPPORTED);
++        r.engine_status = (uint32_t)rc;
++        return r;
++      }
++      if (rc != kMachineSegmentationFault) {
++        r = result(BLINK_GEM_UNSUPPORTED);
++        r.engine_status = (uint32_t)rc;
++        return r;
++      }
++      r.fault_address = m->faultaddr;
++      r.access = fault_access(m, fetching);
++      if (!find_page(g, m->faultaddr)) {
++        if (add_page(g, m->faultaddr, &error)) continue;
++        if (error == UINT32_MAX) {
++          r = result(BLINK_GEM_INVALID);
++          r.engine_status = error;
++          return r;
++        }
++      }
++      error = g->cb.validate(g->opaque, m->faultaddr, 1, r.access);
++      r.outcome = BLINK_GEM_MEMORY_FAULT;
++      r.memory_error = error;
++      return r;
++    }
++    error = g->cb.validate(g->opaque, fetch_address, (size_t)fetch_size,
++                           BLINK_GEM_ACCESS_FETCH);
++    if (error) {
++      r = result(BLINK_GEM_MEMORY_FAULT);
++      r.fault_address = fetch_address;
++      r.access = BLINK_GEM_ACCESS_FETCH;
++      r.memory_error = error;
++      return r;
++    }
++    if (m->readsize > 0) {
++      error = g->cb.validate(g->opaque, (uint64_t)m->readaddr,
++                             (size_t)m->readsize, BLINK_GEM_ACCESS_READ);
++      if (error) {
++        r = result(BLINK_GEM_MEMORY_FAULT);
++        r.fault_address = (uint64_t)m->readaddr;
++        r.access = BLINK_GEM_ACCESS_READ;
++        r.memory_error = error;
++        return r;
++      }
++    }
++    if (m->writesize > 0) {
++      error = g->cb.validate(g->opaque, (uint64_t)m->writeaddr,
++                             (size_t)m->writesize, BLINK_GEM_ACCESS_WRITE);
++      if (error) {
++        r = result(BLINK_GEM_MEMORY_FAULT);
++        r.fault_address = (uint64_t)m->writeaddr;
++        r.access = BLINK_GEM_ACCESS_WRITE;
++        r.memory_error = error;
++        return r;
++      }
++    }
++    nwrites = 0;
++    for (i = 0; i < g->page_count; ++i)
++      if (memcmp(g->pages[i].host, g->pages[i].before, 4096)) {
++        writes[nwrites].address = g->pages[i].address;
++        writes[nwrites].data = g->pages[i].host;
++        writes[nwrites].size = 4096;
++        ++nwrites;
++      }
++    if (nwrites &&
++        (error = g->cb.commit(g->opaque, writes, nwrites, &commit_fault))) {
++      r = result(BLINK_GEM_MEMORY_FAULT);
++      r.access = BLINK_GEM_ACCESS_WRITE;
++      r.memory_error = error;
++      r.fault_address = commit_fault;
++      return r;
++    }
++    export_state(m, in, out);
++    r = result(BLINK_GEM_RETIRED);
++    r.retired = 1;
++    return r;
++  }
++  r = result(BLINK_GEM_INVALID);
++  r.engine_status = 0xffffffffu;
++  return r;
++}
++const char* blink_gem_embedding_version(void) {
++  return "blink-f006a4fc-real-interpreter-gem-v1";
++}

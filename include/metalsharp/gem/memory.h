@@ -54,6 +54,11 @@ enum gem_memory_protection {
  * by the caller and must stay live and unchanged except through GEM until the
  * mapping is unmapped/released or the `gem_memory` is destroyed.
  */
+/* A real access to PAGE_GUARD follows Windows one-shot semantics: it returns
+ * GEM_MEMORY_GUARD_PAGE and consumes the guard after whole-range validation.
+ * CPU state and data writes remain uncommitted; retry succeeds unless the
+ * caller explicitly re-applies guard protection. Query operations do not
+ * consume guards. */
 struct gem_memory;
 struct gem_memory *gem_memory_create(void);
 void gem_memory_destroy(struct gem_memory *memory);

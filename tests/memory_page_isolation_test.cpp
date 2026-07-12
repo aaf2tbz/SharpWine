@@ -335,6 +335,63 @@ void run_single_threaded(gem_memory *mem, std::uint64_t base, std::uint8_t *host
         check_eq("unmap alias", gem_memory_unmap(mem, alias_addr, kGuestPage), GEM_MEMORY_OK);
     }
 
+    // Transaction rollback must release every temporary WRITECOPY backing when
+    // a later guarded page rejects the same staged commit. Repeating this path
+    // makes the ownership regression visible to leak instrumentation while the
+    // source-write propagation below proves the earlier COW page never detached.
+    {
+        constexpr unsigned int kRollbackIterations = 256U;
+        const std::uint64_t wcopy_addr = fresh_address(mem, kGuestPage);
+        const std::uint8_t source_seed = 0x41U;
+        const std::uint8_t guarded_seed = 0x42U;
+        check_eq("seed rollback source", gem_memory_write(mem, p1, &source_seed, 1U),
+                 GEM_MEMORY_OK);
+        check_eq("seed rollback guard", gem_memory_write(mem, p3, &guarded_seed, 1U),
+                 GEM_MEMORY_OK);
+        check_eq("alias rollback wcopy",
+                 gem_memory_alias(mem, wcopy_addr, p1, kGuestPage, GEM_PAGE_WRITECOPY),
+                 GEM_MEMORY_OK);
+        std::array<std::uint8_t, 4096U> wcopy_data{};
+        std::array<std::uint8_t, 4096U> guarded_data{};
+        wcopy_data.fill(0xA1U);
+        guarded_data.fill(0xA2U);
+        const std::array<gem_memory_page_write, 2> writes{{
+            {wcopy_addr, wcopy_data.data()},
+            {p3, guarded_data.data()},
+        }};
+        for (unsigned int iteration = 0U; iteration < kRollbackIterations; ++iteration) {
+            check_eq("protect rollback guard",
+                     gem_memory_protect(mem, p3, kGuestPage, GEM_PAGE_READWRITE | GEM_PAGE_GUARD,
+                                        nullptr),
+                     GEM_MEMORY_OK);
+            gem_memory_transaction *transaction = gem_memory_transaction_begin(mem);
+            assert(transaction != nullptr);
+            std::uint64_t fault_address = 0U;
+            const gem_memory_error error = gem_memory_transaction_commit_pages(
+                transaction, writes.data(), writes.size(), &fault_address);
+            gem_memory_transaction_end(transaction);
+            check_eq("rollback guarded COW transaction", error, GEM_MEMORY_GUARD_PAGE);
+            assert(fault_address == p3);
+            assert(gem_memory_read(mem, wcopy_addr, out, 1U) == GEM_MEMORY_OK &&
+                   out[0] == source_seed);
+            assert(gem_memory_read(mem, p3, out, 1U) == GEM_MEMORY_OK && out[0] == guarded_seed);
+        }
+
+        val = 0x5DU;
+        check_eq("source write after rollback", gem_memory_write(mem, p1, &val, 1U), GEM_MEMORY_OK);
+        assert(gem_memory_read(mem, wcopy_addr, out, 1U) == GEM_MEMORY_OK && out[0] == val);
+        const std::uint8_t detached_value = 0x9EU;
+        check_eq("COW write after rollback", gem_memory_write(mem, wcopy_addr, &detached_value, 1U),
+                 GEM_MEMORY_OK);
+        assert(gem_memory_read(mem, wcopy_addr, out, 1U) == GEM_MEMORY_OK &&
+               out[0] == detached_value);
+        assert(gem_memory_read(mem, p1, out, 1U) == GEM_MEMORY_OK && out[0] == val);
+        check_eq("guarded page write after rollback",
+                 gem_memory_write(mem, p3, &detached_value, 1U), GEM_MEMORY_OK);
+        check_eq("unmap rollback wcopy", gem_memory_unmap(mem, wcopy_addr, kGuestPage),
+                 GEM_MEMORY_OK);
+    }
+
     // Operations that require 4 KiB alignment reject misalignment without
     // mutation.  (read/write/fetch/peek legally handle in-page misalignment; their
     // misaligned failure modes are the cross-page later-page denials below, which

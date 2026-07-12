@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "metalsharp/gem/memory.h"
+#include "memory_internal.h"
 #include <stdlib.h>
 #include <string.h>
 #if defined(_WIN32)
@@ -67,6 +68,9 @@ static void gem_lock_release(gem_lock *l) {
 struct gem_memory {
     struct page *pages;
     gem_lock lock;
+};
+struct gem_memory_transaction {
+    struct gem_memory *memory;
 };
 static bool range_ok(uint64_t a, uint64_t n) {
     return n && !(a & 4095U) && !(n & 4095U) && a <= UINT64_MAX - n;
@@ -456,6 +460,149 @@ static enum gem_memory_error peek_locked(struct gem_memory *m, uint64_t a, void 
     }
     return GEM_MEMORY_OK;
 }
+struct gem_memory_transaction *gem_memory_transaction_begin(struct gem_memory *memory) {
+    struct gem_memory_transaction *transaction;
+    if (memory == NULL)
+        return NULL;
+    transaction = malloc(sizeof(*transaction));
+    if (transaction == NULL)
+        return NULL;
+    gem_lock_acquire(&memory->lock);
+    transaction->memory = memory;
+    return transaction;
+}
+
+void gem_memory_transaction_end(struct gem_memory_transaction *transaction) {
+    if (transaction != NULL) {
+        gem_lock_release(&transaction->memory->lock);
+        free(transaction);
+    }
+}
+
+enum gem_memory_error
+gem_memory_transaction_snapshot_page(struct gem_memory_transaction *transaction, uint64_t address,
+                                     uint8_t data[4096], uint32_t *protection) {
+    struct page *page;
+    enum gem_memory_error error;
+    if (transaction == NULL || data == NULL || protection == NULL ||
+        (address & UINT64_C(4095)) != 0U)
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    error = peek_locked(transaction->memory, address, data, 4096U);
+    if (error != GEM_MEMORY_OK)
+        return error;
+    page = at(transaction->memory, address);
+    *protection = page->protection;
+    return GEM_MEMORY_OK;
+}
+
+enum gem_memory_error gem_memory_transaction_validate(struct gem_memory_transaction *transaction,
+                                                      uint64_t address, size_t size, bool write,
+                                                      bool execute) {
+    enum gem_memory_error error;
+    uint8_t *temporary;
+    if (transaction == NULL || (write && execute))
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    if (size == 0U)
+        return GEM_MEMORY_OK;
+    temporary = malloc(size);
+    if (temporary == NULL)
+        return GEM_MEMORY_NO_MEMORY;
+    error =
+        access_memory_locked(transaction->memory, address, temporary, size, write, execute, write);
+    free(temporary);
+    if (error == GEM_MEMORY_OK && write) {
+        size_t done = 0U;
+        while (done < size) {
+            const uint64_t page_address = (address + done) & ~UINT64_C(4095);
+            struct page *page = at(transaction->memory, page_address);
+            size_t chunk = 4096U - (size_t)((address + done) & UINT64_C(4095));
+            if ((page->protection & GEM_PAGE_GUARD) != 0U) {
+                page->protection &= ~(uint32_t)GEM_PAGE_GUARD;
+                return GEM_MEMORY_GUARD_PAGE;
+            }
+            if (chunk > size - done)
+                chunk = size - done;
+            done += chunk;
+        }
+    }
+    return error;
+}
+
+enum gem_memory_error
+gem_memory_transaction_commit_pages(struct gem_memory_transaction *transaction,
+                                    const struct gem_memory_page_write *writes, size_t count,
+                                    uint64_t *fault_address) {
+    enum gem_memory_error error = GEM_MEMORY_OK;
+    struct backing **copies;
+    size_t i, j;
+    if (transaction == NULL || (count != 0U && writes == NULL) || count > 64U)
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    copies = count != 0U ? calloc(count, sizeof(*copies)) : NULL;
+    if (count != 0U && copies == NULL)
+        return GEM_MEMORY_NO_MEMORY;
+    for (i = 0; i < count; ++i) {
+        struct page *page;
+        if (writes[i].data == NULL || (writes[i].address & UINT64_C(4095)) != 0U) {
+            if (fault_address != NULL)
+                *fault_address = writes[i].address;
+            error = GEM_MEMORY_INVALID_ARGUMENT;
+            goto Rollback;
+        }
+        for (j = 0; j < i; ++j)
+            if (writes[j].address == writes[i].address) {
+                error = GEM_MEMORY_INVALID_ARGUMENT;
+                goto Rollback;
+            }
+        page = at(transaction->memory, writes[i].address);
+        if (page == NULL || page->backing == NULL || !allowed(page->protection, true, false)) {
+            if (fault_address != NULL)
+                *fault_address = writes[i].address;
+            error = page == NULL            ? GEM_MEMORY_NOT_RESERVED
+                    : page->backing == NULL ? GEM_MEMORY_NOT_COMMITTED
+                                            : GEM_MEMORY_ACCESS_DENIED;
+            goto Rollback;
+        }
+    }
+    for (i = 0; i < count; ++i) {
+        struct page *page = at(transaction->memory, writes[i].address);
+        if ((page->protection & GEM_PAGE_GUARD) != 0U) {
+            page->protection &= ~(uint32_t)GEM_PAGE_GUARD;
+            if (fault_address != NULL)
+                *fault_address = writes[i].address;
+            error = GEM_MEMORY_GUARD_PAGE;
+            goto Rollback;
+        }
+        if ((page->protection & ~(uint32_t)GEM_PAGE_GUARD) == GEM_PAGE_WRITECOPY ||
+            (page->protection & ~(uint32_t)GEM_PAGE_GUARD) == GEM_PAGE_EXECUTE_WRITECOPY) {
+            copies[i] = new_backing(NULL, false);
+            if (copies[i] == NULL) {
+                error = GEM_MEMORY_NO_MEMORY;
+                goto Rollback;
+            }
+            memcpy(copies[i]->data, page->backing->data, 4096U);
+        }
+    }
+    for (i = 0; i < count; ++i) {
+        struct page *page = at(transaction->memory, writes[i].address);
+        if (copies[i] != NULL) {
+            drop(page->backing);
+            page->backing = copies[i];
+            copies[i] = NULL;
+            page->protection = (page->protection & ~(uint32_t)GEM_PAGE_GUARD) == GEM_PAGE_WRITECOPY
+                                   ? GEM_PAGE_READWRITE
+                                   : GEM_PAGE_EXECUTE_READWRITE;
+        }
+        memcpy(page->backing->data, writes[i].data, 4096U);
+    }
+
+Rollback:
+    for (i = 0; i < count; ++i)
+        if (copies[i] != NULL)
+            drop(copies[i]);
+    free(copies);
+    return error;
+}
+
 struct gem_memory *gem_memory_create(void) {
     struct gem_memory *memory = calloc(1, sizeof(*memory));
     uint64_t canonical = GEM_KUSER_CANONICAL_ADDRESS;

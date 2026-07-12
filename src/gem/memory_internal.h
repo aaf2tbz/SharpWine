@@ -11,6 +11,24 @@ extern "C" {
 enum gem_memory_error gem_memory_peek(struct gem_memory *memory, uint64_t address, void *buffer,
                                       size_t size);
 
+struct gem_memory_transaction;
+struct gem_memory_page_write {
+    uint64_t address;
+    const uint8_t *data;
+};
+struct gem_memory_transaction *gem_memory_transaction_begin(struct gem_memory *memory);
+void gem_memory_transaction_end(struct gem_memory_transaction *transaction);
+enum gem_memory_error
+gem_memory_transaction_snapshot_page(struct gem_memory_transaction *transaction, uint64_t address,
+                                     uint8_t data[4096], uint32_t *protection);
+enum gem_memory_error gem_memory_transaction_validate(struct gem_memory_transaction *transaction,
+                                                      uint64_t address, size_t size, bool write,
+                                                      bool execute);
+enum gem_memory_error
+gem_memory_transaction_commit_pages(struct gem_memory_transaction *transaction,
+                                    const struct gem_memory_page_write *writes, size_t count,
+                                    uint64_t *fault_address);
+
 #ifdef __cplusplus
 }
 #endif

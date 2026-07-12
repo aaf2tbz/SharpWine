@@ -64,12 +64,13 @@ function Test-Arm64xProvenanceLock {
     Assert-Arm64xExactProperties $lock.pin.tools @('arm64', 'arm64ec', 'x64') 'provenance pin.tools'
     foreach ($target in @('arm64', 'arm64ec', 'x64')) {
         $toolset = $lock.pin.tools.$target
-        $toolsetNames = if ($target -eq 'arm64ec') { @('compiler', 'compilerMode', 'linker', 'linkerMode', 'cl', 'link', 'lib') } else { @('cl', 'link', 'lib') }
+        $toolsetNames = if ($target -eq 'arm64ec') { @('compiler', 'compilerMode', 'linker', 'linkerMode', 'cl', 'link', 'lib') } elseif ($target -eq 'x64') { @('cl', 'link', 'lib', 'ml64') } else { @('cl', 'link', 'lib') }
         Assert-Arm64xExactProperties $toolset $toolsetNames "provenance pin.tools.$target"
         if ($target -eq 'arm64ec') {
             foreach ($name in @('compiler', 'compilerMode', 'linker', 'linkerMode')) { Assert-Arm64xString $toolset.$name "provenance pin.tools.$target.$name" }
         }
-        foreach ($tool in @('cl', 'link', 'lib')) {
+        $tools = if ($target -eq 'x64') { @('cl', 'link', 'lib', 'ml64') } else { @('cl', 'link', 'lib') }
+        foreach ($tool in $tools) {
             Assert-Arm64xExactProperties $toolset.$tool @('version', 'sha256') "provenance pin.tools.$target.$tool"
             Assert-Arm64xString $toolset.$tool.version "provenance pin.tools.$target.$tool.version"
             Assert-Arm64xHash $toolset.$tool.sha256 "provenance pin.tools.$target.$tool.sha256"
@@ -106,11 +107,12 @@ function Test-Arm64xBuildManifest {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][string]$Path)
     $manifest = Read-Arm64xJson $Path
-    Assert-Arm64xExactProperties $manifest @('schemaVersion', 'producerLock', 'source', 'outputs', 'distribution') 'build manifest'
-    if (($manifest.schemaVersion -isnot [int] -and $manifest.schemaVersion -isnot [long]) -or $manifest.schemaVersion -ne 2) { throw 'build manifest schemaVersion must be integer 2' }
+    Assert-Arm64xExactProperties $manifest @('schemaVersion', 'gitCommit', 'producerLock', 'source', 'outputs', 'distribution') 'build manifest'
+    if (($manifest.schemaVersion -isnot [int] -and $manifest.schemaVersion -isnot [long]) -or $manifest.schemaVersion -ne 3) { throw 'build manifest schemaVersion must be integer 3' }
+    if ($manifest.gitCommit -isnot [string] -or $manifest.gitCommit -cnotmatch '^[0-9a-f]{40}$') { throw 'build manifest gitCommit must be a lowercase Git SHA' }
     if ($manifest.distribution -cne 'build-tree-only') { throw 'build manifest distribution must be build-tree-only' }
     Assert-Arm64xHash $manifest.producerLock 'build manifest producerLock'
-    $sources = @('CMakeLists.txt', 'arm64x.cmake', 'fixture.c', 'fixture_x64.c', 'fixture_api.h', 'host.c', 'fixture.def')
+    $sources = @('CMakeLists.txt', 'arm64x.cmake', 'fixture.c', 'fixture_x64.c', 'fixture_x64_roundtrip.asm', 'fixture_api.h', 'host.c', 'fixture.def')
     Assert-Arm64xExactProperties $manifest.source $sources 'build manifest source'
     foreach ($name in $sources) { Assert-Arm64xHash $manifest.source.$name "build manifest source.$name" }
     Assert-Arm64xExactProperties $manifest.outputs @('dll', 'host') 'build manifest outputs'

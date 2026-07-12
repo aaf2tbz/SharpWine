@@ -65,6 +65,10 @@
         "lib": {
           "version": "14.44.35228.0",
           "sha256": "1fb20195a9ac6deee2aace5d0f175210ba1d2bc0e2be798145ef2f7da87f20df"
+        },
+        "ml64": {
+          "version": "14.44.35228.0",
+          "sha256": "81cd7e8e83fb23b44a23dc2e14de7670c7552adf057d381a2c859657cd181652"
         }
       }
     },

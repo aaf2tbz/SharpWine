@@ -79,5 +79,30 @@ int main(void) {
     assert(gem_context_x64_to_arm64ec(&x64, &arm));
     assert((arm.fpcr & (UINT32_C(1) << 25)) != 0U);
     assert((arm.fpsr & (UINT32_C(1) << 27)) != 0U);
+
+    /* Canonical x64 synchronization preserves ARM-only registers as a broker
+     * sidecar and carries raw x87/MM slots without inventing packed mappings. */
+    gem_context_initialize(&arm, UINT64_C(0x12345000), GEM_ISA_X64);
+    arm.x[6] = UINT64_C(0x6006);
+    arm.x[7] = UINT64_C(0x7007);
+    arm.x[9] = UINT64_C(0x9009);
+    arm.x[30] = UINT64_C(0x3030);
+    arm.x[8] = UINT64_C(0x8080);
+    arm.x87[3].lo = UINT64_C(0x8730);
+    arm.x87[3].hi = UINT64_C(0x8731);
+    assert(gem_context_x64_materialize(&arm, &x64));
+    x64.gpr[GEM_X64_RAX] = UINT64_C(0xaaaa);
+    x64.x87[3].lo = UINT64_C(0xbbbb);
+    assert(gem_context_x64_commit(&x64, &arm));
+    assert(arm.x[8] == UINT64_C(0xaaaa) && arm.x[6] == UINT64_C(0x6006) &&
+           arm.x[7] == UINT64_C(0x7007) && arm.x[9] == UINT64_C(0x9009) &&
+           arm.x[30] == UINT64_C(0x3030));
+    assert(arm.x87[3].lo == UINT64_C(0xbbbb) && arm.x87[3].hi == UINT64_C(0x8731));
+    {
+        struct gem_thread_context unchanged = arm;
+        x64.teb++;
+        assert(!gem_context_x64_commit(&x64, &arm));
+        assert(memcmp(&arm, &unchanged, sizeof(arm)) == 0);
+    }
     return 0;
 }

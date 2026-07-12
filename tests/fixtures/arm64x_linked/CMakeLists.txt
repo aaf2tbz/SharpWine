@@ -36,15 +36,26 @@ if(BUILD_AS_ARM64X STREQUAL "ARM64EC")
   if(NOT DEFINED MSWR_X64_CL OR NOT EXISTS "${MSWR_X64_CL}")
     message(FATAL_ERROR "MSWR_X64_CL must identify the pinned x64 compiler")
   endif()
+  if(NOT DEFINED MSWR_X64_ML64 OR NOT EXISTS "${MSWR_X64_ML64}")
+    message(FATAL_ERROR "MSWR_X64_ML64 must identify the pinned x64 assembler")
+  endif()
   set(x64_object "${CMAKE_CURRENT_BINARY_DIR}/fixture_x64.obj")
+  set(x64_roundtrip_object "${CMAKE_CURRENT_BINARY_DIR}/fixture_x64_roundtrip.obj")
   add_custom_command(
     OUTPUT "${x64_object}"
     COMMAND "${MSWR_X64_CL}" /nologo /c /W4 /WX /O2 /GS- /Zl /guard:cf
             "/Fo${x64_object}" "${CMAKE_CURRENT_SOURCE_DIR}/fixture_x64.c"
     DEPENDS fixture_x64.c
     VERBATIM)
-  set_source_files_properties("${x64_object}" PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
-  target_sources(arm64x_fixture PRIVATE "${x64_object}")
+  add_custom_command(
+    OUTPUT "${x64_roundtrip_object}"
+    COMMAND "${MSWR_X64_ML64}" /nologo /c "/Fo${x64_roundtrip_object}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixture_x64_roundtrip.asm"
+    DEPENDS fixture_x64_roundtrip.asm
+    VERBATIM)
+  set_source_files_properties(
+    "${x64_object}" "${x64_roundtrip_object}" PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+  target_sources(arm64x_fixture PRIVATE "${x64_object}" "${x64_roundtrip_object}")
 
   add_executable(arm64x_fixture_host host.c)
   target_compile_options(arm64x_fixture_host PRIVATE /W4 /WX /guard:cf)

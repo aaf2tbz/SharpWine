@@ -25,8 +25,11 @@
       "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
       "license": "ISC",
       "source_archive_sha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
-      "distribution": "planned build-tree-only pinned source/build dependency",
-      "adr": "docs/architecture/adr/0006-x86-tso-correctness-contract.md"
+      "distribution": "optional build-tree-only pinned source/build dependency",
+      "adr": "docs/architecture/adr/0008-blink-roundtrip.md",
+      "embedding_patch_sha256": "5db0ef0f144fe0df014496fe521e0640659f7dd44cfbb3e79defa7fb503551a6",
+      "embedding_provenance": "docs/architecture/adr/0008-blink-embedding.provenance.json",
+      "accepting_mode": "real interpreter handler allowlist; DISABLE_JIT"
     }
   }
 }

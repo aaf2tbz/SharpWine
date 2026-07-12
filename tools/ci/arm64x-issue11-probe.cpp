@@ -73,27 +73,36 @@ std::vector<std::uint8_t> ReadFile(const wchar_t *path) {
 
 struct EntryMap {
     std::array<std::uint32_t, 4> rvas{};
+    std::uint32_t roundtrip_rva{};
+    std::uint32_t finish_rva{};
     std::uint32_t checker_slot_rva{};
+    std::uint32_t dispatch_call_slot_rva{};
+    std::uint32_t dispatch_ret_slot_rva{};
 };
 
 EntryMap ReadEntryMap(const wchar_t *path) {
     std::FILE *input = nullptr;
     if (_wfopen_s(&input, path, L"rb") != 0 || input == nullptr)
         Fail("cannot open native ARM64EC entry map");
-    std::array<unsigned long long, 5> values{};
+    std::array<unsigned long long, 9> values{};
     const int matched = fscanf_s(input,
-                                 "MSWR_ARM64EC_ENTRY_MAP_V1\n"
+                                 "MSWR_ARM64EC_ENTRY_MAP_V2\n"
                                  "integer %I64x\n"
                                  "floating %I64x\n"
                                  "aggregate %I64x\n"
                                  "variadic %I64x\n"
-                                 "checkerSlot %I64x",
-                                 &values[0], &values[1], &values[2], &values[3], &values[4]);
+                                 "roundtrip %I64x\n"
+                                 "finish %I64x\n"
+                                 "checkerSlot %I64x\n"
+                                 "dispatchCallSlot %I64x\n"
+                                 "dispatchRetSlot %I64x",
+                                 &values[0], &values[1], &values[2], &values[3], &values[4],
+                                 &values[5], &values[6], &values[7], &values[8]);
     int trailing = 0;
     do {
         trailing = std::fgetc(input);
     } while (trailing == '\r' || trailing == '\n' || trailing == ' ' || trailing == '\t');
-    if (std::fclose(input) != 0 || matched != 5 || trailing != EOF)
+    if (std::fclose(input) != 0 || matched != 9 || trailing != EOF)
         Fail("native ARM64EC entry map is malformed");
     EntryMap result{};
     for (std::size_t index = 0; index < result.rvas.size(); ++index) {
@@ -105,9 +114,14 @@ EntryMap ReadEntryMap(const wchar_t *path) {
                 Fail("native ARM64EC entry map contains duplicate RVAs");
         }
     }
-    if (values[4] > UINT32_MAX)
-        Fail("native ARM64EC checker slot RVA overflows");
-    result.checker_slot_rva = static_cast<std::uint32_t>(values[4]);
+    for (std::size_t index = 4; index < values.size(); ++index)
+        if (values[index] > UINT32_MAX)
+            Fail("native ARM64EC round-trip map RVA overflows");
+    result.roundtrip_rva = static_cast<std::uint32_t>(values[4]);
+    result.finish_rva = static_cast<std::uint32_t>(values[5]);
+    result.checker_slot_rva = static_cast<std::uint32_t>(values[6]);
+    result.dispatch_call_slot_rva = static_cast<std::uint32_t>(values[7]);
+    result.dispatch_ret_slot_rva = static_cast<std::uint32_t>(values[8]);
     return result;
 }
 
@@ -232,11 +246,11 @@ StageResult RunExitStage(const char *name, std::uint64_t export_va, std::uint64_
     result.transitions = gem_arm64ec_runtime_transition_count(runtime);
     result.checker = broker.checker_va;
     gem_arm64ec_target_result boundary{};
-    result.passed = reason == GEM_STOP_ARCH_TRANSITION && broker.checker_calls == 1U &&
-                    gem_arm64ec_target_resolve(broker.map, context.pc, &boundary) ==
-                        GEM_ARM64EC_TARGET_OK &&
-                    boundary.kind == GEM_ARM64EC_TARGET_X64_BOUNDARY &&
-                    context.x[18] == context.teb && stop.access == GEM_ARM64EC_ACCESS_NONE;
+    result.passed =
+        reason == GEM_STOP_ARCH_TRANSITION && broker.checker_calls == 1U &&
+        gem_arm64ec_target_resolve(broker.map, context.pc, &boundary) == GEM_ARM64EC_TARGET_OK &&
+        boundary.kind == GEM_ARM64EC_TARGET_X64_BOUNDARY && context.x[18] == context.teb &&
+        stop.access == GEM_ARM64EC_ACCESS_NONE;
     return result;
 }
 
@@ -349,8 +363,7 @@ int wmain(int argc, wchar_t **argv) {
         std::uint64_t x0;
     };
     constexpr std::array<ExportStage, 4> exports = {
-        {{"integerExit", 12U}, {"floatingExit", 0U}, {"aggregateExit", 0U},
-         {"variadicExit", 4U}}};
+        {{"integerExit", 12U}, {"floatingExit", 0U}, {"aggregateExit", 0U}, {"variadicExit", 4U}}};
     std::array<StageResult, 5> stages{};
     for (std::size_t i = 0; i < exports.size(); ++i) {
         gem_arm64ec_target_result entry{};

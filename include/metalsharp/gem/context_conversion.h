@@ -42,6 +42,13 @@ struct gem_x64_context {
 };
 
 /* These functions only materialize architectural state; they do not execute code. */
+/* The canonical-x64 helpers preserve non-x64-mapped ARM fields in destination
+ * and carry raw x87/MM slots as sidecar state; they never infer ARM registers
+ * from x87 encodings. Commit is transactional. */
+bool gem_context_x64_materialize(const struct gem_thread_context *source,
+                                 struct gem_x64_context *destination);
+bool gem_context_x64_commit(const struct gem_x64_context *source,
+                            struct gem_thread_context *destination);
 bool gem_context_arm64ec_to_x64(const struct gem_thread_context *source,
                                 struct gem_x64_context *destination);
 bool gem_context_x64_to_arm64ec(const struct gem_x64_context *source,

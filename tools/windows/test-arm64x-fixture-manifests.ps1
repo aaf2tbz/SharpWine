@@ -31,7 +31,7 @@ $provenance = [ordered]@{
                 compiler = 'shared-arm64-cl'; compilerMode = '/arm64EC'; linker = 'shared-arm64-link'
                 linkerMode = '/MACHINE:ARM64EC'; cl = (& $tool); link = (& $tool); lib = (& $tool)
             }
-            x64 = [ordered]@{ cl = (& $tool); link = (& $tool); lib = (& $tool) }
+            x64 = [ordered]@{ cl = (& $tool); link = (& $tool); lib = (& $tool); ml64 = (& $tool) }
         }; dumpbin = (& $tool)
     }
     reviewRequirement = 'review required'
@@ -64,6 +64,7 @@ foreach ($case in @(
     @{ Name = 'non-string documentation entry'; Apply = { param($x) $x.documentation = @(1) } },
     @{ Name = 'missing pin'; Apply = { param($x) $x.PSObject.Properties.Remove('pin') } },
     @{ Name = 'missing nested tool'; Apply = { param($x) $x.pin.tools.arm64.PSObject.Properties.Remove('cl') } },
+    @{ Name = 'missing x64 assembler'; Apply = { param($x) $x.pin.tools.x64.PSObject.Properties.Remove('ml64') } },
     @{ Name = 'uppercase hash'; Apply = { param($x) $x.pin.dumpbin.sha256 = $hash.ToUpperInvariant() } },
     @{ Name = 'short hash'; Apply = { param($x) $x.pin.dumpbin.sha256 = 'abc' } },
     @{ Name = 'non-hex hash'; Apply = { param($x) $x.pin.dumpbin.sha256 = ('g' * 64) } }
@@ -75,9 +76,9 @@ foreach ($case in @(
 
 foreach ($name in @('dll.bin', 'host.bin')) { Set-Content -NoNewline -LiteralPath (Join-Path $TestDir $name) -Value $name }
 $source = [ordered]@{}
-foreach ($name in @('CMakeLists.txt', 'arm64x.cmake', 'fixture.c', 'fixture_x64.c', 'fixture_api.h', 'host.c', 'fixture.def')) { $source[$name] = $hash }
+foreach ($name in @('CMakeLists.txt', 'arm64x.cmake', 'fixture.c', 'fixture_x64.c', 'fixture_x64_roundtrip.asm', 'fixture_api.h', 'host.c', 'fixture.def')) { $source[$name] = $hash }
 $build = [ordered]@{
-    schemaVersion = 2; producerLock = $hash; source = $source
+    schemaVersion = 3; gitCommit = ('a' * 40); producerLock = $hash; source = $source
     outputs = [ordered]@{
         dll = [ordered]@{ type = 'dll'; path = 'dll.bin'; sha256 = (Hash (Join-Path $TestDir 'dll.bin')) }
         host = [ordered]@{ type = 'host'; path = 'host.bin'; sha256 = (Hash (Join-Path $TestDir 'host.bin')) }
@@ -88,9 +89,11 @@ $buildPath = Write-Json $build 'build.json'
 Test-Arm64xBuildManifest $buildPath | Out-Null
 $cases = @(
     @{ Name = 'wrong build schema'; Apply = { param($x) $x.schemaVersion = 1 } },
-    @{ Name = 'string build schema'; Apply = { param($x) $x.schemaVersion = '2' } },
+    @{ Name = 'string build schema'; Apply = { param($x) $x.schemaVersion = '3' } },
     @{ Name = 'fractional build schema'; Apply = { param($x) $x.schemaVersion = 2.5 } },
     @{ Name = 'unknown property'; Apply = { param($x) $x | Add-Member noteproperty extra 1 } },
+    @{ Name = 'missing git commit'; Apply = { param($x) $x.PSObject.Properties.Remove('gitCommit') } },
+    @{ Name = 'bad git commit'; Apply = { param($x) $x.gitCommit = ('A' * 40) } },
     @{ Name = 'missing source'; Apply = { param($x) $x.source.PSObject.Properties.Remove('host.c') } },
     @{ Name = 'wrong distribution'; Apply = { param($x) $x.distribution = 'repository' } },
     @{ Name = 'absolute path'; Apply = { param($x) $x.outputs.dll.path = 'C:\escape.dll' } },

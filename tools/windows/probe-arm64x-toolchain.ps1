@@ -29,6 +29,9 @@ foreach ($target in @('arm64', 'x64')) {
   foreach ($path in @($cl, $link, $lib)) { if (-not (Test-Path -LiteralPath $path)) { Fail "missing $target tool $path" } }
   $tools[$target] = @{ cl = @{ version = (Get-Item $cl).VersionInfo.FileVersion; sha256 = Hash $cl }; link = @{ version = (Get-Item $link).VersionInfo.FileVersion; sha256 = Hash $link }; lib = @{ version = (Get-Item $lib).VersionInfo.FileVersion; sha256 = Hash $lib } }
 }
+$ml64 = Join-Path $toolRoot 'x64\ml64.exe'
+if (-not (Test-Path -LiteralPath $ml64)) { Fail 'x64 ml64.exe is absent' }
+$tools['x64']['ml64'] = @{ version = (Get-Item $ml64).VersionInfo.FileVersion; sha256 = Hash $ml64 }
 $arm64Cl = Join-Path $toolRoot 'arm64\cl.exe'
 $arm64Link = Join-Path $toolRoot 'arm64\link.exe'
 $clHelp = & $arm64Cl '/?' 2>&1 | Out-String
@@ -57,7 +60,10 @@ $manifestPath = Join-Path $BuildDir 'arm64x-toolchain-probe.manifest.json'; $man
 $lock = Get-Content -Raw -LiteralPath $LockFile | ConvertFrom-Json
 if ($lock.status -eq 'reviewed') {
   if ($null -eq $lock.pin -or $lock.pin.vcToolsVersion -ne $vcVersion -or $lock.pin.windowsSdkVersion -ne $sdkVersion) { Fail 'reviewed provenance lock does not match selected versions' }
-  foreach ($target in @('arm64', 'arm64ec', 'x64')) { foreach ($name in @('cl', 'link', 'lib')) { if ($lock.pin.tools.$target.$name.sha256 -ne $tools[$target][$name].sha256) { Fail "reviewed provenance hash drift: $target/$name" } } }
+  foreach ($target in @('arm64', 'arm64ec', 'x64')) {
+    $names = if ($target -eq 'x64') { @('cl', 'link', 'lib', 'ml64') } else { @('cl', 'link', 'lib') }
+    foreach ($name in $names) { if ($lock.pin.tools.$target.$name.sha256 -ne $tools[$target][$name].sha256) { Fail "reviewed provenance hash drift: $target/$name" } }
+  }
   if ($null -eq $lock.pin.dumpbin -or $lock.pin.dumpbin.sha256 -ne (Hash $dumpbin)) { Fail 'reviewed provenance hash drift: dumpbin' }
 } elseif ($lock.status -ne 'pending-first-native-arm64-review') { Fail 'unrecognized provenance lock status' }
 Write-Output $manifestPath

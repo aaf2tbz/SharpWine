@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -28,9 +29,12 @@ jobs:
       - run: >-
           python3 -m py_compile
           tools/audit_blink_memory_order.py
+          tools/audit_blink_embedding.py
           tools/ci/check-repository.py
+          tools/ci/create-arm64x-issue14-bundle.py
           tools/ci/run-blink-tso-conformance.py
           tools/ci/test-check-repository.py
+          tools/ci/validate-arm64x-issue14-artifact.py
           tools/ci/validate-blink-tso-evidence.py
 
   formatting:
@@ -161,9 +165,31 @@ jobs:
           python3 tools/ci/validate-blink-tso-evidence.py
           "${{ runner.temp }}/blink-tso/evidence.json"
 
+  blink-x64-engine:
+    name: Real Blink interpreter adapter (native macOS ARM64)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - run: test "$(uname -m)" = arm64
+      - run: test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+      - run: brew install make
+      - run: >-
+          cmake -S . -B build-x64
+          -DMSWR_ENABLE_X64_ENGINE=ON
+          -DMSWR_X64_ENGINE_CONFORMANCE=ON
+          -DMSWR_WARNINGS_AS_ERRORS=ON
+      - run: cmake --build build-x64 --parallel
+      - run: ctest --test-dir build-x64 -R gem.x64_engine_conformance --output-on-failure
+      - run: tools/ci/audit-zero-rosetta.sh build-x64
+      - run: test -z "$(grep HAVE_JIT build-x64/_deps/blink_gem-src/config.h || true)"
+
   arm64x-toolchain-probe:
     name: ARM64X toolchain probe (native Windows ARM64)
     runs-on: windows-11-arm
+    outputs:
+      artifact-digest: ${{ steps.upload-issue14.outputs.artifact-digest }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -258,7 +284,8 @@ jobs:
         run: |
           foreach ($name in @('a', 'b')) {
             $root = "${{ runner.temp }}\arm64x-fixture-$name"
-            & "$root\arm64ec\Release\arm64x_fixture_host.exe" "$root\arm64ec-entry-map.txt"
+            & "$root\arm64ec\Release\arm64x_fixture_host.exe" "$root\arm64ec-entry-map.txt" `
+              "$root\arm64x-native-evidence.json"
             if ($LASTEXITCODE -ne 0) { throw "validation host $name exited with $LASTEXITCODE" }
           }
       - name: Build native pinned-Dynarmic issue 11 probe
@@ -305,6 +332,22 @@ jobs:
             -InspectionB "${{ runner.temp }}\arm64x-fixture-b\arm64x-fixture-inspection.json" `
             -ExecutionB "${{ runner.temp }}\arm64x-fixture-b\arm64x-issue11-execution.json"
           Get-Content -Raw -LiteralPath "${{ runner.temp }}\arm64x-fixture-a\arm64x-issue11-execution.json"
+      - name: Create strict run-scoped Issue 14 handoff
+        shell: pwsh
+        run: >-
+          python tools/ci/create-arm64x-issue14-bundle.py
+          --build-a "${{ runner.temp }}\arm64x-fixture-a"
+          --build-b "${{ runner.temp }}\arm64x-fixture-b"
+          --reproducibility "${{ runner.temp }}\arm64x-reproducibility.json"
+          --git-commit "${{ github.sha }}"
+          --output "${{ runner.temp }}\arm64x-issue14-bundle"
+      - name: Validate producer-side Issue 14 handoff
+        shell: pwsh
+        run: >-
+          python tools/ci/validate-arm64x-issue14-artifact.py
+          "${{ runner.temp }}\arm64x-issue14-bundle"
+          --git-commit "${{ github.sha }}"
+          --source-root "${{ github.workspace }}"
       - name: Reject generated binary leakage
         shell: pwsh
         run: |
@@ -312,3 +355,62 @@ jobs:
           if ($tracked) { throw "generated binary tracked: $tracked" }
           $unexpected = git status --porcelain --untracked-files=all
           if ($unexpected) { throw "fixture build modified checkout: $unexpected" }
+      - name: Upload one-day Issue 14 handoff
+        id: upload-issue14
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arm64x-issue14-${{ github.run_id }}
+          path: ${{ runner.temp }}\arm64x-issue14-bundle
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          include-hidden-files: false
+
+  arm64x-roundtrip:
+    name: Authentic ARM64EC-Blink round trip (native macOS ARM64)
+    needs: arm64x-toolchain-probe
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - run: test "$(uname -m)" = arm64
+      - run: test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: arm64x-issue14-${{ github.run_id }}
+          path: ${{ runner.temp }}/arm64x-issue14-bundle
+      - name: Verify Actions service artifact digest for this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_DIGEST: ${{ needs.arm64x-toolchain-probe.outputs.artifact-digest }}
+        run: |
+          actual="$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
+            --jq '[.artifacts[] | select(.name == "arm64x-issue14-${{ github.run_id }}") | .digest] | if length == 1 then .[0] else error("artifact count") end')"
+          test -n "$EXPECTED_DIGEST"
+          test "$actual" = "sha256:$EXPECTED_DIGEST"
+      - name: Validate every inner artifact link before use
+        run: >-
+          python3 tools/ci/validate-arm64x-issue14-artifact.py
+          "${{ runner.temp }}/arm64x-issue14-bundle"
+          --git-commit "${{ github.sha }}"
+          --source-root "${{ github.workspace }}"
+      - run: brew install boost make
+      - name: Build both transient engines and authentic conformance
+        run: >-
+          arch -arm64 cmake -S . -B build-roundtrip
+          -DCMAKE_BUILD_TYPE=Debug
+          -DMSWR_WARNINGS_AS_ERRORS=ON
+          -DMSWR_ENABLE_ARM64EC_ENGINE=ON
+          -DMSWR_ENGINE_CONFORMANCE=ON
+          -DMSWR_ENABLE_X64_ENGINE=ON
+          -DMSWR_X64_ENGINE_CONFORMANCE=ON
+          -DMSWR_ZERO_ROSETTA_AUDIT=ON
+          -DMSWR_ARM64X_ROUNDTRIP_ARTIFACT_DIR="${{ runner.temp }}/arm64x-issue14-bundle/a"
+      - run: arch -arm64 cmake --build build-roundtrip --parallel
+      - run: >-
+          arch -arm64 ctest --test-dir build-roundtrip --output-on-failure
+          -R 'gem.(arm64x_roundtrip|arm64ec_engine_conformance|x64_engine_conformance|pe_arm64x_loader_test|context_conversion_test)'
+      - run: tools/ci/audit-zero-rosetta.sh build-roundtrip
+      - run: test -z "$(grep HAVE_JIT build-roundtrip/_deps/blink_gem-src/config.h || true)"
+      - run: test -z "$(git status --porcelain --untracked-files=all)"

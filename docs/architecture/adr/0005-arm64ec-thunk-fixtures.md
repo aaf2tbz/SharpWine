@@ -83,6 +83,11 @@ same-job conformance. Run `29159938430` also captured the linked function bodies
 and exit thunk symbols, checker call sites, and descriptor words used by the checked resolver.
 Synthetic metadata remains supplemental malformed/boundary coverage only.
 The repository continues to contain only Apache-2.0 source and build-tree research outputs; it
-contains no copied Windows binary fixture. Dynarmic conformance remains governed by ADR 0004,
+contains no copied Windows binary fixture. For Issue #14 only, freshly produced DLLs and sanitized
+evidence may cross from the native Windows ARM64 producer job to the native macOS ARM64 consumer
+job as a one-day, run-scoped Actions artifact under ADR 0008's SHA-pinned, commit-bound,
+inner-manifest and allowlist rules. That ephemeral handoff is neither a committed/released fixture
+nor retroactive evidence for Issue #11; all PDB/OBJ/LIB/MAP/EXE and system files remain forbidden.
+Dynarmic conformance remains governed by ADR 0004,
 Blink was not introduced for the issue #11 boundary, and Milestone 4 is complete based on the
 authentic generated execution evidence in run `29168212337`.

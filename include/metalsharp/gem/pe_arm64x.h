@@ -63,6 +63,7 @@ struct gem_pe_arm64x_summary {
     uint16_t section_count;
     uint64_t image_base;
     uint32_t size_of_image;
+    uint32_t size_of_headers;
     uint32_t address_of_entry_point;
     uint32_t load_config_rva;
     uint32_t load_config_size;
@@ -71,6 +72,13 @@ struct gem_pe_arm64x_summary {
     size_t code_range_count;
     size_t entry_range_count;
     size_t redirection_count;
+};
+
+struct gem_pe_arm64x_section {
+    uint32_t virtual_address;
+    uint32_t virtual_size;
+    uint32_t raw_size;
+    uint32_t characteristics;
 };
 
 struct gem_pe_arm64x_code_range {
@@ -121,10 +129,13 @@ enum gem_pe_status gem_pe_arm64x_image_clone(const struct gem_pe_arm64x_image *i
 
 enum gem_pe_status gem_pe_arm64x_get_summary(const struct gem_pe_arm64x_image *image,
                                              struct gem_pe_arm64x_summary *out_summary);
+size_t gem_pe_arm64x_section_count(const struct gem_pe_arm64x_image *image);
 size_t gem_pe_arm64x_code_range_count(const struct gem_pe_arm64x_image *image);
 size_t gem_pe_arm64x_entry_range_count(const struct gem_pe_arm64x_image *image);
 size_t gem_pe_arm64x_redirection_count(const struct gem_pe_arm64x_image *image);
 
+enum gem_pe_status gem_pe_arm64x_get_section(const struct gem_pe_arm64x_image *image, size_t index,
+                                             struct gem_pe_arm64x_section *out_section);
 enum gem_pe_status gem_pe_arm64x_get_code_range(const struct gem_pe_arm64x_image *image,
                                                 size_t index,
                                                 struct gem_pe_arm64x_code_range *out_range);

@@ -41,6 +41,17 @@ Every fixture-related PR must include:
 
 When in doubt, generate artifacts in the build directory during tests and commit only source plus expected metadata.
 
+## Ephemeral Issue #14 CI handoff
+
+Issue #14 may transport freshly generated Microsoft-linked ARM64X DLLs and sanitized evidence from
+a native Windows ARM64 producer job to a native macOS ARM64 consumer job in the same GitHub Actions
+run. This narrow exception requires SHA-pinned upload/download actions, one-day retention, an exact
+allowlist rooted under `runner.temp`, a commit-bound inner manifest with sizes and SHA-256 hashes,
+service-digest verification, and strict consumer validation before any DLL is parsed. PDB, OBJ,
+LIB, MAP, EXE, system files, private paths, release assets, and committed generated files remain
+forbidden. The handoff is ephemeral integrity-checked CI transport, not redistribution or a fixture
+accepted independently of its source producer.
+
 ## ARM64X compatibility input
 
 `tests/data/wine-11.12-ntdll-arm64x.txt` contains only sanitized structural expectations. The corresponding Wine DLL is never committed. Where a locally built, legally held Wine input is available, run `pe_arm64x_probe /path/to/ntdll.dll`; the probe reads at most 16 MiB, parses metadata only, and never launches Wine or executes image bytes.
