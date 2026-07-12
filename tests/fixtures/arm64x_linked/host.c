@@ -4,11 +4,23 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <windows.h>
+
+typedef uint64_t (*fixture_u64_fn)(uint64_t);
 
 static int fail(const char *message) {
     fprintf(stderr, "ARM64X fixture failure: %s\n", message);
     return 1;
+}
+
+static fixture_u64_fn find_u64(HMODULE module, const char *name) {
+    FARPROC address = GetProcAddress(module, name);
+    fixture_u64_fn function = NULL;
+    if (sizeof(address) != sizeof(function))
+        return NULL;
+    memcpy(&function, &address, sizeof(function));
+    return function;
 }
 
 static int write_native_evidence(const char *path) {
@@ -35,12 +47,14 @@ static int write_entry_map(const char *path) {
     };
     const uintptr_t roundtrip = (uintptr_t)(void *)fixture_authentic_roundtrip;
     const uintptr_t finish = (uintptr_t)(void *)fixture_roundtrip_arm_finish;
-    const uintptr_t direct = (uintptr_t)(void *)fixture_direct_x64_call;
-    const uintptr_t callback_resume = (uintptr_t)(void *)fixture_callback_and_resume;
-    const uintptr_t tail_transfer = (uintptr_t)(void *)fixture_tail_transfer;
-    const uintptr_t bounded_nested = (uintptr_t)(void *)fixture_bounded_nested;
-    const uintptr_t arm_callback = (uintptr_t)(void *)fixture_arm_callback;
-    const uintptr_t arm_nested_callback = (uintptr_t)(void *)fixture_arm_nested_callback;
+    const uintptr_t direct = (uintptr_t)(void *)find_u64(module, "fixture_direct_x64_call");
+    const uintptr_t callback_resume =
+        (uintptr_t)(void *)find_u64(module, "fixture_callback_and_resume");
+    const uintptr_t tail_transfer = (uintptr_t)(void *)find_u64(module, "fixture_tail_transfer");
+    const uintptr_t bounded_nested = (uintptr_t)(void *)find_u64(module, "fixture_bounded_nested");
+    const uintptr_t arm_callback = (uintptr_t)(void *)find_u64(module, "fixture_arm_callback");
+    const uintptr_t arm_nested_callback =
+        (uintptr_t)(void *)find_u64(module, "fixture_arm_nested_callback");
     const uintptr_t checker_slot = fixture_checker_slot();
     const uintptr_t dispatch_call_slot = fixture_dispatch_call_slot();
     const uintptr_t dispatch_ret_slot = fixture_dispatch_ret_slot();
@@ -107,7 +121,21 @@ int main(int argc, char **argv) {
     USHORT native_machine = 0;
     arm64x_fixture_pair input = {31, 47};
     arm64x_fixture_pair output;
+    HMODULE module = GetModuleHandleW(L"arm64x_fixture.dll");
+    fixture_u64_fn direct;
+    fixture_u64_fn callback_resume;
+    fixture_u64_fn tail_transfer;
+    fixture_u64_fn bounded_nested;
 
+    if (module == NULL)
+        return fail("fixture module handle");
+    direct = find_u64(module, "fixture_direct_x64_call");
+    callback_resume = find_u64(module, "fixture_callback_and_resume");
+    tail_transfer = find_u64(module, "fixture_tail_transfer");
+    bounded_nested = find_u64(module, "fixture_bounded_nested");
+    if (direct == NULL || callback_resume == NULL || tail_transfer == NULL ||
+        bounded_nested == NULL)
+        return fail("Issue 14.5 export lookup");
     if (!IsWow64Process2(GetCurrentProcess(), &process_machine, &native_machine))
         return fail("IsWow64Process2 failed");
     if (native_machine != IMAGE_FILE_MACHINE_ARM64)
@@ -125,13 +153,13 @@ int main(int argc, char **argv) {
         return fail("indirect x64 integer result");
     if (fixture_authentic_roundtrip(UINT64_C(12)) != UINT64_C(30))
         return fail("authentic integer round-trip result");
-    if (fixture_direct_x64_call(UINT64_C(10)) != UINT64_C(47))
+    if (direct(UINT64_C(10)) != UINT64_C(47))
         return fail("direct ARM64EC-to-x64 normal return result");
-    if (fixture_callback_and_resume(UINT64_C(10)) != UINT64_C(82))
+    if (callback_resume(UINT64_C(10)) != UINT64_C(82))
         return fail("x64-to-ARM64EC callback and x64 resumption result");
-    if (fixture_tail_transfer(UINT64_C(10)) != UINT64_C(23120))
+    if (tail_transfer(UINT64_C(10)) != UINT64_C(23120))
         return fail("explicit tail transfer result");
-    if (fixture_bounded_nested(UINT64_C(10)) != UINT64_C(85))
+    if (bounded_nested(UINT64_C(10)) != UINT64_C(85))
         return fail("bounded nested transition result");
     if (fabs(fixture_indirect_x64_floating(2.5) - 4.5) > 0.000001)
         return fail("indirect x64 floating result");
