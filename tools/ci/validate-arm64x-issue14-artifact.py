@@ -59,6 +59,12 @@ def digest(path):
     return result.hexdigest()
 
 
+def canonical_text_digest(path):
+    text = path.read_text(encoding="utf-8", errors="strict")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def checked_file(root, relative):
     if not isinstance(relative, str) or not relative or relative.startswith(("/", "\\")):
         fail("artifact path is not relative")
@@ -95,10 +101,10 @@ def validate_build(path, expected_git, dll_hash, source_root):
     fixture_root = source_root / "tests" / "fixtures" / "arm64x_linked"
     for name, expected_hash in value["source"].items():
         source = checked_file(fixture_root, name)
-        if digest(source) != expected_hash:
+        if canonical_text_digest(source) != expected_hash:
             fail(f"build manifest source does not match checkout: {name}")
     lock = checked_file(source_root, "docs/architecture/adr/microsoft-arm64x-fixture.provenance.json")
-    if digest(lock) != value["producerLock"]:
+    if canonical_text_digest(lock) != value["producerLock"]:
         fail("build manifest producer lock does not match checkout")
     exact(value["outputs"], ["dll", "host"], "build manifest outputs")
     for name in ("dll", "host"):

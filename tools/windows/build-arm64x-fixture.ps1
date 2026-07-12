@@ -13,6 +13,17 @@ function Invoke-Checked([string]$Program, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { Fail "$Program exited with $LASTEXITCODE" }
 }
 function Hash([string]$Path) { (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant() }
+function Hash-CanonicalText([string]$Path) {
+    $utf8 = [Text.UTF8Encoding]::new($false, $true)
+    $text = [IO.File]::ReadAllText($Path, $utf8).Replace("`r`n", "`n").Replace("`r", "`n")
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = $utf8.GetBytes($text)
+        return ([BitConverter]::ToString($algorithm.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $algorithm.Dispose()
+    }
+}
 
 $sourcePath = [IO.Path]::GetFullPath($SourceRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $buildPath = [IO.Path]::GetFullPath($BuildDir).TrimEnd([IO.Path]::DirectorySeparatorChar)
@@ -59,11 +70,11 @@ $validationHost = Join-Path $buildPath $hostRelative
 foreach ($output in @($dll, $validationHost)) { if (-not (Test-Path -LiteralPath $output -PathType Leaf)) { Fail "missing output $output" } }
 $sourceFiles = @('CMakeLists.txt', 'arm64x.cmake', 'fixture.c', 'fixture_x64.c', 'fixture_x64_roundtrip.asm', 'fixture_api.h', 'host.c', 'fixture.def')
 $sourceHashes = [ordered]@{}
-foreach ($name in $sourceFiles) { $sourceHashes[$name] = Hash (Join-Path $fixtureSource $name) }
+foreach ($name in $sourceFiles) { $sourceHashes[$name] = Hash-CanonicalText (Join-Path $fixtureSource $name) }
 $manifest = [ordered]@{
     schemaVersion = 3
     gitCommit = $gitCommit
-    producerLock = (Hash $lockPath)
+    producerLock = (Hash-CanonicalText $lockPath)
     source = $sourceHashes
     outputs = [ordered]@{
         dll = [ordered]@{ type = 'dll'; path = $dllRelative; sha256 = (Hash $dll) }

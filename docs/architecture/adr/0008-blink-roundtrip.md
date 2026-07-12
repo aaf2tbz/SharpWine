@@ -272,7 +272,9 @@ The Issue #14 producer may hand freshly built Microsoft-linked DLLs and sanitize
 native macOS ARM64 consumer only as a run-scoped GitHub Actions artifact. Upload and download
 actions are SHA-pinned; retention is one day; the bundle is confined to an allowlist under
 `runner.temp`; an inner exact-property manifest binds the Git commit, file sizes, and SHA-256
-hashes; and the consumer validates the service digest and every inner link before use. PDB, OBJ,
+hashes; text-source and producer-lock hashes use UTF-8 with canonical LF line endings so Windows
+and macOS validate the same Git content; and the consumer validates the service digest and every
+inner link before use. PDB, OBJ,
 LIB, MAP, EXE, system files, absolute/private paths, and release publication are forbidden. This is
 ephemeral CI transport, not fixture distribution or an exception allowing generated files in the
 checkout.
