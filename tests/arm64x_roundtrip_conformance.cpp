@@ -685,6 +685,10 @@ void assert_stop(gem_hybrid_runtime *runtime, gem_stop_reason reason,
                  gem_hybrid_stop_source source) {
     gem_hybrid_stop_info info{};
     assert(gem_hybrid_runtime_last_stop_info(runtime, &info));
+    if (info.reason != reason || info.source != source)
+        std::fprintf(stderr, "stop mismatch expected reason=%u source=%u got reason=%u source=%u\n",
+                     static_cast<unsigned>(reason), static_cast<unsigned>(source),
+                     static_cast<unsigned>(info.reason), static_cast<unsigned>(info.source));
     assert(info.reason == reason && info.source == source);
     if (source == GEM_HYBRID_STOP_SOURCE_ARM64EC)
         assert(info.arm64ec.reason == reason);
@@ -726,6 +730,7 @@ int main(int argc, char **argv) {
         assert(runtime);
         for (const auto &test : cases) {
             gem_thread_context oracle{};
+            std::uint64_t successful_budget = 0U;
             for (unsigned iteration = 0; iteration < 100U; ++iteration) {
                 auto context = initial_context(test.requested);
                 context.x[0] = 10U;
@@ -754,10 +759,14 @@ int main(int argc, char **argv) {
                 assert(gem_memory_read(harness.memory, entry.sp - sizeof(record_after),
                                        &record_after, sizeof(record_after)) == GEM_MEMORY_OK &&
                        record_after == entry.x[30]);
-                if (iteration == 0U)
+                if (iteration == 0U) {
                     oracle = context;
-                else
+                    successful_budget =
+                        stats.arm64ec_instructions_retired + stats.x64_instructions_retired;
+                    assert(successful_budget > 1U);
+                } else {
                     assert(std::memcmp(&context, &oracle, sizeof(context)) == 0);
+                }
             }
 
             auto exhausted = initial_context(test.requested);
@@ -787,6 +796,24 @@ int main(int argc, char **argv) {
                                                          config.max_budget,
                                                          nullptr) == GEM_STOP_HOST_RETURN);
             assert(exhausted.x[0] == test.expected);
+
+            for (std::uint64_t budget = 1U; budget < successful_budget; ++budget) {
+                auto limited = exhausted_entry;
+                gem_hybrid_roundtrip_stats limited_stats{};
+                assert(gem_hybrid_runtime_run_integer_return(runtime, &limited, &control, budget,
+                                                             &limited_stats) ==
+                       GEM_STOP_BUDGET_EXPIRED);
+                auto expected_limited = exhausted_entry;
+                expected_limited.stop_reason = GEM_STOP_BUDGET_EXPIRED;
+                assert(std::memcmp(&limited, &expected_limited, sizeof(limited)) == 0);
+                assert(limited_stats.frame_pushes == limited_stats.frame_pops &&
+                       limited_stats.final_frame_depth == 0U);
+                limited = exhausted_entry;
+                assert(gem_hybrid_runtime_run_integer_return(runtime, &limited, &control,
+                                                             config.max_budget,
+                                                             nullptr) == GEM_STOP_HOST_RETURN);
+                assert(limited.x[0] == test.expected);
+            }
         }
         gem_hybrid_runtime_destroy(runtime);
     }
@@ -809,6 +836,7 @@ int main(int argc, char **argv) {
         assert(runtime);
         gem_thread_context oracle{};
         std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> oracle_stack{};
+        std::uint64_t successful_budget = 0U;
         for (unsigned iteration = 0; iteration < 100U; ++iteration) {
             auto context = initial_context(control.requested_start_va);
             context.x[0] = 10U;
@@ -843,6 +871,9 @@ int main(int argc, char **argv) {
             if (iteration == 0U) {
                 oracle = context;
                 oracle_stack = current_stack;
+                successful_budget =
+                    stats.arm64ec_instructions_retired + stats.x64_instructions_retired;
+                assert(successful_budget > 1U);
             } else {
                 assert(std::memcmp(&context, &oracle, sizeof(context)) == 0);
                 assert(current_stack == oracle_stack);
@@ -850,21 +881,24 @@ int main(int argc, char **argv) {
         }
 
         bool exhausted_at_depth_two = false;
-        for (std::uint64_t budget = 1U; budget < 256U && !exhausted_at_depth_two; ++budget) {
+        for (std::uint64_t budget = 1U; budget < successful_budget; ++budget) {
             auto context = initial_context(control.requested_start_va);
             context.x[0] = 10U;
             const auto entry = context;
             gem_hybrid_roundtrip_stats stats{};
-            const auto reason =
-                gem_hybrid_runtime_run_integer_nested(runtime, &context, &control, budget, &stats);
-            if (reason == GEM_STOP_BUDGET_EXPIRED && stats.maximum_frame_depth == 2U) {
-                auto expected = entry;
-                expected.stop_reason = GEM_STOP_BUDGET_EXPIRED;
-                assert(std::memcmp(&context, &expected, sizeof(context)) == 0);
-                assert(stats.frame_pushes == 2U && stats.frame_pops == 2U &&
-                       stats.final_frame_depth == 0U);
-                exhausted_at_depth_two = true;
-            }
+            assert(gem_hybrid_runtime_run_integer_nested(runtime, &context, &control, budget,
+                                                         &stats) == GEM_STOP_BUDGET_EXPIRED);
+            auto expected = entry;
+            expected.stop_reason = GEM_STOP_BUDGET_EXPIRED;
+            assert(std::memcmp(&context, &expected, sizeof(context)) == 0);
+            assert(stats.frame_pushes == stats.frame_pops && stats.frame_pushes <= 2U &&
+                   stats.final_frame_depth == 0U);
+            exhausted_at_depth_two |= stats.maximum_frame_depth == 2U;
+            context = entry;
+            assert(gem_hybrid_runtime_run_integer_nested(runtime, &context, &control,
+                                                         config.max_budget,
+                                                         nullptr) == GEM_STOP_HOST_RETURN);
+            assert(context.x[0] == 85U);
         }
         assert(exhausted_at_depth_two);
         auto reused = initial_context(control.requested_start_va);
@@ -963,6 +997,62 @@ int main(int argc, char **argv) {
         assert(gem_hybrid_runtime_run_integer_nested(runtime, &overflow, &control,
                                                      config.max_budget,
                                                      nullptr) == GEM_STOP_HOST_RETURN);
+
+        const std::array<std::uint8_t, 4> load_and_return{{0x48, 0x8B, 0x03, 0xC3}};
+        assert(gem_memory_write(harness.memory, control.inner_x64_target_va, load_and_return.data(),
+                                load_and_return.size()) == GEM_MEMORY_OK);
+        std::uint32_t data_protection = 0U;
+        assert(gem_memory_protect(harness.memory, kStackBase, GEM_GUEST_PAGE_SIZE,
+                                  GEM_PAGE_READWRITE | GEM_PAGE_GUARD,
+                                  &data_protection) == GEM_MEMORY_OK);
+        auto guarded = initial_context(control.requested_start_va);
+        guarded.x[0] = 10U;
+        guarded.x[27] = kStackBase; /* RBX in the canonical x64 mapping. */
+        const auto guarded_entry = guarded;
+        gem_hybrid_roundtrip_stats guarded_stats{};
+        assert(gem_hybrid_runtime_run_integer_nested(runtime, &guarded, &control, config.max_budget,
+                                                     &guarded_stats) == GEM_STOP_MEMORY_FAULT);
+        auto guarded_expected = guarded_entry;
+        guarded_expected.stop_reason = GEM_STOP_MEMORY_FAULT;
+        assert(std::memcmp(&guarded, &guarded_expected, sizeof(guarded)) == 0);
+        assert(guarded_stats.frame_pushes == 2U && guarded_stats.frame_pops == 2U &&
+               guarded_stats.maximum_frame_depth == 2U && guarded_stats.final_frame_depth == 0U);
+        gem_hybrid_stop_info fault_info{};
+        assert(gem_hybrid_runtime_last_stop_info(runtime, &fault_info) &&
+               fault_info.source == GEM_HYBRID_STOP_SOURCE_X64 &&
+               fault_info.reason == GEM_STOP_MEMORY_FAULT &&
+               fault_info.x64.fault_address == kStackBase &&
+               fault_info.x64.memory_error == GEM_MEMORY_GUARD_PAGE);
+        std::uint32_t consumed_protection = 0U;
+        assert(gem_memory_protect(harness.memory, kStackBase, GEM_GUEST_PAGE_SIZE,
+                                  GEM_PAGE_READWRITE, &consumed_protection) == GEM_MEMORY_OK &&
+               consumed_protection == GEM_PAGE_READWRITE);
+        guarded = guarded_entry;
+        assert(gem_hybrid_runtime_run_integer_nested(runtime, &guarded, &control, config.max_budget,
+                                                     nullptr) == GEM_STOP_HOST_RETURN);
+
+        assert(gem_memory_protect(harness.memory, kStackBase, GEM_GUEST_PAGE_SIZE,
+                                  GEM_PAGE_NOACCESS, nullptr) == GEM_MEMORY_OK);
+        auto denied = guarded_entry;
+        gem_hybrid_roundtrip_stats denied_stats{};
+        assert(gem_hybrid_runtime_run_integer_nested(runtime, &denied, &control, config.max_budget,
+                                                     &denied_stats) == GEM_STOP_MEMORY_FAULT);
+        auto denied_expected = guarded_entry;
+        denied_expected.stop_reason = GEM_STOP_MEMORY_FAULT;
+        assert(std::memcmp(&denied, &denied_expected, sizeof(denied)) == 0);
+        assert(denied_stats.frame_pushes == 2U && denied_stats.frame_pops == 2U &&
+               denied_stats.maximum_frame_depth == 2U && denied_stats.final_frame_depth == 0U);
+        assert(gem_hybrid_runtime_last_stop_info(runtime, &fault_info) &&
+               fault_info.source == GEM_HYBRID_STOP_SOURCE_X64 &&
+               fault_info.x64.fault_address == kStackBase &&
+               fault_info.x64.memory_error == GEM_MEMORY_ACCESS_DENIED);
+        assert(gem_memory_protect(harness.memory, kStackBase, GEM_GUEST_PAGE_SIZE, data_protection,
+                                  nullptr) == GEM_MEMORY_OK);
+        denied = guarded_entry;
+        assert(gem_hybrid_runtime_run_integer_nested(runtime, &denied, &control, config.max_budget,
+                                                     nullptr) == GEM_STOP_HOST_RETURN);
+        assert(gem_memory_write(harness.memory, control.inner_x64_target_va, authentic_inner.data(),
+                                authentic_inner.size()) == GEM_MEMORY_OK);
         assert(gem_memory_protect(harness.memory, inner_page, GEM_GUEST_PAGE_SIZE, old_protection,
                                   nullptr) == GEM_MEMORY_OK);
         gem_hybrid_runtime_destroy(runtime);
@@ -992,6 +1082,7 @@ int main(int argc, char **argv) {
         assert(runtime);
         gem_thread_context oracle{};
         std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> oracle_stack{};
+        std::uint64_t successful_budget = 0U;
         for (unsigned iteration = 0; iteration < 100U; ++iteration) {
             auto context = initial_context(harness.caller);
             context.isa = GEM_ISA_X64;
@@ -1035,6 +1126,9 @@ int main(int argc, char **argv) {
             if (iteration == 0U) {
                 oracle = context;
                 oracle_stack = stack;
+                successful_budget =
+                    stats.arm64ec_instructions_retired + stats.x64_instructions_retired;
+                assert(successful_budget > 1U);
             } else {
                 assert(std::memcmp(&context, &oracle, sizeof(context)) == 0);
                 assert(stack == oracle_stack);
@@ -1065,6 +1159,22 @@ int main(int argc, char **argv) {
         assert(gem_hybrid_runtime_run_integer_callback_resume(
                    runtime, &failed, callback.resolved_va, resume, config.max_budget, nullptr) ==
                GEM_STOP_ARCH_TRANSITION);
+        for (std::uint64_t budget = 1U; budget < successful_budget; ++budget) {
+            auto limited = failed_initial;
+            gem_hybrid_roundtrip_stats limited_stats{};
+            assert(gem_hybrid_runtime_run_integer_callback_resume(
+                       runtime, &limited, callback.resolved_va, resume, budget, &limited_stats) ==
+                   GEM_STOP_BUDGET_EXPIRED);
+            auto expected_limited = failed_initial;
+            expected_limited.stop_reason = GEM_STOP_BUDGET_EXPIRED;
+            assert(std::memcmp(&limited, &expected_limited, sizeof(limited)) == 0);
+            assert(limited_stats.frame_pushes == limited_stats.frame_pops &&
+                   limited_stats.frame_pushes <= 1U && limited_stats.final_frame_depth == 0U);
+            limited = failed_initial;
+            assert(gem_hybrid_runtime_run_integer_callback_resume(
+                       runtime, &limited, callback.resolved_va, resume, config.max_budget,
+                       nullptr) == GEM_STOP_ARCH_TRANSITION);
+        }
 
         /* Supplemental linked-callback mutations exercise the same runtime
          * frame validator at the dispatch-return boundary. */
@@ -1091,7 +1201,7 @@ int main(int argc, char **argv) {
                                sizeof(malformed_context)) == 0);
             assert(malformed_stats.frame_pushes == 1U && malformed_stats.frame_pops == 1U &&
                    malformed_stats.final_frame_depth == 0U);
-            assert_stop(runtime, GEM_STOP_INVARIANT_VIOLATION, GEM_HYBRID_STOP_SOURCE_BROKER);
+            assert_stop(runtime, GEM_STOP_INVARIANT_VIOLATION, GEM_HYBRID_STOP_SOURCE_ARM64EC);
             assert(gem_memory_write(harness.memory, callback.resolved_va,
                                     callback_first_instruction.data(),
                                     callback_first_instruction.size()) == GEM_MEMORY_OK);
@@ -1104,6 +1214,59 @@ int main(int argc, char **argv) {
         reject_malformed_callback({{0x9F, 0x80, 0x1F, 0xF8}}); /* stur xzr, [x4, #-8] */
         assert(gem_memory_protect(harness.memory, callback_page, GEM_GUEST_PAGE_SIZE,
                                   callback_old_protection, nullptr) == GEM_MEMORY_OK);
+
+        const auto thunk_page = callback_thunk.resolved_va & ~UINT64_C(0xFFF);
+        std::uint32_t thunk_protection = 0U;
+        assert(gem_memory_protect(harness.memory, thunk_page, GEM_GUEST_PAGE_SIZE,
+                                  GEM_PAGE_EXECUTE_READ | GEM_PAGE_GUARD,
+                                  &thunk_protection) == GEM_MEMORY_OK);
+        auto guarded_thunk = failed_initial;
+        gem_hybrid_roundtrip_stats guarded_thunk_stats{};
+        assert(gem_hybrid_runtime_run_integer_callback_resume(
+                   runtime, &guarded_thunk, callback.resolved_va, resume, config.max_budget,
+                   &guarded_thunk_stats) == GEM_STOP_MEMORY_FAULT);
+        auto guarded_thunk_expected = failed_initial;
+        guarded_thunk_expected.stop_reason = GEM_STOP_MEMORY_FAULT;
+        assert(std::memcmp(&guarded_thunk, &guarded_thunk_expected, sizeof(guarded_thunk)) == 0);
+        assert(guarded_thunk_stats.frame_pushes == 1U && guarded_thunk_stats.frame_pops == 1U &&
+               guarded_thunk_stats.final_frame_depth == 0U);
+        gem_hybrid_stop_info arm_fault{};
+        assert(gem_hybrid_runtime_last_stop_info(runtime, &arm_fault) &&
+               arm_fault.source == GEM_HYBRID_STOP_SOURCE_ARM64EC &&
+               arm_fault.reason == GEM_STOP_MEMORY_FAULT &&
+               arm_fault.arm64ec.fault_address == callback_thunk.resolved_va &&
+               arm_fault.arm64ec.memory_error == GEM_MEMORY_GUARD_PAGE);
+        std::uint32_t consumed_thunk_protection = 0U;
+        assert(gem_memory_protect(harness.memory, thunk_page, GEM_GUEST_PAGE_SIZE, thunk_protection,
+                                  &consumed_thunk_protection) == GEM_MEMORY_OK &&
+               consumed_thunk_protection == thunk_protection);
+        guarded_thunk = failed_initial;
+        assert(gem_hybrid_runtime_run_integer_callback_resume(
+                   runtime, &guarded_thunk, callback.resolved_va, resume, config.max_budget,
+                   nullptr) == GEM_STOP_ARCH_TRANSITION);
+
+        assert(gem_memory_protect(harness.memory, thunk_page, GEM_GUEST_PAGE_SIZE,
+                                  GEM_PAGE_NOACCESS, nullptr) == GEM_MEMORY_OK);
+        auto denied_thunk = failed_initial;
+        gem_hybrid_roundtrip_stats denied_thunk_stats{};
+        assert(gem_hybrid_runtime_run_integer_callback_resume(
+                   runtime, &denied_thunk, callback.resolved_va, resume, config.max_budget,
+                   &denied_thunk_stats) == GEM_STOP_MEMORY_FAULT);
+        auto denied_thunk_expected = failed_initial;
+        denied_thunk_expected.stop_reason = GEM_STOP_MEMORY_FAULT;
+        assert(std::memcmp(&denied_thunk, &denied_thunk_expected, sizeof(denied_thunk)) == 0);
+        assert(denied_thunk_stats.frame_pushes == 1U && denied_thunk_stats.frame_pops == 1U &&
+               denied_thunk_stats.final_frame_depth == 0U);
+        assert(gem_hybrid_runtime_last_stop_info(runtime, &arm_fault) &&
+               arm_fault.source == GEM_HYBRID_STOP_SOURCE_ARM64EC &&
+               arm_fault.arm64ec.fault_address == callback_thunk.resolved_va &&
+               arm_fault.arm64ec.memory_error == GEM_MEMORY_ACCESS_DENIED);
+        assert(gem_memory_protect(harness.memory, thunk_page, GEM_GUEST_PAGE_SIZE, thunk_protection,
+                                  nullptr) == GEM_MEMORY_OK);
+        denied_thunk = failed_initial;
+        assert(gem_hybrid_runtime_run_integer_callback_resume(
+                   runtime, &denied_thunk, callback.resolved_va, resume, config.max_budget,
+                   nullptr) == GEM_STOP_ARCH_TRANSITION);
         gem_hybrid_runtime_destroy(runtime);
     }
 
@@ -1156,6 +1319,44 @@ int main(int argc, char **argv) {
         } else {
             assert(std::memcmp(&context, &expected_context, sizeof(context)) == 0);
             assert(current_stack == expected_stack);
+        }
+        gem_hybrid_runtime_destroy(runtime);
+    }
+
+    {
+        gem_hybrid_runtime *runtime = gem_hybrid_runtime_create(harness.memory, metadata, &config);
+        assert(runtime);
+        auto probe = initial_context(harness.caller);
+        gem_hybrid_roundtrip_stats probe_stats{};
+        assert(gem_hybrid_runtime_run_integer_roundtrip(runtime, &probe, harness.caller,
+                                                        harness.finish, config.max_budget,
+                                                        &probe_stats) == GEM_STOP_HOST_RETURN);
+        const auto successful_budget =
+            probe_stats.arm64ec_instructions_retired + probe_stats.x64_instructions_retired;
+        assert(successful_budget > 1U);
+        for (std::uint64_t budget = 1U; budget < successful_budget; ++budget) {
+            auto context = initial_context(harness.caller);
+            const auto entry = context;
+            std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> stack_before{};
+            std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> stack_after{};
+            assert(gem_memory_read(harness.memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
+                                   stack_before.data(), stack_before.size()) == GEM_MEMORY_OK);
+            gem_hybrid_roundtrip_stats stats{};
+            assert(gem_hybrid_runtime_run_integer_roundtrip(runtime, &context, harness.caller,
+                                                            harness.finish, budget,
+                                                            &stats) == GEM_STOP_BUDGET_EXPIRED);
+            auto expected = entry;
+            expected.stop_reason = GEM_STOP_BUDGET_EXPIRED;
+            assert(std::memcmp(&context, &expected, sizeof(context)) == 0);
+            assert(stats.frame_pushes == stats.frame_pops && stats.frame_pushes <= 1U &&
+                   stats.final_frame_depth == 0U);
+            assert(gem_memory_read(harness.memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
+                                   stack_after.data(), stack_after.size()) == GEM_MEMORY_OK &&
+                   stack_after == stack_before);
+            context = entry;
+            assert(gem_hybrid_runtime_run_integer_roundtrip(runtime, &context, harness.caller,
+                                                            harness.finish, config.max_budget,
+                                                            nullptr) == GEM_STOP_HOST_RETURN);
         }
         gem_hybrid_runtime_destroy(runtime);
     }

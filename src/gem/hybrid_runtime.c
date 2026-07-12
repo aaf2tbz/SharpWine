@@ -374,8 +374,9 @@ enum gem_stop_reason gem_hybrid_runtime_run_integer_roundtrip(
         goto Invariant;
     if (reason == GEM_STOP_BUDGET_EXPIRED)
         goto Budget;
-    if (reason != GEM_STOP_ARCH_TRANSITION || runtime->stats.checker_boundaries != 1U ||
-        runtime->stats.dispatch_call_boundaries != 1U)
+    if (reason != GEM_STOP_ARCH_TRANSITION)
+        goto Propagate;
+    if (runtime->stats.checker_boundaries != 1U || runtime->stats.dispatch_call_boundaries != 1U)
         goto Invariant;
     if (budget == 0U)
         goto Budget;
@@ -459,8 +460,10 @@ enum gem_stop_reason gem_hybrid_runtime_run_integer_roundtrip(
         goto Invariant;
     if (reason == GEM_STOP_BUDGET_EXPIRED)
         goto Budget;
-    if (reason != GEM_STOP_ARCH_TRANSITION || runtime->stats.dispatch_ret_boundaries != 1U ||
-        !runtime->frame.active || context->transition_cookie != runtime->frame.cookie)
+    if (reason != GEM_STOP_ARCH_TRANSITION)
+        goto Propagate;
+    if (runtime->stats.dispatch_ret_boundaries != 1U || !runtime->frame.active ||
+        context->transition_cookie != runtime->frame.cookie)
         goto Invariant;
     if (budget == 0U)
         goto Budget;
@@ -506,6 +509,8 @@ Invariant:
     record_broker_stop(runtime, reason);
     context->stop_reason = reason;
 FinishFailure:
+    if (runtime->frame.active)
+        ++runtime->stats.frame_pops;
     if (return_record_written && replace_stack_record(runtime->memory, return_record_address,
                                                       overwritten_stack, NULL) != GEM_MEMORY_OK) {
         reason = GEM_STOP_INVARIANT_VIOLATION;
@@ -637,7 +642,9 @@ enum gem_stop_reason gem_hybrid_runtime_run_integer_callback_resume(
         goto Invariant;
     if (reason == GEM_STOP_BUDGET_EXPIRED)
         goto Failure;
-    if (reason != GEM_STOP_ARCH_TRANSITION || runtime->stats.dispatch_ret_boundaries != 1U)
+    if (reason != GEM_STOP_ARCH_TRANSITION)
+        goto Failure;
+    if (runtime->stats.dispatch_ret_boundaries != 1U)
         goto Invariant;
 
     context->pc = expected_resume_va;
@@ -723,9 +730,10 @@ gem_hybrid_runtime_run_integer_return(struct gem_hybrid_runtime *runtime,
         goto Invariant;
     if (reason == GEM_STOP_BUDGET_EXPIRED)
         goto Failure;
-    if (reason != GEM_STOP_ARCH_TRANSITION || runtime->stats.checker_boundaries != 1U ||
-        runtime->stats.dispatch_call_boundaries != 0U || context->x[18] != entry.x[18] ||
-        context->sp != entry.sp || context->x[30] != entry.x[30])
+    if (reason != GEM_STOP_ARCH_TRANSITION)
+        goto Failure;
+    if (runtime->stats.checker_boundaries != 1U || runtime->stats.dispatch_call_boundaries != 0U ||
+        context->x[18] != entry.x[18] || context->sp != entry.sp || context->x[30] != entry.x[30])
         goto Invariant;
     if (remaining == 0U)
         goto Budget;
@@ -759,7 +767,11 @@ gem_hybrid_runtime_run_integer_return(struct gem_hybrid_runtime *runtime,
             target.kind != GEM_ARM64EC_TARGET_X64_BOUNDARY || target.resolved_va != context->pc)
             goto Invariant;
         reason = gem_x64_runtime_run(runtime->x64, context, 1U);
-        if (!capture_x64_stop(runtime) || runtime->last_stop.x64.instructions_retired != 1U)
+        if (!capture_x64_stop(runtime) || runtime->last_stop.reason != reason)
+            goto Invariant;
+        if (reason != GEM_STOP_BUDGET_EXPIRED && reason != GEM_STOP_HOST_RETURN)
+            goto Failure;
+        if (runtime->last_stop.x64.instructions_retired != 1U)
             goto Invariant;
         ++runtime->stats.x64_instructions_retired;
         --remaining;
@@ -898,9 +910,10 @@ gem_hybrid_runtime_run_integer_nested(struct gem_hybrid_runtime *runtime,
         goto Invariant;
     if (reason == GEM_STOP_BUDGET_EXPIRED)
         goto Failure;
-    if (reason != GEM_STOP_ARCH_TRANSITION || runtime->stats.checker_boundaries != 1U ||
-        context->pc != outer.resolved_va || context->sp != entry.sp ||
-        context->x[30] != entry.x[30] || context->x[18] != entry.x[18])
+    if (reason != GEM_STOP_ARCH_TRANSITION)
+        goto Failure;
+    if (runtime->stats.checker_boundaries != 1U || context->pc != outer.resolved_va ||
+        context->sp != entry.sp || context->x[30] != entry.x[30] || context->x[18] != entry.x[18])
         goto Invariant;
     if (remaining == 0U)
         goto Budget;
@@ -985,9 +998,11 @@ gem_hybrid_runtime_run_integer_nested(struct gem_hybrid_runtime *runtime,
         goto Invariant;
     if (reason == GEM_STOP_BUDGET_EXPIRED)
         goto Failure;
-    if (reason != GEM_STOP_ARCH_TRANSITION || context->pc != inner.resolved_va ||
-        runtime->stats.checker_boundaries != 2U || runtime->stats.dispatch_ret_boundaries != 0U ||
-        context->x[18] != context->teb || context->sp < sizeof(uint64_t) ||
+    if (reason != GEM_STOP_ARCH_TRANSITION)
+        goto Failure;
+    if (context->pc != inner.resolved_va || runtime->stats.checker_boundaries != 2U ||
+        runtime->stats.dispatch_ret_boundaries != 0U || context->x[18] != context->teb ||
+        context->sp < sizeof(uint64_t) ||
         !stack_record_supported(runtime->memory, context->sp - sizeof(uint64_t)))
         goto Invariant;
     if (remaining == 0U)
@@ -1065,7 +1080,9 @@ gem_hybrid_runtime_run_integer_nested(struct gem_hybrid_runtime *runtime,
         goto Invariant;
     if (reason == GEM_STOP_BUDGET_EXPIRED)
         goto Failure;
-    if (reason != GEM_STOP_ARCH_TRANSITION || runtime->stats.dispatch_ret_boundaries != 1U ||
+    if (reason != GEM_STOP_ARCH_TRANSITION)
+        goto Failure;
+    if (runtime->stats.dispatch_ret_boundaries != 1U ||
         context->transition_cookie != runtime->frame.cookie)
         goto Invariant;
 
