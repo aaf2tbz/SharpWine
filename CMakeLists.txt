@@ -13,6 +13,8 @@ option(MSWR_ZERO_ROSETTA_AUDIT "Build/run native ARM64 macOS zero-Rosetta audit 
 option(MSWR_FETCH_DYNARMIC "Fetch the pinned Dynarmic dependency when engine support is enabled" ON)
 option(MSWR_ENABLE_X64_ENGINE "Build pinned Blink's interpreter-only GEM adapter" OFF)
 option(MSWR_X64_ENGINE_CONFORMANCE "Build x64 engine conformance tests" OFF)
+option(MSWR_BUILD_WINE_BRIDGE "Build the versioned native Wine/GEM bridge dylib" OFF)
+option(MSWR_WINE_BRIDGE_CONFORMANCE "Build Wine/GEM bridge conformance tests" OFF)
 option(MSWR_BUILD_ARM64X_ISSUE11_PROBE "Build the native Windows ARM64 issue #11 probe" OFF)
 set(MSWR_ARM64X_ROUNDTRIP_ARTIFACT_DIR "" CACHE PATH
     "Validated run-scoped Issue #14 artifact directory (opt-in)")
@@ -188,6 +190,39 @@ elseif(MSWR_X64_ENGINE_CONFORMANCE)
 endif()
 mswr_enable_warnings(metalsharp_gem)
 
+if(MSWR_BUILD_WINE_BRIDGE)
+    if(NOT MSWR_ENABLE_ARM64EC_ENGINE)
+        message(FATAL_ERROR "MSWR_BUILD_WINE_BRIDGE requires MSWR_ENABLE_ARM64EC_ENGINE=ON")
+    endif()
+    set_property(TARGET metalsharp_gem PROPERTY POSITION_INDEPENDENT_CODE ON)
+    add_library(metalsharp_gem_wine SHARED src/gem/wine_bridge.c)
+    target_include_directories(metalsharp_gem_wine PUBLIC include)
+    target_compile_features(metalsharp_gem_wine PUBLIC c_std_11)
+    target_compile_definitions(metalsharp_gem_wine PRIVATE GEM_WINE_BUILD=1)
+    target_link_libraries(metalsharp_gem_wine PRIVATE metalsharp_gem Threads::Threads)
+    set_target_properties(metalsharp_gem_wine PROPERTIES
+        OUTPUT_NAME "metalsharp-gem-wine"
+        VERSION "0.1.0"
+        SOVERSION "0"
+        C_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES)
+    if(APPLE)
+        target_link_options(metalsharp_gem_wine PRIVATE
+            "LINKER:-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/cmake/metalsharp-gem-wine.exports")
+    endif()
+    mswr_enable_warnings(metalsharp_gem_wine)
+    install(TARGETS metalsharp_gem_wine
+        LIBRARY DESTINATION lib
+        COMPONENT metalsharp-gem-wine)
+    install(FILES
+        include/metalsharp/gem/context.h
+        include/metalsharp/gem/wine_bridge.h
+        DESTINATION include/metalsharp/gem
+        COMPONENT metalsharp-gem-wine)
+elseif(MSWR_WINE_BRIDGE_CONFORMANCE)
+    message(FATAL_ERROR "MSWR_WINE_BRIDGE_CONFORMANCE requires MSWR_BUILD_WINE_BRIDGE=ON")
+endif()
+
 if(MSWR_BUILD_ARM64X_ISSUE11_PROBE)
     if(NOT WIN32 OR NOT MSWR_ENABLE_ARM64EC_ENGINE)
         message(FATAL_ERROR "MSWR_BUILD_ARM64X_ISSUE11_PROBE requires Windows and the ARM64EC engine")
@@ -248,6 +283,14 @@ if(BUILD_TESTING)
         mswr_enable_warnings(arm64ec_engine_conformance)
         add_test(NAME gem.arm64ec_engine_conformance COMMAND arm64ec_engine_conformance)
         set_tests_properties(gem.arm64ec_engine_conformance PROPERTIES LABELS "gem.engine.conformance")
+    endif()
+
+    if(MSWR_WINE_BRIDGE_CONFORMANCE)
+        add_executable(wine_bridge_conformance tests/wine_bridge_conformance.c)
+        target_link_libraries(wine_bridge_conformance PRIVATE metalsharp_gem_wine)
+        mswr_enable_warnings(wine_bridge_conformance)
+        add_test(NAME gem.wine_bridge_conformance COMMAND wine_bridge_conformance)
+        set_tests_properties(gem.wine_bridge_conformance PROPERTIES LABELS "zero-rosetta;wine-bridge")
     endif()
 
     if(MSWR_X64_ENGINE_CONFORMANCE)

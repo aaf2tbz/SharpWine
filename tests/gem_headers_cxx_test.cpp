@@ -8,6 +8,7 @@
 #include "metalsharp/gem/memory.h"
 #include "metalsharp/gem/pe_arm64x.h"
 #include "metalsharp/gem/pe_arm64x_loader.h"
+#include "metalsharp/gem/wine_bridge.h"
 #include "metalsharp/gem/x64_engine.h"
 
 #include <type_traits>
@@ -15,6 +16,7 @@
 static_assert(std::is_standard_layout<gem_thread_context>::value,
               "context must remain C++ ABI-safe");
 static_assert(GEM_GUEST_PAGE_SIZE == 4096U, "guest page contract changed");
+static_assert(GEM_WINE_BRIDGE_ABI_VERSION == 1U, "Wine bridge ABI contract changed");
 
 int main() {
     gem_x64_context state{};

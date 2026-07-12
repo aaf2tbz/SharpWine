@@ -16,11 +16,24 @@ int main(void) {
     uint8_t output[2] = {0U, 0U};
     const size_t host_page_size = (size_t)sysconf(_SC_PAGESIZE);
     void *identity = NULL;
+    uint8_t *kuser = NULL;
     assert(memory != NULL);
     assert(gem_memory_read(memory, 0U, output, SIZE_MAX) == GEM_MEMORY_OVERFLOW);
     assert(gem_memory_write(memory, GEM_KUSER_CANONICAL_ADDRESS, input, 1U) == GEM_MEMORY_OK);
     assert(gem_memory_read(memory, GEM_KUSER_SHARED_DATA_ADDRESS, output, 1U) == GEM_MEMORY_OK &&
            output[0] == input[0]);
+    kuser = aligned_alloc(GEM_GUEST_PAGE_SIZE, GEM_GUEST_PAGE_SIZE);
+    assert(kuser != NULL);
+    memset(kuser, 0, GEM_GUEST_PAGE_SIZE);
+    assert(gem_memory_bind_kuser(memory, kuser + 1U) == GEM_MEMORY_INVALID_ARGUMENT);
+    assert(gem_memory_bind_kuser(memory, kuser) == GEM_MEMORY_OK);
+    assert(kuser[0] == input[0]);
+    kuser[0] = 3U;
+    assert(gem_memory_read(memory, GEM_KUSER_SHARED_DATA_ADDRESS, output, 1U) == GEM_MEMORY_OK &&
+           output[0] == 3U);
+    output[0] = 4U;
+    assert(gem_memory_write(memory, GEM_KUSER_CANONICAL_ADDRESS, output, 1U) == GEM_MEMORY_OK &&
+           kuser[0] == 4U);
     assert(gem_memory_reserve(memory, &base, GEM_GUEST_PAGE_SIZE * 2U) == GEM_MEMORY_OK);
     assert(gem_memory_commit(memory, base, GEM_GUEST_PAGE_SIZE * 2U, GEM_PAGE_READWRITE) ==
            GEM_MEMORY_OK);
@@ -76,5 +89,6 @@ int main(void) {
     assert(gem_memory_release(memory, base, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_INVALID_ARGUMENT);
     assert(gem_memory_release(memory, base, GEM_GUEST_PAGE_SIZE * 2U) == GEM_MEMORY_OK);
     gem_memory_destroy(memory);
+    free(kuser);
     return 0;
 }

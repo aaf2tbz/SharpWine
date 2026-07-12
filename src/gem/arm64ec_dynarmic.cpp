@@ -552,7 +552,10 @@ extern "C" enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runt
 
     while (retired < budget) {
         std::uint64_t pc_before = jit.GetPC();
-        gem_arm64ec_target_kind target_kind = GEM_ARM64EC_TARGET_ARM64EC;
+        gem_arm64ec_target_kind target_kind =
+            runtime->config.execution_profile == GEM_ARM64EC_PROFILE_NATIVE_ARM64
+                ? GEM_ARM64EC_TARGET_ARM64
+                : GEM_ARM64EC_TARGET_ARM64EC;
         bool broker_resumed = false;
         if (runtime->boundary_broker != nullptr) {
             gem_thread_context broker_context = *context;

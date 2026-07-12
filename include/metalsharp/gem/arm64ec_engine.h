@@ -46,11 +46,23 @@ enum gem_arm64ec_memory_access {
     GEM_ARM64EC_ACCESS_WRITE = 3,
 };
 
+enum gem_arm64ec_execution_profile {
+    /* Checked ARM64EC rules, including the forbidden architectural-register
+     * operand decoder, remain the default for zero-initialized configs. */
+    GEM_ARM64EC_PROFILE_STRICT = 0,
+    /* Native Windows ARM64 code still runs under GEM, keeps x18 equal to the
+     * canonical TEB after every instruction, and never executes on the host.
+     * It is not valid for an attached ARM64X metadata map. */
+    GEM_ARM64EC_PROFILE_NATIVE_ARM64 = 1,
+};
+
 struct gem_arm64ec_runtime_config {
     uint64_t host_return_sentinel;
     uint64_t arch_transition_sentinel;
     uint64_t max_budget;
     uint64_t max_transitions;
+    enum gem_arm64ec_execution_profile execution_profile;
+    uint32_t reserved;
 };
 
 struct gem_arm64ec_stop_info {
@@ -65,10 +77,18 @@ struct gem_arm64ec_stop_info {
 #if defined(__cplusplus)
 static_assert(sizeof(enum gem_arm64ec_memory_access) == sizeof(int),
               "gem_arm64ec_memory_access ABI changed");
+static_assert(sizeof(enum gem_arm64ec_execution_profile) == sizeof(int),
+              "gem_arm64ec_execution_profile ABI changed");
+static_assert(sizeof(struct gem_arm64ec_runtime_config) == 40U,
+              "gem_arm64ec_runtime_config ABI changed");
 static_assert(sizeof(struct gem_arm64ec_stop_info) == 40U, "gem_arm64ec_stop_info ABI changed");
 #else
 _Static_assert(sizeof(enum gem_arm64ec_memory_access) == sizeof(int),
                "gem_arm64ec_memory_access ABI changed");
+_Static_assert(sizeof(enum gem_arm64ec_execution_profile) == sizeof(int),
+               "gem_arm64ec_execution_profile ABI changed");
+_Static_assert(sizeof(struct gem_arm64ec_runtime_config) == 40U,
+               "gem_arm64ec_runtime_config ABI changed");
 _Static_assert(sizeof(struct gem_arm64ec_stop_info) == 40U, "gem_arm64ec_stop_info ABI changed");
 #endif
 

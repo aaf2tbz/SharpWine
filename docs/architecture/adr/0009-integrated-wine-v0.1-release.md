@@ -19,7 +19,7 @@ The release gate requires all of the following:
 
 1. Wine is built from the revision in `components.lock.json`; every modification is an ordered patch with source, license, hash, and purpose recorded.
 2. Configuration preserves `--enable-archs=i386,x86_64,aarch64,arm64ec`.
-3. GEM remains the sole owner of canonical CPU state, guest memory, faults, x18/TEB, budgets, and transition frames. Wine and engine adapters may hold only synchronized transient views.
+3. GEM remains the sole owner of canonical CPU state, guest memory, faults, x18/TEB, budgets, and transition frames. Wine and engine adapters may hold only synchronized transient views. Wine's native ARM64 Unix-side runtime links directly to the versioned `libmetalsharp-gem-wine.0.dylib` ABI described in [`wine-gem-bridge.md`](../wine-gem-bridge.md); delayed `dlopen`, static absorption into Wine, and adjacent-but-unused bridge packaging do not qualify.
 4. `wineboot --init`, ARM64 `cmd.exe /c exit`, and accepted ARM64EC/x64 transition probes run with fresh prefixes under bounded process-group and log limits.
 5. Every packaged Mach-O and every observed process is native ARM64. Rosetta, translated dependencies, native guest-PC invocation, process-global signal stepping, and guessed `ucontext_t` mutation are prohibited.
 6. Packaging is deterministic and allowlisted. The primary asset is `metalsharp-wine-v0.1.0-macos-arm64.tar.zst`; checksums, SPDX SBOM, provenance, known limitations, and an evidence index are separate release assets and are also represented inside the archive where appropriate.

@@ -1,0 +1,12 @@
+_gem_wine_bridge_abi_version
+_gem_wine_status_name
+_gem_wine_process_create
+_gem_wine_process_destroy
+_gem_wine_process_map_identity
+_gem_wine_process_unmap
+_gem_wine_process_protect
+_gem_wine_process_bind_kuser
+_gem_wine_process_invalidate_code
+_gem_wine_thread_create
+_gem_wine_thread_destroy
+_gem_wine_thread_run

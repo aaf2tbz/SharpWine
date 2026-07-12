@@ -19,6 +19,8 @@ metalsharp-wine-v0.1.0-macos-arm64.tar.zst
 
 The exact install inventory will be frozen only after the clean Wine integration build exists. Until then, this document specifies constraints rather than an allowlist that guesses Wine output.
 
+The runtime `lib/` inventory must include `libmetalsharp-gem-wine.0.1.0.dylib` and relative `.0`/unversioned symlinks. Wine's selected native ARM64 Unix-side module must carry a direct Mach-O load command for `@rpath/libmetalsharp-gem-wine.0.dylib`; a delayed load or unused adjacent dylib fails validation. Bridge staging uses the `metalsharp-gem-wine` CMake install component so fetched Dynarmic headers, static archives, and CMake metadata cannot leak into the runtime package.
+
 ## Required bindings
 
 `release-manifest.json` is canonical JSON and binds:
@@ -28,6 +30,7 @@ The exact install inventory will be frozen only after the clean Wine integration
 - Wine, Dynarmic, and Blink repositories, revisions, archive hashes, and licenses;
 - ordered Wine patch names and SHA-256 hashes;
 - GEM/Blink embedding patch hashes;
+- Wine/GEM bridge ABI version, dylib install name, current/compatibility versions, exported-symbol allowlist, and direct Wine loader binding;
 - host, PE architecture set, compilers, SDK, deployment target, and configure options;
 - every packaged regular file and symlink, including type, mode, size, and SHA-256 where applicable;
 - hashes of the SBOM, integration evidence, evidence index, and known-limitations document;

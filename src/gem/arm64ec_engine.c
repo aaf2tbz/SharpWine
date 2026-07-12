@@ -76,6 +76,12 @@ gem_arm64ec_runtime_create(struct gem_memory *memory,
     runtime->memory = memory;
     if (config != NULL)
         runtime->config = *config;
+    if (runtime->config.execution_profile < GEM_ARM64EC_PROFILE_STRICT ||
+        runtime->config.execution_profile > GEM_ARM64EC_PROFILE_NATIVE_ARM64 ||
+        runtime->config.reserved != 0U) {
+        free(runtime);
+        return NULL;
+    }
     if (runtime->config.host_return_sentinel == 0U)
         runtime->config.host_return_sentinel = GEM_ARM64EC_DEFAULT_HOST_RETURN_SENTINEL;
     if (runtime->config.arch_transition_sentinel == 0U)
@@ -103,7 +109,8 @@ bool gem_arm64ec_runtime_attach_arm64x(struct gem_arm64ec_runtime *runtime,
                                        const struct gem_pe_arm64x_image *image,
                                        uint64_t loaded_image_base) {
     struct gem_arm64ec_target_map *map = NULL;
-    if (runtime == NULL || image == NULL || runtime->running)
+    if (runtime == NULL || image == NULL || runtime->running ||
+        runtime->config.execution_profile != GEM_ARM64EC_PROFILE_STRICT)
         return false;
     if (gem_arm64ec_target_map_create(image, loaded_image_base, &map) != GEM_ARM64EC_TARGET_OK)
         return false;
