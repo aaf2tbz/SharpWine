@@ -34,7 +34,21 @@ trap abort_am ERR INT TERM
 while IFS= read -r patch; do
     [[ -n "$patch" ]] || continue
     applying=1
-    git -C "$source_dir" am --keep-cr "$root/third_party/patches/wine/$patch"
+    if ! check_output=$(git -C "$source_dir" apply --check --verbose \
+        "$root/third_party/patches/wine/$patch" 2>&1); then
+        printf '%s\n' "$check_output" >&2
+        exit 1
+    fi
+    if grep -Eiq \
+        'Hunk #[0-9]+ succeeded at .*\(offset [0-9]+ lines?\)|with fuzz [0-9]+|falling back to 3-way' \
+        <<< "$check_output"; then
+        printf 'Wine patch application used an offset, fuzz, or three-way fallback: %s\n' "$patch" >&2
+        printf '%s\n' "$check_output" >&2
+        exit 1
+    fi
+    printf '%s\n' "$check_output"
+    git -C "$source_dir" am --keep-cr --no-3way \
+        "$root/third_party/patches/wine/$patch"
     applying=0
 done < "$root/third_party/patches/wine/series"
 trap - ERR INT TERM
