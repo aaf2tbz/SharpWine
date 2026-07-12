@@ -324,9 +324,8 @@ enum gem_wine_status gem_wine_thread_destroy(struct gem_wine_thread *thread) {
     return GEM_WINE_OK;
 }
 
-enum gem_wine_status
-gem_wine_thread_set_native_upper_simd(struct gem_wine_thread *thread,
-                                      const struct gem_u128 vectors[16]) {
+enum gem_wine_status gem_wine_thread_set_native_upper_simd(struct gem_wine_thread *thread,
+                                                           const struct gem_u128 vectors[16]) {
     bool accepted;
     if (thread == NULL || vectors == NULL)
         return GEM_WINE_INVALID_ARGUMENT;
@@ -337,9 +336,8 @@ gem_wine_thread_set_native_upper_simd(struct gem_wine_thread *thread,
     return accepted ? GEM_WINE_OK : GEM_WINE_CONFLICT;
 }
 
-enum gem_wine_status
-gem_wine_thread_get_native_upper_simd(struct gem_wine_thread *thread,
-                                      struct gem_u128 vectors[16]) {
+enum gem_wine_status gem_wine_thread_get_native_upper_simd(struct gem_wine_thread *thread,
+                                                           struct gem_u128 vectors[16]) {
     bool accepted;
     if (thread == NULL || vectors == NULL)
         return GEM_WINE_INVALID_ARGUMENT;
@@ -490,8 +488,7 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
             if (callback_status != GEM_WINE_OK ||
                 response.version != GEM_WINE_BOUNDARY_ABI_VERSION ||
                 response.struct_size != sizeof(response)) {
-                (void)gem_arm64ec_runtime_set_native_upper_simd(thread->runtime,
-                                                                 upper_simd_before);
+                (void)gem_arm64ec_runtime_set_native_upper_simd(thread->runtime, upper_simd_before);
                 run_result.outcome = GEM_WINE_RUN_FAILED;
                 status = GEM_WINE_CALLBACK_ERROR;
                 break;
@@ -508,8 +505,7 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
                 ((request.event == GEM_WINE_EVENT_SYSCALL ||
                   request.event == GEM_WINE_EVENT_UNIX_CALL) &&
                  response.context.pc == request.context.pc)) {
-                (void)gem_arm64ec_runtime_set_native_upper_simd(thread->runtime,
-                                                                 upper_simd_before);
+                (void)gem_arm64ec_runtime_set_native_upper_simd(thread->runtime, upper_simd_before);
                 run_result.outcome = GEM_WINE_RUN_FAILED;
                 status = GEM_WINE_CALLBACK_ERROR;
                 break;

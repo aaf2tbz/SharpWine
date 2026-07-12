@@ -381,8 +381,7 @@ void run_single_threaded(gem_memory *mem, std::uint64_t base, std::uint8_t *host
                  GEM_MEMORY_OK);
         assert(gem_memory_read(mem, wcopy_addr, out, 1U) == GEM_MEMORY_OK &&
                out[0] == detached_value);
-        assert(gem_memory_read(mem, p1, out, 1U) == GEM_MEMORY_OK &&
-               out[0] == detached_value);
+        assert(gem_memory_read(mem, p1, out, 1U) == GEM_MEMORY_OK && out[0] == detached_value);
         check_eq("guarded page write after rollback",
                  gem_memory_write(mem, p3, &detached_value, 1U), GEM_MEMORY_OK);
         check_eq("unmap rollback wcopy", gem_memory_unmap(mem, wcopy_addr, kGuestPage),
