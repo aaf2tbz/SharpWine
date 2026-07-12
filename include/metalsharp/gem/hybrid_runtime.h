@@ -24,6 +24,23 @@ struct gem_hybrid_runtime_config {
     uint64_t max_budget;
 };
 
+enum gem_hybrid_stop_source {
+    GEM_HYBRID_STOP_SOURCE_BROKER = 0,
+    GEM_HYBRID_STOP_SOURCE_ARM64EC = 1,
+    GEM_HYBRID_STOP_SOURCE_X64 = 2,
+};
+
+/* Exact engine stop details from the most recent run. The source selects the
+ * valid engine member. Broker-generated invariant failures have source BROKER
+ * and zeroed engine details. This sidecar does not change the canonical
+ * 720-byte thread-context ABI. */
+struct gem_hybrid_stop_info {
+    enum gem_stop_reason reason;
+    enum gem_hybrid_stop_source source;
+    struct gem_arm64ec_stop_info arm64ec;
+    struct gem_x64_stop_info x64;
+};
+
 struct gem_hybrid_roundtrip_stats {
     uint64_t arm64ec_instructions_retired;
     uint64_t x64_instructions_retired;
@@ -54,6 +71,8 @@ void gem_hybrid_runtime_destroy(struct gem_hybrid_runtime *runtime);
 enum gem_stop_reason gem_hybrid_runtime_run_integer_roundtrip(
     struct gem_hybrid_runtime *runtime, struct gem_thread_context *context, uint64_t caller_va,
     uint64_t finish_va, uint64_t budget, struct gem_hybrid_roundtrip_stats *stats);
+bool gem_hybrid_runtime_last_stop_info(const struct gem_hybrid_runtime *runtime,
+                                       struct gem_hybrid_stop_info *out_info);
 
 #ifdef __cplusplus
 }

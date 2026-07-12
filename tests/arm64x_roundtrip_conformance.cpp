@@ -40,7 +40,7 @@ std::map<std::string, std::uint32_t> read_map(const char *path) {
     std::ifstream input(path);
     std::string header;
     std::map<std::string, std::uint32_t> result;
-    assert(input && std::getline(input, header) && header == "MSWR_ARM64EC_ENTRY_MAP_V2");
+    assert(input && std::getline(input, header) && header == "MSWR_ARM64EC_ENTRY_MAP_V3");
     std::string name;
     std::string value;
     while (input >> name >> value) {
@@ -51,9 +51,11 @@ std::map<std::string, std::uint32_t> read_map(const char *path) {
         result.emplace(name, static_cast<std::uint32_t>(parsed));
     }
     assert(input.eof());
-    const std::array<const char *, 9> required = {
-        "integer", "floating",    "aggregate",        "variadic",       "roundtrip",
-        "finish",  "checkerSlot", "dispatchCallSlot", "dispatchRetSlot"};
+    const std::array<const char *, 15> required = {
+        "integer",      "floating",         "aggregate",      "variadic",
+        "roundtrip",    "finish",           "direct",         "callbackResume",
+        "tailTransfer", "boundedNested",    "armCallback",    "armNestedCallback",
+        "checkerSlot",  "dispatchCallSlot", "dispatchRetSlot"};
     assert(result.size() == required.size());
     for (const auto *key : required)
         assert(result.find(key) != result.end());
@@ -156,6 +158,16 @@ gem_thread_context initial_context(std::uint64_t caller) {
     }
     return context;
 }
+void assert_stop(gem_hybrid_runtime *runtime, gem_stop_reason reason,
+                 gem_hybrid_stop_source source) {
+    gem_hybrid_stop_info info{};
+    assert(gem_hybrid_runtime_last_stop_info(runtime, &info));
+    assert(info.reason == reason && info.source == source);
+    if (source == GEM_HYBRID_STOP_SOURCE_ARM64EC)
+        assert(info.arm64ec.reason == reason);
+    if (source == GEM_HYBRID_STOP_SOURCE_X64)
+        assert(info.x64.reason == reason);
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -198,6 +210,7 @@ int main(int argc, char **argv) {
                 static_cast<unsigned long long>(stats.dispatch_ret_boundaries),
                 stats.final_frame_depth);
         assert(reason == GEM_STOP_HOST_RETURN);
+        assert_stop(runtime, reason, GEM_HYBRID_STOP_SOURCE_BROKER);
         assert(context.x[0] == 30U && context.pc == kHostReturn && context.x[18] == context.teb &&
                context.transition_cookie == 0U && context.isa == GEM_ISA_ARM64EC);
         assert(std::memcmp(&context.v[6], &initial.v[6], 10U * sizeof(context.v[0])) == 0);
@@ -227,6 +240,7 @@ int main(int argc, char **argv) {
         assert(runtime && gem_hybrid_runtime_run_integer_roundtrip(
                               runtime, &context, harness.caller, harness.finish, 10000U, nullptr) ==
                               GEM_STOP_INVARIANT_VIOLATION);
+        assert_stop(runtime, GEM_STOP_INVARIANT_VIOLATION, GEM_HYBRID_STOP_SOURCE_BROKER);
         gem_hybrid_runtime_destroy(runtime);
     }
     {
@@ -235,6 +249,7 @@ int main(int argc, char **argv) {
         assert(runtime && gem_hybrid_runtime_run_integer_roundtrip(
                               runtime, &context, harness.caller, harness.finish, 1U, nullptr) ==
                               GEM_STOP_BUDGET_EXPIRED);
+        assert_stop(runtime, GEM_STOP_BUDGET_EXPIRED, GEM_HYBRID_STOP_SOURCE_ARM64EC);
         gem_hybrid_runtime_destroy(runtime);
     }
     {
@@ -253,6 +268,9 @@ int main(int argc, char **argv) {
                 assert(std::memcmp(&context, &initial, sizeof(context)) == 0);
                 assert(stop == GEM_STOP_BUDGET_EXPIRED && context.transition_cookie == 0U &&
                        stats.final_frame_depth == 0U);
+                gem_hybrid_stop_info info{};
+                assert(gem_hybrid_runtime_last_stop_info(runtime, &info));
+                assert(info.reason == reason);
                 reached_post_frame_budget = true;
             }
         }
@@ -261,6 +279,7 @@ int main(int argc, char **argv) {
         assert(gem_hybrid_runtime_run_integer_roundtrip(runtime, &retry, harness.caller,
                                                         harness.finish, 10000U,
                                                         nullptr) == GEM_STOP_HOST_RETURN);
+        assert_stop(runtime, GEM_STOP_HOST_RETURN, GEM_HYBRID_STOP_SOURCE_BROKER);
         gem_hybrid_runtime_destroy(runtime);
     }
     {

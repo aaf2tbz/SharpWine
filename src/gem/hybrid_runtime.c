@@ -33,6 +33,7 @@ struct gem_hybrid_runtime {
     struct gem_hybrid_runtime_config config;
     struct hybrid_frame frame;
     struct gem_hybrid_roundtrip_stats stats;
+    struct gem_hybrid_stop_info last_stop;
     enum hybrid_stage stage;
     uint64_t generation;
     bool running;
@@ -132,14 +133,36 @@ static enum gem_arm64ec_boundary_action hybrid_boundary(void *opaque, uint64_t p
     return GEM_ARM64EC_BOUNDARY_NOT_HANDLED;
 }
 
-static bool consume_arm_budget(struct gem_hybrid_runtime *runtime, uint64_t *budget) {
-    struct gem_arm64ec_stop_info stop;
-    if (!gem_arm64ec_runtime_last_stop_info(runtime->arm, &stop) ||
-        stop.instructions_retired > *budget)
+static bool capture_arm_stop(struct gem_hybrid_runtime *runtime) {
+    memset(&runtime->last_stop, 0, sizeof(runtime->last_stop));
+    runtime->last_stop.source = GEM_HYBRID_STOP_SOURCE_ARM64EC;
+    if (!gem_arm64ec_runtime_last_stop_info(runtime->arm, &runtime->last_stop.arm64ec))
         return false;
-    runtime->stats.arm64ec_instructions_retired += stop.instructions_retired;
-    *budget -= stop.instructions_retired;
+    runtime->last_stop.reason = runtime->last_stop.arm64ec.reason;
     return true;
+}
+
+static bool consume_arm_budget(struct gem_hybrid_runtime *runtime, uint64_t *budget) {
+    if (!capture_arm_stop(runtime) || runtime->last_stop.arm64ec.instructions_retired > *budget)
+        return false;
+    runtime->stats.arm64ec_instructions_retired += runtime->last_stop.arm64ec.instructions_retired;
+    *budget -= runtime->last_stop.arm64ec.instructions_retired;
+    return true;
+}
+
+static bool capture_x64_stop(struct gem_hybrid_runtime *runtime) {
+    memset(&runtime->last_stop, 0, sizeof(runtime->last_stop));
+    runtime->last_stop.source = GEM_HYBRID_STOP_SOURCE_X64;
+    if (!gem_x64_runtime_last_stop_info(runtime->x64, &runtime->last_stop.x64))
+        return false;
+    runtime->last_stop.reason = runtime->last_stop.x64.reason;
+    return true;
+}
+
+static void record_broker_stop(struct gem_hybrid_runtime *runtime, enum gem_stop_reason reason) {
+    memset(&runtime->last_stop, 0, sizeof(runtime->last_stop));
+    runtime->last_stop.reason = reason;
+    runtime->last_stop.source = GEM_HYBRID_STOP_SOURCE_BROKER;
 }
 
 struct gem_hybrid_runtime *
@@ -194,6 +217,14 @@ Fail:
     return NULL;
 }
 
+bool gem_hybrid_runtime_last_stop_info(const struct gem_hybrid_runtime *runtime,
+                                       struct gem_hybrid_stop_info *out_info) {
+    if (runtime == NULL || out_info == NULL || runtime->last_stop.reason == GEM_STOP_NONE)
+        return false;
+    *out_info = runtime->last_stop;
+    return true;
+}
+
 void gem_hybrid_runtime_destroy(struct gem_hybrid_runtime *runtime) {
     if (runtime != NULL) {
         gem_x64_runtime_destroy(runtime->x64);
@@ -224,20 +255,25 @@ enum gem_stop_reason gem_hybrid_runtime_run_integer_roundtrip(
     bool return_record_written = false;
     if (stats != NULL)
         memset(stats, 0, sizeof(*stats));
-    if (runtime == NULL || context == NULL || runtime->running || runtime->frame.active ||
+    if (runtime == NULL)
+        return fail(context);
+    if (context == NULL || runtime->running || runtime->frame.active ||
         !gem_context_is_valid(context) || context->isa != GEM_ISA_ARM64EC ||
         context->pc != caller_va || context->transition_cookie != 0U || budget == 0U ||
         budget > runtime->config.max_budget || context->x[18] != context->teb ||
         context->sp < sizeof(uint64_t) ||
-        !stack_record_supported(runtime->memory, context->sp - sizeof(uint64_t)))
+        !stack_record_supported(runtime->memory, context->sp - sizeof(uint64_t))) {
+        record_broker_stop(runtime, GEM_STOP_INVARIANT_VIOLATION);
         return fail(context);
+    }
     entry_context = *context;
     memset(&runtime->stats, 0, sizeof(runtime->stats));
+    memset(&runtime->last_stop, 0, sizeof(runtime->last_stop));
     runtime->running = true;
     runtime->stage = HYBRID_STAGE_ARM_TO_X64;
     context->stop_reason = GEM_STOP_NONE;
     reason = gem_arm64ec_runtime_run(runtime->arm, context, budget);
-    if (!consume_arm_budget(runtime, &budget))
+    if (!consume_arm_budget(runtime, &budget) || runtime->last_stop.reason != reason)
         goto Invariant;
     if (reason == GEM_STOP_BUDGET_EXPIRED)
         goto Budget;
@@ -277,9 +313,15 @@ enum gem_stop_reason gem_hybrid_runtime_run_integer_roundtrip(
         if (budget == 0U)
             goto Budget;
         reason = gem_x64_runtime_run(runtime->x64, context, 1U);
+        if (!capture_x64_stop(runtime))
+            goto Invariant;
+        if (runtime->last_stop.reason != reason || runtime->last_stop.x64.instructions_retired > 1U)
+            goto Invariant;
         if (reason != GEM_STOP_BUDGET_EXPIRED)
             goto Propagate;
-        ++runtime->stats.x64_instructions_retired;
+        if (runtime->last_stop.x64.instructions_retired != 1U)
+            goto Invariant;
+        runtime->stats.x64_instructions_retired += runtime->last_stop.x64.instructions_retired;
         --budget;
         context->stop_reason = GEM_STOP_NONE;
     }
@@ -315,7 +357,7 @@ enum gem_stop_reason gem_hybrid_runtime_run_integer_roundtrip(
     if (budget == 0U)
         goto Budget;
     reason = gem_arm64ec_runtime_run(runtime->arm, context, budget);
-    if (!consume_arm_budget(runtime, &budget))
+    if (!consume_arm_budget(runtime, &budget) || runtime->last_stop.reason != reason)
         goto Invariant;
     if (reason == GEM_STOP_BUDGET_EXPIRED)
         goto Budget;
@@ -331,7 +373,7 @@ enum gem_stop_reason gem_hybrid_runtime_run_integer_roundtrip(
     context->stop_reason = GEM_STOP_NONE;
     runtime->stage = HYBRID_STAGE_ARM_RETURN;
     reason = gem_arm64ec_runtime_run(runtime->arm, context, budget);
-    if (!consume_arm_budget(runtime, &budget))
+    if (!consume_arm_budget(runtime, &budget) || runtime->last_stop.reason != reason)
         goto Invariant;
     if (reason != GEM_STOP_HOST_RETURN)
         goto Propagate;
@@ -345,12 +387,15 @@ enum gem_stop_reason gem_hybrid_runtime_run_integer_roundtrip(
     runtime->stats.final_frame_depth = 0U;
     runtime->stage = HYBRID_STAGE_IDLE;
     runtime->running = false;
+    record_broker_stop(runtime, GEM_STOP_HOST_RETURN);
     if (stats != NULL)
         *stats = runtime->stats;
     return GEM_STOP_HOST_RETURN;
 
 Budget:
     reason = GEM_STOP_BUDGET_EXPIRED;
+    if (runtime->last_stop.reason != reason)
+        record_broker_stop(runtime, reason);
     context->stop_reason = reason;
     goto FinishFailure;
 Propagate:
@@ -360,11 +405,14 @@ Propagate:
     goto FinishFailure;
 Invariant:
     reason = GEM_STOP_INVARIANT_VIOLATION;
+    record_broker_stop(runtime, reason);
     context->stop_reason = reason;
 FinishFailure:
     if (return_record_written && replace_stack_record(runtime->memory, return_record_address,
-                                                      overwritten_stack, NULL) != GEM_MEMORY_OK)
+                                                      overwritten_stack, NULL) != GEM_MEMORY_OK) {
         reason = GEM_STOP_INVARIANT_VIOLATION;
+        record_broker_stop(runtime, reason);
+    }
     runtime->frame.active = false;
     memset(&runtime->frame, 0, sizeof(runtime->frame));
     runtime->stage = HYBRID_STAGE_IDLE;

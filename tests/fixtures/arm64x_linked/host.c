@@ -15,8 +15,10 @@ static int write_native_evidence(const char *path) {
     FILE *output = NULL;
     if (fopen_s(&output, path, "wb") != 0 || output == NULL)
         return fail("native evidence output");
-    fprintf(output, "{\"schemaVersion\":1,\"nativeMachine\":\"arm64\","
-                    "\"roundtripInput\":12,\"roundtripResult\":30,\"passed\":true}\n");
+    fprintf(output, "{\"schemaVersion\":2,\"nativeMachine\":\"arm64\","
+                    "\"roundtripInput\":12,\"roundtripResult\":30,"
+                    "\"directResult\":47,\"callbackResumeResult\":82,"
+                    "\"tailTransferResult\":23120,\"nestedResult\":85,\"passed\":true}\n");
     if (fclose(output) != 0)
         return fail("native evidence close");
     return 0;
@@ -33,6 +35,12 @@ static int write_entry_map(const char *path) {
     };
     const uintptr_t roundtrip = (uintptr_t)(void *)fixture_authentic_roundtrip;
     const uintptr_t finish = (uintptr_t)(void *)fixture_roundtrip_arm_finish;
+    const uintptr_t direct = (uintptr_t)(void *)fixture_direct_x64_call;
+    const uintptr_t callback_resume = (uintptr_t)(void *)fixture_callback_and_resume;
+    const uintptr_t tail_transfer = (uintptr_t)(void *)fixture_tail_transfer;
+    const uintptr_t bounded_nested = (uintptr_t)(void *)fixture_bounded_nested;
+    const uintptr_t arm_callback = (uintptr_t)(void *)fixture_arm_callback;
+    const uintptr_t arm_nested_callback = (uintptr_t)(void *)fixture_arm_nested_callback;
     const uintptr_t checker_slot = fixture_checker_slot();
     const uintptr_t dispatch_call_slot = fixture_dispatch_call_slot();
     const uintptr_t dispatch_ret_slot = fixture_dispatch_ret_slot();
@@ -48,6 +56,13 @@ static int write_entry_map(const char *path) {
         return fail("round-trip entry RVA");
     if (finish < base || finish - base > UINT32_MAX)
         return fail("round-trip finish RVA");
+    if (direct < base || direct - base > UINT32_MAX || callback_resume < base ||
+        callback_resume - base > UINT32_MAX || tail_transfer < base ||
+        tail_transfer - base > UINT32_MAX || bounded_nested < base ||
+        bounded_nested - base > UINT32_MAX || arm_callback < base ||
+        arm_callback - base > UINT32_MAX || arm_nested_callback < base ||
+        arm_nested_callback - base > UINT32_MAX)
+        return fail("Issue 14.5 entry RVA");
     if (checker_slot < base || checker_slot - base > UINT32_MAX)
         return fail("ARM64EC checker slot RVA");
     if (dispatch_call_slot < base || dispatch_call_slot - base > UINT32_MAX)
@@ -56,23 +71,32 @@ static int write_entry_map(const char *path) {
         return fail("dispatch-ret slot RVA");
     if (fopen_s(&output, path, "wb") != 0 || output == NULL)
         return fail("entry map output");
-    fprintf(output,
-            "MSWR_ARM64EC_ENTRY_MAP_V2\n"
-            "integer %08llx\n"
-            "floating %08llx\n"
-            "aggregate %08llx\n"
-            "variadic %08llx\n"
-            "roundtrip %08llx\n"
-            "finish %08llx\n"
-            "checkerSlot %08llx\n"
-            "dispatchCallSlot %08llx\n"
-            "dispatchRetSlot %08llx\n",
-            (unsigned long long)(entries[0] - base), (unsigned long long)(entries[1] - base),
-            (unsigned long long)(entries[2] - base), (unsigned long long)(entries[3] - base),
-            (unsigned long long)(roundtrip - base), (unsigned long long)(finish - base),
-            (unsigned long long)(checker_slot - base),
-            (unsigned long long)(dispatch_call_slot - base),
-            (unsigned long long)(dispatch_ret_slot - base));
+    fprintf(
+        output,
+        "MSWR_ARM64EC_ENTRY_MAP_V3\n"
+        "integer %08llx\n"
+        "floating %08llx\n"
+        "aggregate %08llx\n"
+        "variadic %08llx\n"
+        "roundtrip %08llx\n"
+        "finish %08llx\n"
+        "direct %08llx\n"
+        "callbackResume %08llx\n"
+        "tailTransfer %08llx\n"
+        "boundedNested %08llx\n"
+        "armCallback %08llx\n"
+        "armNestedCallback %08llx\n"
+        "checkerSlot %08llx\n"
+        "dispatchCallSlot %08llx\n"
+        "dispatchRetSlot %08llx\n",
+        (unsigned long long)(entries[0] - base), (unsigned long long)(entries[1] - base),
+        (unsigned long long)(entries[2] - base), (unsigned long long)(entries[3] - base),
+        (unsigned long long)(roundtrip - base), (unsigned long long)(finish - base),
+        (unsigned long long)(direct - base), (unsigned long long)(callback_resume - base),
+        (unsigned long long)(tail_transfer - base), (unsigned long long)(bounded_nested - base),
+        (unsigned long long)(arm_callback - base), (unsigned long long)(arm_nested_callback - base),
+        (unsigned long long)(checker_slot - base), (unsigned long long)(dispatch_call_slot - base),
+        (unsigned long long)(dispatch_ret_slot - base));
     if (fclose(output) != 0)
         return fail("entry map close");
     return 0;
@@ -101,6 +125,14 @@ int main(int argc, char **argv) {
         return fail("indirect x64 integer result");
     if (fixture_authentic_roundtrip(UINT64_C(12)) != UINT64_C(30))
         return fail("authentic integer round-trip result");
+    if (fixture_direct_x64_call(UINT64_C(10)) != UINT64_C(47))
+        return fail("direct ARM64EC-to-x64 normal return result");
+    if (fixture_callback_and_resume(UINT64_C(10)) != UINT64_C(82))
+        return fail("x64-to-ARM64EC callback and x64 resumption result");
+    if (fixture_tail_transfer(UINT64_C(10)) != UINT64_C(23120))
+        return fail("explicit tail transfer result");
+    if (fixture_bounded_nested(UINT64_C(10)) != UINT64_C(85))
+        return fail("bounded nested transition result");
     if (fabs(fixture_indirect_x64_floating(2.5) - 4.5) > 0.000001)
         return fail("indirect x64 floating result");
     output = fixture_indirect_x64_aggregate(input);

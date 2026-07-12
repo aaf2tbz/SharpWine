@@ -7,6 +7,12 @@ EXPORTS
     fixture_indirect_x64
     fixture_authentic_roundtrip
     fixture_roundtrip_arm_finish
+    fixture_arm_callback
+    fixture_arm_nested_callback
+    fixture_direct_x64_call
+    fixture_callback_and_resume
+    fixture_tail_transfer
+    fixture_bounded_nested
     fixture_indirect_x64_floating
     fixture_indirect_x64_aggregate
     fixture_indirect_x64_variadic

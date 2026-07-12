@@ -3,8 +3,32 @@
 
 #include <stdarg.h>
 
+extern uint64_t fixture_arm_callback(uint64_t value);
+extern uint64_t fixture_arm_nested_callback(uint64_t value);
+
 int32_t fixture_x64_target(int32_t value) {
     return value * 3 + 7;
+}
+
+uint64_t fixture_x64_normal_return(uint64_t value) {
+    return value * UINT64_C(3) + UINT64_C(17);
+}
+
+uint64_t fixture_x64_callback_path(uint64_t value) {
+    const uint64_t callback = fixture_arm_callback(value + UINT64_C(2));
+    return callback + UINT64_C(19);
+}
+
+uint64_t fixture_x64_tail_target(uint64_t value) {
+    return value ^ UINT64_C(0x5a5a);
+}
+
+uint64_t fixture_x64_nested_inner(uint64_t value) {
+    return value * UINT64_C(2) + UINT64_C(13);
+}
+
+uint64_t fixture_x64_nested_outer(uint64_t value) {
+    return fixture_arm_nested_callback(value + UINT64_C(5)) + UINT64_C(17);
 }
 
 double fixture_x64_floating_target(double value) {

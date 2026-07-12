@@ -80,8 +80,9 @@ def checked_file(root, relative):
 def validate_entry_map(path):
     lines = path.read_text(encoding="ascii").splitlines()
     names = ["integer", "floating", "aggregate", "variadic", "roundtrip", "finish",
-             "checkerSlot", "dispatchCallSlot", "dispatchRetSlot"]
-    if len(lines) != 10 or lines[0] != "MSWR_ARM64EC_ENTRY_MAP_V2":
+             "direct", "callbackResume", "tailTransfer", "boundedNested", "armCallback",
+             "armNestedCallback", "checkerSlot", "dispatchCallSlot", "dispatchRetSlot"]
+    if len(lines) != 16 or lines[0] != "MSWR_ARM64EC_ENTRY_MAP_V3":
         fail("entry map header or line count is invalid")
     for line, name in zip(lines[1:], names):
         if not re.fullmatch(name + r" [0-9a-f]{8}", line):
@@ -130,10 +131,12 @@ def validate_set(root, label, expected_git, source_root):
         directory / "build-manifest.json", expected_git, dll_hash, source_root)
     validate_entry_map(directory / "arm64ec-entry-map.txt")
     native = read_json(directory / "native-evidence.json")
-    exact(native, ["schemaVersion", "nativeMachine", "roundtripInput", "roundtripResult", "passed"],
-          "native evidence")
-    if native != {"schemaVersion": 1, "nativeMachine": "arm64", "roundtripInput": 12,
-                  "roundtripResult": 30, "passed": True}:
+    exact(native, ["schemaVersion", "nativeMachine", "roundtripInput", "roundtripResult",
+                   "directResult", "callbackResumeResult", "tailTransferResult", "nestedResult",
+                   "passed"], "native evidence")
+    if native != {"schemaVersion": 2, "nativeMachine": "arm64", "roundtripInput": 12,
+                  "roundtripResult": 30, "directResult": 47, "callbackResumeResult": 82,
+                  "tailTransferResult": 23120, "nestedResult": 85, "passed": True}:
         fail("native round-trip oracle is invalid")
     inspection = read_json(directory / "inspection.json")
     exact(inspection, ["schemaVersion", "distribution", "manifestSha256", "dllSha256", "parser"],
