@@ -42,6 +42,8 @@ bool gem_x64_runtime_last_stop_info(const struct gem_x64_runtime *, struct gem_x
  * executed by Blink's CALL handler. This execution-owned identity is reset by
  * each run and is false for faults or runs retiring no instruction. */
 bool gem_x64_runtime_last_instruction_was_call(const struct gem_x64_runtime *);
+/* Execution-owned Blink decoder identity for the most recently retired RET. */
+bool gem_x64_runtime_last_instruction_was_ret(const struct gem_x64_runtime *);
 /* The interpreter-only backend refreshes its transient page shadow before
  * every instruction and owns no translated-code cache, so invalidation is a
  * documented no-op. A future cache/JIT backend must replace this contract and

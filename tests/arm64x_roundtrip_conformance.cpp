@@ -99,8 +99,11 @@ Harness make_harness(const std::vector<std::uint8_t> &bytes,
     Harness harness;
     harness.memory = gem_memory_create();
     assert(harness.memory);
-    const std::array<gem_pe_arm64x_binding, 3> bindings{{
+    /* The linked direct/tail exit thunks load the non-CFG checker from RVA
+     * 0x7010. Keep it bound separately from the exported CFG checker slot. */
+    const std::array<gem_pe_arm64x_binding, 4> bindings{{
         {entries.at("checkerSlot"), kChecker},
+        {UINT32_C(0x7010), kChecker},
         {entries.at("dispatchCallSlot"), kDispatchCall},
         {entries.at("dispatchRetSlot"), kDispatchRet},
     }};
@@ -653,6 +656,93 @@ int main(int argc, char **argv) {
     const auto *metadata = gem_pe_arm64x_materialized_metadata(harness.materialized);
     gem_thread_context expected_context{};
     std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> expected_stack{};
+
+    /* Authentic normal-return and explicit-tail paths.  These exact linked
+     * addresses bind the x0=x8 handback to the retained fixture evidence. */
+    {
+        struct ReturnCase {
+            gem_hybrid_return_mode mode;
+            std::uint64_t requested;
+            std::uint64_t resolved;
+            std::uint64_t target;
+            std::uint64_t expected;
+        };
+        const std::array<ReturnCase, 2> cases{{
+            {GEM_HYBRID_RETURN_NORMAL, config.loaded_base + entries.at("direct"),
+             config.loaded_base + UINT64_C(0x2840), config.loaded_base + UINT64_C(0x4080),
+             UINT64_C(47)},
+            {GEM_HYBRID_RETURN_TAIL, config.loaded_base + entries.at("tailTransfer"),
+             config.loaded_base + UINT64_C(0x2AB0), config.loaded_base + UINT64_C(0x4090),
+             UINT64_C(23120)},
+        }};
+        gem_hybrid_runtime *runtime = gem_hybrid_runtime_create(harness.memory, metadata, &config);
+        assert(runtime);
+        for (const auto &test : cases) {
+            gem_thread_context oracle{};
+            for (unsigned iteration = 0; iteration < 100U; ++iteration) {
+                auto context = initial_context(test.requested);
+                context.x[0] = 10U;
+                const auto entry = context;
+                const gem_hybrid_return_control control{test.mode, 0U, test.requested,
+                                                        test.resolved, test.target};
+                gem_hybrid_roundtrip_stats stats{};
+                const auto reason = gem_hybrid_runtime_run_integer_return(
+                    runtime, &context, &control, config.max_budget, &stats);
+                if (reason != GEM_STOP_HOST_RETURN)
+                    std::fprintf(
+                        stderr, "return mode=%u reason=%u pc=%llx arm=%llu x64=%llu\n",
+                        static_cast<unsigned>(test.mode), static_cast<unsigned>(reason),
+                        static_cast<unsigned long long>(context.pc),
+                        static_cast<unsigned long long>(stats.arm64ec_instructions_retired),
+                        static_cast<unsigned long long>(stats.x64_instructions_retired));
+                assert(reason == GEM_STOP_HOST_RETURN);
+                assert(context.x[0] == test.expected && context.pc == kHostReturn &&
+                       context.sp == entry.sp && context.x[30] == entry.x[30] &&
+                       context.x[18] == entry.x[18] && context.transition_cookie == 0U);
+                assert(stats.checker_boundaries == 1U && stats.dispatch_call_boundaries == 0U &&
+                       stats.x64_to_arm64ec_boundaries == 1U && stats.frame_pushes == 1U &&
+                       stats.frame_pops == 1U && stats.maximum_frame_depth == 1U &&
+                       stats.final_frame_depth == 0U);
+                std::uint64_t record_after = 0U;
+                assert(gem_memory_read(harness.memory, entry.sp - sizeof(record_after),
+                                       &record_after, sizeof(record_after)) == GEM_MEMORY_OK &&
+                       record_after == entry.x[30]);
+                if (iteration == 0U)
+                    oracle = context;
+                else
+                    assert(std::memcmp(&context, &oracle, sizeof(context)) == 0);
+            }
+
+            auto exhausted = initial_context(test.requested);
+            exhausted.x[0] = 10U;
+            const auto exhausted_entry = exhausted;
+            const gem_hybrid_return_control control{test.mode, 0U, test.requested, test.resolved,
+                                                    test.target};
+            gem_hybrid_roundtrip_stats exhausted_stats{};
+            const auto exhausted_reason = gem_hybrid_runtime_run_integer_return(
+                runtime, &exhausted, &control, 19U, &exhausted_stats);
+            if (exhausted_reason != GEM_STOP_BUDGET_EXPIRED)
+                std::fprintf(
+                    stderr, "return budget mode=%u reason=%u arm=%llu x64=%llu\n",
+                    static_cast<unsigned>(test.mode), static_cast<unsigned>(exhausted_reason),
+                    static_cast<unsigned long long>(exhausted_stats.arm64ec_instructions_retired),
+                    static_cast<unsigned long long>(exhausted_stats.x64_instructions_retired));
+            assert(exhausted_reason == GEM_STOP_BUDGET_EXPIRED);
+            auto expected_exhausted = exhausted_entry;
+            expected_exhausted.stop_reason = GEM_STOP_BUDGET_EXPIRED;
+            assert(std::memcmp(&exhausted, &expected_exhausted, sizeof(exhausted)) == 0);
+            assert(exhausted_stats.arm64ec_instructions_retired == 16U &&
+                   exhausted_stats.x64_instructions_retired == 3U &&
+                   exhausted_stats.frame_pushes == 1U && exhausted_stats.frame_pops == 1U &&
+                   exhausted_stats.final_frame_depth == 0U);
+            exhausted = exhausted_entry;
+            assert(gem_hybrid_runtime_run_integer_return(runtime, &exhausted, &control,
+                                                         config.max_budget,
+                                                         nullptr) == GEM_STOP_HOST_RETURN);
+            assert(exhausted.x[0] == test.expected);
+        }
+        gem_hybrid_runtime_destroy(runtime);
+    }
 
     /* Authentic Round-1 callback/resumption: metadata selects the x64 entry
      * and ARM callback; the descriptor selects the real entry thunk. */

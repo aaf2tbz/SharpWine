@@ -12,6 +12,7 @@ struct gem_x64_runtime {
     struct gem_memory_transaction *transaction;
     bool running;
     bool last_instruction_was_call;
+    bool last_instruction_was_ret;
 };
 bool gem_x64_blink_create(struct gem_x64_runtime *);
 void gem_x64_blink_destroy(struct gem_x64_runtime *);

@@ -36,6 +36,7 @@ enum gem_stop_reason gem_x64_runtime_run(struct gem_x64_runtime *r, struct gem_t
         return GEM_STOP_INVARIANT_VIOLATION;
     memset(&r->last_stop, 0, sizeof(r->last_stop));
     r->last_instruction_was_call = false;
+    r->last_instruction_was_ret = false;
     if (r->running || !gem_context_x64_materialize(c, &in) ||
         (r->config.max_budget && budget > r->config.max_budget)) {
         r->last_stop.reason = GEM_STOP_INVARIANT_VIOLATION;
@@ -87,6 +88,9 @@ bool gem_x64_runtime_last_stop_info(const struct gem_x64_runtime *r, struct gem_
 }
 bool gem_x64_runtime_last_instruction_was_call(const struct gem_x64_runtime *r) {
     return r != NULL && r->last_stop.instructions_retired != 0U && r->last_instruction_was_call;
+}
+bool gem_x64_runtime_last_instruction_was_ret(const struct gem_x64_runtime *r) {
+    return r != NULL && r->last_stop.instructions_retired != 0U && r->last_instruction_was_ret;
 }
 void gem_x64_runtime_invalidate_code(struct gem_x64_runtime *r, uint64_t a, uint64_t s) {
     (void)r;

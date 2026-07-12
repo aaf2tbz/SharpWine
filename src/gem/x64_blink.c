@@ -102,9 +102,11 @@ enum gem_stop_reason gem_x64_blink_step(struct gem_x64_runtime *r, const struct 
         attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
         attempt.size = sizeof(attempt);
         export(&bo, out);
-        r->last_instruction_was_call =
-            br.retired == 1 && blink_gem_machine_decode_attempt_info(r->backend, &attempt) &&
-            attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_CALL_JVDS;
+        if (br.retired == 1 && blink_gem_machine_decode_attempt_info(r->backend, &attempt) &&
+            attempt.valid) {
+            r->last_instruction_was_call = attempt.handler_id == BLINK_GEM_HANDLER_OP_CALL_JVDS;
+            r->last_instruction_was_ret = attempt.handler_id == BLINK_GEM_HANDLER_OP_RET;
+        }
         return br.retired == 1 ? GEM_STOP_NONE : GEM_STOP_INVARIANT_VIOLATION;
     }
     if (br.outcome == BLINK_GEM_MEMORY_FAULT)

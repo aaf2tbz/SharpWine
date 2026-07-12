@@ -518,6 +518,23 @@ int main() {
         init(c);
         assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
         assert(c.pc == CODE + sizeof(call) && c.sp == STACK + 4072U);
+        /* RET identity also comes from Blink's retired decoder handler. */
+        const uint8_t ret_instruction = 0xc3;
+        const uint64_t ret_target = CODE + 1U;
+        assert(gem_memory_write(m, CODE, &ret_instruction, sizeof(ret_instruction)) ==
+               GEM_MEMORY_OK);
+        assert(gem_memory_write(m, STACK + 4080U, &ret_target, sizeof(ret_target)) ==
+               GEM_MEMORY_OK);
+        init(c);
+        c.sp = STACK + 4080U;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(c.pc == ret_target && c.sp == STACK + 4088U &&
+               gem_x64_runtime_last_instruction_was_ret(r));
+        assert(gem_memory_write(m, CODE, &nop, sizeof(nop)) == GEM_MEMORY_OK);
+        init(c);
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(!gem_x64_runtime_last_instruction_was_ret(r));
+
         /* Pre-decode fault: a fetch outside mapped memory leaves valid=0 and
          * an empty name; canonical CPU state is unchanged. */
         gem_x64_runtime_handler_trace_reset(r);
