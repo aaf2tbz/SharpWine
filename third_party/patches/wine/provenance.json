@@ -37,10 +37,10 @@
     },
     {
       "order": 5,
-      "path": "third_party/patches/wine/0005-arm64x-allow-duplicate-crt-markers.patch",
-      "sha256": "79e3bf9f95df57bc94372472e1079b1344545aeff7ac249ccb21225b96afb27c",
-      "authoringCommit": "28d53b86c71a6c02c6dd5a551752a9de962ae388",
-      "purpose": "Allow identical CRT boundary and load-config markers in LLVM-MinGW ARM64X links."
+      "path": "third_party/patches/wine/0005-arm64x-pass-mode-to-winebuild.patch",
+      "sha256": "ded6226ce7e7ac63a6beb5c26190a26654a8e99b6d048b0773e627fe4ee67263",
+      "authoringCommit": "5b18ac6488e3fa5701d9fb8d20b77281e6c51da0",
+      "purpose": "Pass ARM64X mode to Wine's spec-object generator and select each PE target's Clang triple so native ARM64 metadata is preserved."
     }
   ],
   "researchEvidence": {

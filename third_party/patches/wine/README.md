@@ -34,10 +34,11 @@ is not a release input.
 4. `0004-arm64ec-avoid-x86-inline-assembly.patch`
    - keeps ARM64EC away from x86-only inline atomic and fast-fail assembly;
    - uses the ARM64EC-safe compiler intrinsics and `brk` fast-fail sequence.
-5. `0005-arm64x-allow-duplicate-crt-markers.patch`
-   - scopes LLVM-MinGW's duplicate-definition relaxation to ARM64X links;
-   - permits the identical CRT boundary and load-config markers emitted by
-     Wine's ARM64EC/native ARM64 spec-object pair.
+5. `0005-arm64x-pass-mode-to-winebuild.patch`
+   - passes ARM64X mode through to Wine's spec-object generator;
+   - selects each PE target's Clang triple for spec-object assembly;
+   - preserves native-architecture metadata when combining ARM64EC and native
+     ARM64 objects.
 
 ## Current evidence and limitation
 

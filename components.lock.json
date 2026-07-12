@@ -50,8 +50,8 @@
           "sha256": "40c03d0c22ddc3f281726a9152db3218ebe34606721397d62ac9f92906786a45"
         },
         {
-          "path": "third_party/patches/wine/0005-arm64x-allow-duplicate-crt-markers.patch",
-          "sha256": "79e3bf9f95df57bc94372472e1079b1344545aeff7ac249ccb21225b96afb27c"
+          "path": "third_party/patches/wine/0005-arm64x-pass-mode-to-winebuild.patch",
+          "sha256": "ded6226ce7e7ac63a6beb5c26190a26654a8e99b6d048b0773e627fe4ee67263"
         }
       ]
     },

@@ -1,0 +1,35 @@
+From 5b18ac6488e3fa5701d9fb8d20b77281e6c51da0 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@users.noreply.github.com>
+Date: Sun, 12 Jul 2026 08:35:52 -0600
+Subject: [PATCH 5/5] winegcc: preserve ARM64X target metadata
+
+Keep ARM64X mode visible to winebuild and add target-specific Clang options
+when Wine assembles PE targets.  The latter prevents the native ARM64 spec
+object from being assembled with the ARM64EC target inherited from the
+combined link command.
+
+---
+ tools/winegcc/winegcc.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/tools/winegcc/winegcc.c b/tools/winegcc/winegcc.c
+index 20ea512..2c4425a 100644
+--- a/tools/winegcc/winegcc.c
++++ b/tools/winegcc/winegcc.c
+@@ -424,7 +424,7 @@ static struct strarray build_tool_name( const char *target_name, struct tool_nam
+     if (cc_cmd && !strncmp( tool.llvm_base, "clang", 5 ))
+     {
+         ret = strarray_fromstring( cc_cmd, " " );
+-        if (is_llvm_pe_target( target )) add_clang_options( target_name, &ret );
++        if (is_pe_target( target )) add_clang_options( target_name, &ret );
+         return ret;
+     }
+@@ -1769,6 +1769,7 @@ int main(int argc, char **argv)
+                     {
+                         is_arm64x = true;
+                         raw_linker_arg = 1;
++                        raw_winebuild_arg = 1;
+                     }
+                     else if (!strncmp("-mcpu=", args.str[i], 6) ||
+                              !strncmp("-mfpu=", args.str[i], 6) ||
+--
