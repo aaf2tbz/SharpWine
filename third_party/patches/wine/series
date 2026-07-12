@@ -1,0 +1,3 @@
+0001-darwin-arm64-preserve-4g-pagezero.patch
+0002-darwin-arm64-keep-installed-wrapper.patch
+0003-darwin-arm64-high-guest-mappings.patch

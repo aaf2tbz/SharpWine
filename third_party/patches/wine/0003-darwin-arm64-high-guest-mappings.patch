@@ -1,0 +1,65 @@
+From ad5e2e23360a566458f7854fb8e8fd296c8378cc Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@users.noreply.github.com>
+Date: Sun, 12 Jul 2026 06:09:32 -0600
+Subject: [PATCH 3/3] ntdll: place Darwin ARM64 guest mappings above 4 GiB
+
+Keep Wine's host mappings outside the native ARM64 loader's page-zero reservation. Use the high KUSER backing that GEM aliases to the checked Windows address, and remove the legacy below-2-GiB TEB placement constraint on this host.
+---
+ dlls/ntdll/unix/virtual.c | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
+index eda3fee..0f96d09 100644
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -182,7 +182,11 @@ static const UINT_PTR host_page_mask = 0xfff;
+ #endif
+ 
+ /* Note: these are Windows limits, you cannot change them. */
+-#if defined(__i386__) || defined(__x86_64__)
++#if defined(__APPLE__) && defined(__aarch64__)
++/* The native Mach-O loader reserves the low 4 GiB. Windows ARM64 images use
++ * high bases, and GEM provides the checked low KUSER alias to guest code. */
++static void *address_space_start = (void *)0x100000000ull;
++#elif defined(__i386__) || defined(__x86_64__)
+ static void *address_space_start = (void *)0x110000; /* keep DOS area clear */
+ #else
+ static void *address_space_start = (void *)0x10000;
+@@ -202,7 +206,11 @@ static void *host_addr_space_limit;  /* top of the host virtual address space */
+ static struct file_view *arm64ec_view;
+ 
+ ULONG_PTR user_space_wow_limit = 0;
++#if defined(__APPLE__) && defined(__aarch64__)
++struct _KUSER_SHARED_DATA *user_shared_data = (void *)0x1007ffe0000ull;
++#else
+ struct _KUSER_SHARED_DATA *user_shared_data = (void *)0x7ffe0000;
++#endif
+ 
+ /* TEB allocation blocks */
+ static void *teb_block;
+@@ -4066,8 +4074,13 @@ TEB *virtual_alloc_first_teb(void)
+         exit(1);
+     }
+ 
++#if defined(__APPLE__) && defined(__aarch64__)
++    NtAllocateVirtualMemory( NtCurrentProcess(), &teb_block, 0, &total,
++                             MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE );
++#else
+     NtAllocateVirtualMemory( NtCurrentProcess(), &teb_block, is_win64 ? limit_2g - 1 : 0, &total,
+                              MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE );
++#endif
+     teb_block_pos = 30;
+     ptr = (char *)teb_block + 30 * block_size;
+     data_size = 2 * block_size;
+@@ -5089,7 +5102,11 @@ void virtual_set_large_address_space(void)
+     {
+         if (!is_wow64())
+         {
++#if defined(__APPLE__) && defined(__aarch64__)
++            address_space_start = (void *)0x100000000ull;
++#else
+             address_space_start = (void *)0x10000;
++#endif
+ #ifndef __APPLE__  /* don't free the zerofill section on macOS */
+             if ((main_image_info.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA) &&
+                 (main_image_info.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE))

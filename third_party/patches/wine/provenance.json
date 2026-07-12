@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "component": "wine",
+  "repository": "https://gitlab.winehq.org/wine/wine.git",
+  "baseRevision": "996020f410e7a1aa2dd6b44cf740854ea524d31a",
+  "baseVersion": "Wine 11.12",
+  "license": "LGPL-2.1-or-later",
+  "seriesFile": "third_party/patches/wine/series",
+  "patches": [
+    {
+      "order": 1,
+      "path": "third_party/patches/wine/0001-darwin-arm64-preserve-4g-pagezero.patch",
+      "sha256": "434db3063f0c6f890db65e871141c3d6d72ebb29027f6dbe0073baa5010beb3c",
+      "authoringCommit": "e5e186beda46c27a53dd12f932b8299db7c9ac44",
+      "purpose": "Preserve an explicit 4 GiB Darwin ARM64 page-zero reservation without x86 Mach-O alignment overrides."
+    },
+    {
+      "order": 2,
+      "path": "third_party/patches/wine/0002-darwin-arm64-keep-installed-wrapper.patch",
+      "sha256": "c035cd6364946c52514df91775d728688eff2608abf466b290d088c175611e65",
+      "authoringCommit": "f07539ae5fee5d8e8a9245cf80a88f9157c931a6",
+      "purpose": "Retain and export the loader reservation marker so the installed native ARM64 wrapper does not re-exec."
+    },
+    {
+      "order": 3,
+      "path": "third_party/patches/wine/0003-darwin-arm64-high-guest-mappings.patch",
+      "sha256": "5487bd8396fdced1c0eceb9d360e2607483582dcf3e8d7f5b6b5367b7031a674",
+      "authoringCommit": "ad5e2e23360a566458f7854fb8e8fd296c8378cc",
+      "purpose": "Place Darwin ARM64 Wine mappings, KUSER backing, and TEB allocations above the loader reservation."
+    }
+  ],
+  "researchEvidence": {
+    "host": {
+      "os": "macOS 27.0 (26A5378j)",
+      "architecture": "arm64",
+      "compiler": "Apple clang 21.0.0 (clang-2100.3.25.1)",
+      "sdk": "27.0"
+    },
+    "unpatchedInstalledWrapperSha256": "aaed49ef284c85facf000f3b754578ade603860bf44805ecbb6a811a7430f09e",
+    "patchedInstalledWrapperSha256": "3ea3db8f9a43b192d70cf503b747d6172065eb474056891f485d46a34dedd556",
+    "unpatchedOutcome": {
+      "status": "SIGKILL",
+      "returnCode": -9,
+      "retainedLogBytes": 0,
+      "debuggerLocation": "dlls/ntdll/unix/loader.c: reexec_loader -> execv"
+    },
+    "patchedOutcome": {
+      "status": "expected-later-failure",
+      "returnCode": 1,
+      "retainedLogBytes": 19358,
+      "lastMilestone": "PE ntdll and API-set mapped",
+      "firstFailure": "virtual_setup_exception stack overflow before the Wine-to-GEM guest-entry handoff"
+    },
+    "acceptance": "research-only; clean release build and runtime gates remain required"
+  }
+}

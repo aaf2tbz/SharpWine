@@ -1,11 +1,51 @@
 {
   "schema": 1,
+  "build_dependencies": {
+    "llvm_mingw": {
+      "repository": "https://github.com/mstorsjo/llvm-mingw/releases",
+      "release": "20260616",
+      "archive": "llvm-mingw-20260616-ucrt-macos-universal.tar.xz",
+      "sha256": "2cab02a2e964bd4aae981150a45985d07c657cfa8d244959eb9e2dcc5eedd7b1",
+      "targets": ["i686-w64-mingw32", "x86_64-w64-mingw32", "aarch64-w64-mingw32", "arm64ec-w64-mingw32"]
+    },
+    "homebrew": {
+      "formulas": {
+        "bison": "3.8.2",
+        "mesa": "26.1.4",
+        "sdl2-compat": "2.32.70",
+        "sdl3": "3.4.12",
+        "vulkan-headers": "1.4.350.1",
+        "vulkan-loader": "1.4.350.1"
+      },
+      "system": ["flex", "OpenGL.framework"]
+    },
+    "external_runtime": {
+      "vulkan_loader_sha256": "57937dfe4ad621bf043e6e0cda060f6392e42b1dbe7e7e405ee0c321ed691402",
+      "moltenvk_sha256": "0f897d9be9c3307826415d6077e9e46a623d6ef1c017aaa7b28fe08aa057b1ed"
+    }
+  },
   "components": {
     "wine": {
       "repository": "https://gitlab.winehq.org/wine/wine.git",
-      "revision": "996020f",
+      "revision": "996020f410e7a1aa2dd6b44cf740854ea524d31a",
       "version": "wine-11.12-development-base",
-      "license": "LGPL-2.1-or-later"
+      "license": "LGPL-2.1-or-later",
+      "patch_series": "third_party/patches/wine/series",
+      "patch_provenance": "third_party/patches/wine/provenance.json",
+      "patches": [
+        {
+          "path": "third_party/patches/wine/0001-darwin-arm64-preserve-4g-pagezero.patch",
+          "sha256": "434db3063f0c6f890db65e871141c3d6d72ebb29027f6dbe0073baa5010beb3c"
+        },
+        {
+          "path": "third_party/patches/wine/0002-darwin-arm64-keep-installed-wrapper.patch",
+          "sha256": "c035cd6364946c52514df91775d728688eff2608abf466b290d088c175611e65"
+        },
+        {
+          "path": "third_party/patches/wine/0003-darwin-arm64-high-guest-mappings.patch",
+          "sha256": "5487bd8396fdced1c0eceb9d360e2607483582dcf3e8d7f5b6b5367b7031a674"
+        }
+      ]
     },
     "dynarmic": {
       "repository": "https://github.com/lioncash/dynarmic.git",
