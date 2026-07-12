@@ -34,6 +34,13 @@
       "sha256": "40c03d0c22ddc3f281726a9152db3218ebe34606721397d62ac9f92906786a45",
       "authoringCommit": "4d72445760a7d336f20f8a9db1672df6dbe67868",
       "purpose": "Use ARM64EC-safe atomics and fast-fail instructions instead of x86-only inline assembly."
+    },
+    {
+      "order": 5,
+      "path": "third_party/patches/wine/0005-arm64x-allow-duplicate-crt-markers.patch",
+      "sha256": "79e3bf9f95df57bc94372472e1079b1344545aeff7ac249ccb21225b96afb27c",
+      "authoringCommit": "28d53b86c71a6c02c6dd5a551752a9de962ae388",
+      "purpose": "Allow identical CRT boundary and load-config markers in LLVM-MinGW ARM64X links."
     }
   ],
   "researchEvidence": {
