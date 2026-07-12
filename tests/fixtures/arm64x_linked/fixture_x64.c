@@ -3,9 +3,6 @@
 
 #include <stdarg.h>
 
-extern uint64_t fixture_arm_callback(uint64_t value);
-extern uint64_t fixture_arm_nested_callback(uint64_t value);
-
 int32_t fixture_x64_target(int32_t value) {
     return value * 3 + 7;
 }

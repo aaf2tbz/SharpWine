@@ -44,8 +44,9 @@ if(BUILD_AS_ARM64X STREQUAL "ARM64EC")
   add_custom_command(
     OUTPUT "${x64_object}"
     COMMAND "${MSWR_X64_CL}" /nologo /c /W4 /WX /O2 /GS- /Zl /guard:cf
-            "/Fo${x64_object}" "${CMAKE_CURRENT_SOURCE_DIR}/fixture_x64.c"
-    DEPENDS fixture_x64.c
+            /DARM64X_FIXTURE_EXPORTS "/Fo${x64_object}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixture_x64.c"
+    DEPENDS fixture_x64.c fixture_api.h
     VERBATIM)
   add_custom_command(
     OUTPUT "${x64_roundtrip_object}"
