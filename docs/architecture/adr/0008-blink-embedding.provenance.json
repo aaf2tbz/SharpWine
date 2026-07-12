@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
   "archiveSha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
-  "patchSha256": "5db0ef0f144fe0df014496fe521e0640659f7dd44cfbb3e79defa7fb503551a6",
+  "patchSha256": "03acc9bc848338e7614a1f487054cc6995e5826c94c4ddbf17365d6a7ae1891a",
   "license": "ISC",
   "prePatch": {
     "blink/machine.c": "73a32c95fbc191394c116bd2f41ebba464c963718b3785adaca22c5a93e8dc89",
@@ -10,10 +10,10 @@
     "blink/throw.c": "5df4b02be0d089b25c6318841cb072c5af9ca1b3e5aa9e11982bdc73ca7e2eed"
   },
   "postPatch": {
-    "blink/gem_embed.c": "4691a9a65fb6fbd69a714f91fcafa0ca1789a1b5fc834956b934d1244b0695a1",
-    "blink/gem_embed.h": "5d525ed81b51ecbc719a84a9897c99fd44c477e430eea734f90a118fbfe1b77d",
-    "blink/machine.c": "69b184ae56be93f2c9c9f2d825f4a179c49b7243da0c6823facf1a72ec4f168f",
-    "blink/machine.h": "cf681279a0a6d6a296cef27ee838f5a626b1b87af2ebda4a4d3d61ab6a03ba32",
+    "blink/gem_embed.c": "939bcac74898a00ffe3cc284f5b38e080049d10d21f12f0c3926f1a43c32d3b4",
+    "blink/gem_embed.h": "bd25612f81a0d7ce0cdf8628044f1bddf85f6517f20751072547830cee9f4cb3",
+    "blink/machine.c": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
+    "blink/machine.h": "69a0c145e3c7218f82e774113458ff8de295759dc709d14a05cb1626228a1685",
     "blink/throw.c": "1826aa163631f978d742f8d00af0198f7b86c5b17cd2fc5dae3f7d427f33eefe"
   },
   "build": [
@@ -25,7 +25,7 @@
     {
       "name": "OpNop",
       "file": "blink/machine.c",
-      "sourceSha256": "69b184ae56be93f2c9c9f2d825f4a179c49b7243da0c6823facf1a72ec4f168f",
+      "sourceSha256": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
       "startLine": 1471,
       "endLine": 1479,
       "definitionSha256": "b0d1c352885969febe97a5b0963f5b550fa31aab091d7b39dd8015f8b9a3f2f9"
@@ -33,7 +33,7 @@
     {
       "name": "OpMovZvqpIvqp",
       "file": "blink/machine.c",
-      "sourceSha256": "69b184ae56be93f2c9c9f2d825f4a179c49b7243da0c6823facf1a72ec4f168f",
+      "sourceSha256": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
       "startLine": 397,
       "endLine": 417,
       "definitionSha256": "caf0bf3c87ae024cb1b9c6a03f37d941bf594a49c3bb94d06cc09b156f494be1"
@@ -41,7 +41,7 @@
     {
       "name": "OpMovEvqpGvqp",
       "file": "blink/machine.c",
-      "sourceSha256": "69b184ae56be93f2c9c9f2d825f4a179c49b7243da0c6823facf1a72ec4f168f",
+      "sourceSha256": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
       "startLine": 121,
       "endLine": 128,
       "definitionSha256": "a034375c3863c9864d9ed9346ee823efe8d16bd86ba6b161a85e0c2275d489c6"
@@ -49,7 +49,7 @@
     {
       "name": "OpMovGvqpEvqp",
       "file": "blink/machine.c",
-      "sourceSha256": "69b184ae56be93f2c9c9f2d825f4a179c49b7243da0c6823facf1a72ec4f168f",
+      "sourceSha256": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
       "startLine": 130,
       "endLine": 137,
       "definitionSha256": "0041b90b7dfe1d9176da68ab7af8538d01b5edbdacd83449c21baa9a68d173ac"
@@ -57,7 +57,7 @@
     {
       "name": "OpBsuwiImm",
       "file": "blink/machine.c",
-      "sourceSha256": "69b184ae56be93f2c9c9f2d825f4a179c49b7243da0c6823facf1a72ec4f168f",
+      "sourceSha256": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
       "startLine": 743,
       "endLine": 745,
       "definitionSha256": "a352df3e6d6b30da372ebb3ce890b8c72ae67c26c44d2b46ee9fda0c875770ce"
@@ -73,7 +73,7 @@
     {
       "name": "OpJcc",
       "file": "blink/machine.c",
-      "sourceSha256": "69b184ae56be93f2c9c9f2d825f4a179c49b7243da0c6823facf1a72ec4f168f",
+      "sourceSha256": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
       "startLine": 921,
       "endLine": 957,
       "definitionSha256": "03e9b384f40790d5394909c96f673b6327fc4e539590a9b5a1a26908c2082759"
@@ -81,7 +81,7 @@
     {
       "name": "OpJmp",
       "file": "blink/machine.c",
-      "sourceSha256": "69b184ae56be93f2c9c9f2d825f4a179c49b7243da0c6823facf1a72ec4f168f",
+      "sourceSha256": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
       "startLine": 908,
       "endLine": 911,
       "definitionSha256": "1a8ed1c0df3f1dcfc193a985226887e766fb097fb7283561aade16eecc708a22"
@@ -93,6 +93,143 @@
       "startLine": 267,
       "endLine": 297,
       "definitionSha256": "220cd9dc43c7c36a5b3a2174f15dbbf50bf34d3c5f39985ec8f41184d035da85"
+    },
+    {
+      "name": "OpLeaGvqpM",
+      "file": "blink/machine.c",
+      "sourceSha256": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
+      "startLine": 113,
+      "endLine": 119,
+      "definitionSha256": "e3125acecb150966c0698a30e7767381ff4ab0d62b329a91a80e4604e9b8bbb8"
+    },
+    {
+      "name": "OpCallJvds",
+      "file": "blink/stack.c",
+      "sourceSha256": "d17a2dcd451fe4e75da3e327bf311ab54939360b9d9d81583c5d818ecc7dd36f",
+      "startLine": 184,
+      "endLine": 189,
+      "definitionSha256": "768b2a748e6a9e13a58569879cb6b465b61a5ec3a16a52bcc1f60fab79a26a39"
+    },
+    {
+      "name": "OpAluFlip",
+      "file": "blink/machine.c",
+      "sourceSha256": "c64193e5f604d798e4d3a7225a98388cd4e29eb0707f67bded1b292f43713879",
+      "startLine": 514,
+      "endLine": 549,
+      "definitionSha256": "c44475cdbd324a1caf52d22e600cfcaea1199e2df5506459bf8621ec9d8c74f7"
+    }
+  ],
+  "handlerTrace": {
+    "abiVersion": 1,
+    "capacity": 256,
+    "stage": "retired",
+    "identitySource": "GemHandlerId(GetOp(Mopcode(m->xedd->op.rde))) in blink/gem_embed.c",
+    "append": "one entry per retired instruction; unsupported/faulted/pre-decode outcomes append nothing",
+    "overflow": "sticky, non-wrapping, retains first capacity entries",
+    "unknownHandler": "cannot be appended; only allowlisted handlers reach retirement",
+    "identityMap": [
+      {
+        "id": 1,
+        "name": "OpNop"
+      },
+      {
+        "id": 2,
+        "name": "OpMovZvqpIvqp"
+      },
+      {
+        "id": 3,
+        "name": "OpMovEvqpGvqp"
+      },
+      {
+        "id": 4,
+        "name": "OpMovGvqpEvqp"
+      },
+      {
+        "id": 5,
+        "name": "OpBsuwiImm"
+      },
+      {
+        "id": 6,
+        "name": "OpAlui"
+      },
+      {
+        "id": 7,
+        "name": "OpJcc"
+      },
+      {
+        "id": 8,
+        "name": "OpJmp"
+      },
+      {
+        "id": 9,
+        "name": "OpRet"
+      },
+      {
+        "id": 10,
+        "name": "OpLeaGvqpM"
+      },
+      {
+        "id": 11,
+        "name": "OpCallJvds"
+      },
+      {
+        "id": 12,
+        "name": "OpAluFlip"
+      }
+    ],
+    "restrictions": [
+      {
+        "name": "OpAluFlip",
+        "mopcode": 3,
+        "decodedName": "OpAluwFlip",
+        "reason": "only authentic register-register REX.W ADD Gvqp,Evqp; other widths, memory forms, and shared ALU mappings remain rejected",
+        "rexW": true,
+        "modrmRegister": true
+      }
+    ]
+  },
+  "decodeAttempt": {
+    "abiVersion": 1,
+    "nameBytes": 32,
+    "resetPerStep": true,
+    "scope": "single most recent step inside blink_gem_machine_step",
+    "identitySource": "Mopcode(m->xedd->op.rde) + DescribeMopcode() in blink/gem_embed.c",
+    "nameSource": "blink/name.c DescribeMopcode()",
+    "handlerIdSource": "GemHandlerId(GetOp(Mopcode(m->xedd->op.rde))) in blink/gem_embed.c",
+    "validAfter": "successful LoadInstruction (Blink's own decode dispatch)",
+    "invalidWhen": "pre-decode fault, BLINK_GEM_INVALID short-circuit, or path returning before LoadInstruction succeeds",
+    "nameCopy": "deterministic, NUL-terminated, bounded by nameBytes; lifetime bound to the gem_x64_runtime",
+    "noStateEffect": "reads never alter execution, allowlisting, or committed architectural state",
+    "reviewedExamples": [
+      {
+        "opcode": "0x8d",
+        "mopcode": "0x08D",
+        "name": "OpLeaGvqpM",
+        "handlerId": 10
+      },
+      {
+        "opcode": "0xe8",
+        "mopcode": "0x0E8",
+        "name": "OpCallJvds",
+        "handlerId": 11
+      },
+      {
+        "mopcode": "0x003",
+        "name": "OpAluwFlip",
+        "handlerId": 12
+      }
+    ],
+    "rejectedSharedHandlerExample": {
+      "mopcode": "0x00B",
+      "name": "OpAluwFlip",
+      "handlerId": 0
+    }
+  },
+  "reviewedHelperSources": [
+    {
+      "file": "blink/alu.c",
+      "sourceSha256": "673ddd60cb6fb1de6ea9f02a4e8e958f3c299a522dd754b4e82950e7a21fc4f4",
+      "reason": "pins kAlu and Add64 flag/result semantics used by the admitted mopcode 0x003 ADD variant"
     }
   ]
 }

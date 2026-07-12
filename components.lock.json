@@ -27,7 +27,7 @@
       "source_archive_sha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
       "distribution": "optional build-tree-only pinned source/build dependency",
       "adr": "docs/architecture/adr/0008-blink-roundtrip.md",
-      "embedding_patch_sha256": "5db0ef0f144fe0df014496fe521e0640659f7dd44cfbb3e79defa7fb503551a6",
+      "embedding_patch_sha256": "03acc9bc848338e7614a1f487054cc6995e5826c94c4ddbf17365d6a7ae1891a",
       "embedding_provenance": "docs/architecture/adr/0008-blink-embedding.provenance.json",
       "accepting_mode": "real interpreter handler allowlist; DISABLE_JIT"
     }

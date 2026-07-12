@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "blink/gem_embed.h"
 #include "x64_engine_internal.h"
+#include "x64_engine_trace.h"
 #include <stdlib.h>
 #include <string.h>
 static uint32_t snapshot(void *o, uint64_t a, uint8_t data[4096], uint32_t *p) {
@@ -96,7 +97,16 @@ enum gem_stop_reason gem_x64_blink_step(struct gem_x64_runtime *r, const struct 
     r->last_stop.memory_error = br.memory_error;
     r->last_stop.engine_status = br.engine_status;
     if (br.outcome == BLINK_GEM_RETIRED) {
+        struct blink_gem_decode_attempt attempt;
+        memset(&attempt, 0, sizeof(attempt));
+        attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+        attempt.size = sizeof(attempt);
         export(&bo, out);
+        if (br.retired == 1 && blink_gem_machine_decode_attempt_info(r->backend, &attempt) &&
+            attempt.valid) {
+            r->last_instruction_was_call = attempt.handler_id == BLINK_GEM_HANDLER_OP_CALL_JVDS;
+            r->last_instruction_was_ret = attempt.handler_id == BLINK_GEM_HANDLER_OP_RET;
+        }
         return br.retired == 1 ? GEM_STOP_NONE : GEM_STOP_INVARIANT_VIOLATION;
     }
     if (br.outcome == BLINK_GEM_MEMORY_FAULT)
@@ -107,4 +117,59 @@ enum gem_stop_reason gem_x64_blink_step(struct gem_x64_runtime *r, const struct 
 }
 const char *gem_x64_blink_version(void) {
     return blink_gem_embedding_version();
+}
+void gem_x64_runtime_handler_trace_reset(struct gem_x64_runtime *r) {
+    if (r)
+        blink_gem_machine_trace_reset(r->backend);
+}
+bool gem_x64_runtime_handler_trace_info(const struct gem_x64_runtime *r, uint32_t *count,
+                                        uint32_t *overflowed) {
+    struct blink_gem_trace_info info;
+    if (!r)
+        return false;
+    info.abi_version = BLINK_GEM_TRACE_ABI_VERSION;
+    info.size = sizeof(info);
+    if (!blink_gem_machine_trace_info(r->backend, &info))
+        return false;
+    if (count)
+        *count = info.count;
+    if (overflowed)
+        *overflowed = info.overflowed;
+    return true;
+}
+bool gem_x64_runtime_handler_trace_read(const struct gem_x64_runtime *r, size_t index,
+                                        uint64_t *rip, uint32_t *handler_id) {
+    struct blink_gem_trace_entry entry;
+    if (!r || !blink_gem_machine_trace_read(r->backend, index, &entry))
+        return false;
+    if (rip)
+        *rip = entry.rip;
+    if (handler_id)
+        *handler_id = entry.handler_id;
+    return true;
+}
+const char *gem_x64_runtime_handler_name(uint32_t handler_id) {
+    return blink_gem_handler_name(handler_id);
+}
+bool gem_x64_runtime_decode_attempt_info(const struct gem_x64_runtime *r,
+                                         struct blink_gem_decode_attempt *out) {
+    struct blink_gem_decode_attempt probe;
+    if (!r || !out)
+        return false;
+    /* Validate the caller's struct ABI up front so a future caller ABI drift
+     * fails closed at the wrapper boundary instead of silently reading or
+     * writing past the destination buffer.  We honour the caller's abi_version
+     * and size (rather than overwriting them) so that a mismatched caller is
+     * rejected before any Blink-owned storage is touched. */
+    if (out->abi_version != BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION || out->size != sizeof(probe))
+        return false;
+    probe.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+    probe.size = sizeof(probe);
+    if (!blink_gem_machine_decode_attempt_info(r->backend, &probe))
+        return false;
+    /* Copy into caller storage: the Blink-owned name buffer is bounded by
+     * BLINK_GEM_DECODE_ATTEMPT_NAME_BYTES and is always NUL-terminated, so a
+     * memcpy of the entire struct preserves those invariants. */
+    *out = probe;
+    return true;
 }

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "metalsharp/gem/x64_engine.h"
+#include "x64_engine_trace.h"
 extern "C" {
 #include "blink/gem_embed.h"
 }
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -89,7 +91,7 @@ int main() {
     assert(r);
     assert(
         strstr(gem_x64_runtime_engine_provenance(r),
-               "patch-sha256=5db0ef0f144fe0df014496fe521e0640659f7dd44cfbb3e79defa7fb503551a6") !=
+               "patch-sha256=03acc9bc848338e7614a1f487054cc6995e5826c94c4ddbf17365d6a7ae1891a") !=
         nullptr);
     gem_thread_context c{};
     init(c);
@@ -297,6 +299,369 @@ int main() {
     assert(!memcmp(&c, &copy, sizeof(c)));
     assert(gem_x64_runtime_run(nullptr, &c, 1) == GEM_STOP_INVARIANT_VIOLATION);
     assert(gem_x64_runtime_run(r, nullptr, 1) == GEM_STOP_INVARIANT_VIOLATION);
+
+    /* Decoder-owned handler trace: identity is Blink's own decode-dispatch
+     * result, storage is bounded and reset-able, and exactly one entry is
+     * appended per retired instruction (nothing for unsupported outcomes). */
+    {
+        uint32_t trace_count = 0xffffffffU;
+        uint32_t trace_overflow = 0xffffffffU;
+        uint64_t trace_rip = 0U;
+        uint32_t trace_id = 0U;
+        gem_x64_runtime_handler_trace_reset(r);
+        assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow) &&
+               trace_count == 0U && trace_overflow == 0U);
+        assert(gem_memory_write(m, CODE, &nop, 1) == GEM_MEMORY_OK);
+        init(c);
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow) &&
+               trace_count == 1U && trace_overflow == 0U);
+        assert(gem_x64_runtime_handler_trace_read(r, 0, &trace_rip, &trace_id) &&
+               trace_rip == CODE && trace_id == BLINK_GEM_HANDLER_OP_NOP &&
+               !strcmp(gem_x64_runtime_handler_name(trace_id), "OpNop"));
+        assert(!gem_x64_runtime_handler_trace_read(r, 1, &trace_rip, &trace_id));
+
+        gem_x64_runtime_handler_trace_reset(r);
+        assert(gem_memory_write(m, CODE, loadstore, 3) == GEM_MEMORY_OK);
+        init(c);
+        c.x[27] = DATA;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow) &&
+               trace_count == 1U &&
+               gem_x64_runtime_handler_trace_read(r, 0, &trace_rip, &trace_id) &&
+               trace_id == BLINK_GEM_HANDLER_OP_MOV_GVQP_EVQP && trace_rip == CODE);
+
+        gem_x64_runtime_handler_trace_reset(r);
+        assert(gem_memory_write(m, CODE, &push_rax, 1) == GEM_MEMORY_OK);
+        init(c);
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
+        assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow) &&
+               trace_count == 0U && trace_overflow == 0U);
+
+        /* Determinism: identical repeated program yields an identical trace. */
+        const uint8_t alu_then_mov[] = {0x48, 0x83, 0xc1, 0x02, 0x48, 0x8b, 0xc1};
+        assert(gem_memory_write(m, CODE, alu_then_mov, sizeof(alu_then_mov)) == GEM_MEMORY_OK);
+        uint32_t first_ids[2] = {0U, 0U};
+        for (unsigned pass = 0; pass < 2U; ++pass) {
+            gem_x64_runtime_handler_trace_reset(r);
+            init(c);
+            assert(gem_x64_runtime_run(r, &c, 2) == GEM_STOP_BUDGET_EXPIRED);
+            assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow) &&
+                   trace_count == 2U && trace_overflow == 0U);
+            uint32_t ids[2] = {0U, 0U};
+            uint64_t rip0 = 0U;
+            uint64_t rip1 = 0U;
+            assert(gem_x64_runtime_handler_trace_read(r, 0, &rip0, &ids[0]) &&
+                   gem_x64_runtime_handler_trace_read(r, 1, &rip1, &ids[1]));
+            assert(ids[0] == BLINK_GEM_HANDLER_OP_ALUI &&
+                   ids[1] == BLINK_GEM_HANDLER_OP_MOV_GVQP_EVQP && rip0 == CODE &&
+                   rip1 == CODE + 4U);
+            if (pass == 0U) {
+                first_ids[0] = ids[0];
+                first_ids[1] = ids[1];
+            } else {
+                assert(ids[0] == first_ids[0] && ids[1] == first_ids[1]);
+            }
+        }
+        /* An invalid trace-info request leaves the runtime state untouched. */
+        assert(gem_x64_runtime_handler_name(0U) != nullptr &&
+               !strcmp(gem_x64_runtime_handler_name(0U), "OpUnknown"));
+        gem_x64_runtime_handler_trace_reset(nullptr);
+        assert(!gem_x64_runtime_handler_trace_info(nullptr, &trace_count, &trace_overflow));
+        assert(!gem_x64_runtime_handler_trace_read(nullptr, 0, &trace_rip, &trace_id));
+    }
+
+    /* Decoder-owned "last decode attempt" diagnostic: Blink's own
+     * Mopcode()/DescribeMopcode() identity is surfaced verbatim, including for
+     * unsupported opcodes outside the reviewed handler manifest.  Pre-decode
+     * faults must leave valid=0 with an empty name.  The wrapper validates
+     * abi_version/size on entry and copies Blink-owned storage into caller
+     * storage; the returned name lifetime is bound to the runtime. */
+    {
+        uint32_t trace_count = 0U;
+        uint32_t trace_overflow = 0U;
+        blink_gem_decode_attempt attempt{};
+        attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+        attempt.size = sizeof(attempt);
+        assert(!gem_x64_runtime_decode_attempt_info(nullptr, &attempt));
+        assert(!gem_x64_runtime_decode_attempt_info(r, nullptr));
+
+        /* Wrong abi_version/size must fail closed at the wrapper boundary. */
+        attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION + 1U;
+        attempt.size = sizeof(attempt);
+        assert(!gem_x64_runtime_decode_attempt_info(r, &attempt));
+        attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+        attempt.size = sizeof(attempt) - 1U;
+        assert(!gem_x64_runtime_decode_attempt_info(r, &attempt));
+        attempt.size = sizeof(attempt);
+        gem_x64_runtime_handler_trace_reset(r);
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(!attempt.valid && attempt.name[0] == '\0');
+
+        /* Successful LoadInstruction with an allowlisted handler: identity is
+         * Blink's own decode-dispatch result (handler_id != 0, name matches). */
+        gem_x64_runtime_handler_trace_reset(r);
+        assert(gem_memory_write(m, CODE, &nop, 1) == GEM_MEMORY_OK);
+        init(c);
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_NOP &&
+               !strcmp(attempt.name, "OpNop") && attempt.rip == CODE);
+
+        /* Reviewed LEA retires with Blink's decoder-owned handler id. */
+        gem_x64_runtime_handler_trace_reset(r);
+        const uint8_t lea[] = {0x48, 0x8d, 0x05, 0x2a, 0x00, 0x00, 0x00};
+        assert(gem_memory_write(m, CODE, lea, sizeof(lea)) == GEM_MEMORY_OK);
+        init(c);
+        const auto lea_before = c;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(c.pc == CODE + sizeof(lea));
+        assert(!memcmp(c.x87, lea_before.x87, sizeof(c.x87)));
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_LEA_GVQP_M &&
+               !strcmp(attempt.name, "OpLeaGvqpM") && attempt.rip == CODE);
+
+        /* The authentic direct path's register-register ADD uses Blink's
+         * OpAluFlip implementation. It updates RAX/flags without touching raw
+         * x87/MM state or guest memory. */
+        gem_x64_runtime_handler_trace_reset(r);
+        const uint8_t add_rax_rcx[] = {0x48, 0x03, 0xc1};
+        assert(gem_memory_write(m, CODE, add_rax_rcx, sizeof(add_rax_rcx)) == GEM_MEMORY_OK);
+        init(c);
+        c.x[8] = 7U;
+        c.x[0] = 5U;
+        const auto add_before = c;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(c.pc == CODE + sizeof(add_rax_rcx) && c.x[8] == 12U && c.x[0] == 5U);
+        assert(!memcmp(c.x87, add_before.x87, sizeof(c.x87)));
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_ALU_FLIP &&
+               !strcmp(attempt.name, "OpAluwFlip") && attempt.rip == CODE);
+
+        /* OpAluFlip is shared by unrelated ALU opcodes. The allowlist admits
+         * only decoder mopcode 0x003 used by the authentic ADD; OR remains
+         * fail-closed despite resolving to the same Blink handler pointer. */
+        gem_x64_runtime_handler_trace_reset(r);
+        const uint8_t or_rax_rcx[] = {0x48, 0x0b, 0xc1};
+        assert(gem_memory_write(m, CODE, or_rax_rcx, sizeof(or_rax_rcx)) == GEM_MEMORY_OK);
+        init(c);
+        const auto or_before = c;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
+        assert(c.pc == or_before.pc && !memcmp(c.x87, or_before.x87, sizeof(c.x87)));
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(attempt.valid && attempt.mopcode == 0x00bU && attempt.handler_id == 0U &&
+               !strcmp(attempt.name, "OpAluwFlip") && attempt.rip == CODE);
+
+        /* Width and ModR/M form are also part of the narrow admission rule. */
+        const std::array<std::array<uint8_t, 3>, 2> rejected_adds = {
+            {{0x03, 0xc1, 0x90}, {0x48, 0x03, 0x01}}};
+        for (const auto &rejected_add : rejected_adds) {
+            gem_x64_runtime_handler_trace_reset(r);
+            assert(gem_memory_write(m, CODE, rejected_add.data(), rejected_add.size()) ==
+                   GEM_MEMORY_OK);
+            init(c);
+            auto rejected_expected = c;
+            rejected_expected.stop_reason = GEM_STOP_UNSUPPORTED_INSTRUCTION;
+            assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
+            assert(!memcmp(&c, &rejected_expected, sizeof(c)));
+            assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+            assert(attempt.valid && attempt.mopcode == 0x003U && attempt.handler_id == 0U &&
+                   !strcmp(attempt.name, "OpAluwFlip") && attempt.rip == CODE);
+        }
+
+        /* Reviewed relative CALL transactionally pushes its return address and
+         * retires with Blink's decoder-owned handler id. */
+        gem_x64_runtime_handler_trace_reset(r);
+        const uint8_t call[] = {0xe8, 0x00, 0x00, 0x00, 0x00};
+        assert(gem_memory_write(m, CODE, call, sizeof(call)) == GEM_MEMORY_OK);
+        init(c);
+        const auto call_before = c;
+        const auto call_sp = c.sp;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(c.pc == CODE + sizeof(call) && c.sp == call_sp - sizeof(uint64_t));
+        uint64_t call_return = 0U;
+        assert(gem_memory_read(m, c.sp, &call_return, sizeof(call_return)) == GEM_MEMORY_OK);
+        assert(call_return == CODE + sizeof(call));
+        assert(!memcmp(c.x87, call_before.x87, sizeof(c.x87)));
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_CALL_JVDS &&
+               !strcmp(attempt.name, "OpCallJvds") && attempt.rip == CODE);
+
+        /* CALL's return-record write is transactional on an unwritable stack. */
+        const std::array<uint8_t, 8> call_stack_pattern = {0x10, 0x21, 0x32, 0x43,
+                                                           0x54, 0x65, 0x76, 0x87};
+        assert(gem_memory_write(m, STACK + 4088U, call_stack_pattern.data(),
+                                call_stack_pattern.size()) == GEM_MEMORY_OK);
+        uint32_t stack_protection = 0U;
+        assert(gem_memory_protect(m, STACK, 4096U, GEM_PAGE_READONLY, &stack_protection) ==
+               GEM_MEMORY_OK);
+        init(c);
+        c.sp = STACK + 4096U;
+        auto failed_call_expected = c;
+        failed_call_expected.stop_reason = GEM_STOP_MEMORY_FAULT;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_MEMORY_FAULT);
+        assert(!memcmp(&c, &failed_call_expected, sizeof(c)));
+        gem_x64_stop_info call_fault{};
+        assert(gem_x64_runtime_last_stop_info(r, &call_fault) &&
+               call_fault.reason == GEM_STOP_MEMORY_FAULT &&
+               call_fault.instructions_retired == 0U && call_fault.fault_address == STACK &&
+               call_fault.access == GEM_X64_ACCESS_WRITE &&
+               call_fault.memory_error == GEM_MEMORY_ACCESS_DENIED);
+        std::array<uint8_t, 8> failed_call_stack{};
+        assert(gem_memory_read(m, STACK + 4088U, failed_call_stack.data(),
+                               failed_call_stack.size()) == GEM_MEMORY_OK);
+        assert(failed_call_stack == call_stack_pattern);
+        assert(gem_memory_protect(m, STACK, 4096U, stack_protection, &stack_protection) ==
+               GEM_MEMORY_OK);
+
+        /* The same runtime remains reusable after the failed transaction. */
+        init(c);
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(c.pc == CODE + sizeof(call) && c.sp == STACK + 4072U);
+        /* RET identity also comes from Blink's retired decoder handler. */
+        const uint8_t ret_instruction = 0xc3;
+        const uint64_t ret_target = CODE + 1U;
+        assert(gem_memory_write(m, CODE, &ret_instruction, sizeof(ret_instruction)) ==
+               GEM_MEMORY_OK);
+        assert(gem_memory_write(m, STACK + 4080U, &ret_target, sizeof(ret_target)) ==
+               GEM_MEMORY_OK);
+        init(c);
+        c.sp = STACK + 4080U;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(c.pc == ret_target && c.sp == STACK + 4088U &&
+               gem_x64_runtime_last_instruction_was_ret(r));
+        assert(gem_memory_write(m, CODE, &nop, sizeof(nop)) == GEM_MEMORY_OK);
+        init(c);
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(!gem_x64_runtime_last_instruction_was_ret(r));
+
+        /* Pre-decode fault: a fetch outside mapped memory leaves valid=0 and
+         * an empty name; canonical CPU state is unchanged. */
+        gem_x64_runtime_handler_trace_reset(r);
+        uint32_t code_protection = 0U;
+        assert(gem_memory_protect(m, CODE, 4096U, GEM_PAGE_NOACCESS, &code_protection) ==
+               GEM_MEMORY_OK);
+        init(c);
+        const auto prefault = c;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_MEMORY_FAULT);
+        assert(c.pc == prefault.pc);
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(!attempt.valid && attempt.name[0] == '\0');
+        uint32_t ignored_protection = 0U;
+        assert(gem_memory_protect(m, CODE, 4096U, code_protection, &ignored_protection) ==
+               GEM_MEMORY_OK);
+
+        /* Reset is allowed mid-run only between steps; here it just clears the
+         * decode-attempt record without disturbing the previously retired
+         * trace.  Reading after an unsuccessful reset target keeps valid=0. */
+        blink_gem_decode_attempt zero{};
+        zero.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+        zero.size = sizeof(zero);
+        attempt = zero;
+        gem_x64_runtime_handler_trace_reset(r);
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(!attempt.valid && attempt.name[0] == '\0');
+        assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow));
+        assert(trace_count == 0U && trace_overflow == 0U);
+    }
+
+    /* >256 instruction overflow test: prove the trace is sticky, non-wrapping,
+     * retains the first BLINK_GEM_MAX_TRACE_ENTRIES entries, resets cleanly on
+     * demand, and never alters guest execution, allowlisting, or committed
+     * architectural state.  We step the same NOP BLINK_GEM_MAX_TRACE_ENTRIES + 8
+     * times through the x64 runtime: the trace must hold exactly 256 entries
+     * with overflow=1, the first retired RIP must still be CODE, and the
+     * retired CPU/IPC state must match a control runtime that never overflowed.
+     */
+    {
+        constexpr unsigned kCapacity = BLINK_GEM_MAX_TRACE_ENTRIES;
+        constexpr unsigned kOverflow = kCapacity + 8U;
+        uint32_t trace_count = 0U;
+        uint32_t trace_overflow = 0U;
+        uint64_t trace_rip = 0U;
+        uint32_t trace_id = 0U;
+
+        gem_x64_runtime_handler_trace_reset(r);
+        assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow));
+        assert(trace_count == 0U && trace_overflow == 0U);
+
+        std::array<uint8_t, kOverflow> overflow_nops{};
+        overflow_nops.fill(nop);
+        assert(gem_memory_write(m, CODE, overflow_nops.data(), overflow_nops.size()) ==
+               GEM_MEMORY_OK);
+        init(c);
+        const auto overflow_before = c;
+        /* Step every NOP in one-instruction runs so each retirement is observed
+         * independently while the machine-owned trace remains cumulative. */
+        for (unsigned step = 0; step < kOverflow; ++step) {
+            assert(gem_x64_runtime_run(r, &c, 1U) == GEM_STOP_BUDGET_EXPIRED);
+            c.stop_reason = GEM_STOP_NONE;
+        }
+        assert(c.pc == overflow_before.pc + kOverflow);
+        const auto overflow_after = c;
+
+        assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow));
+        assert(trace_count == kCapacity);
+        assert(trace_overflow == 1U);
+        /* Sticky / non-wrapping: first capacity entries are exactly the first
+         * capacity retired RIPs; the 257th read must fail. */
+        for (unsigned index = 0; index < kCapacity; ++index) {
+            assert(gem_x64_runtime_handler_trace_read(r, index, &trace_rip, &trace_id));
+            assert(trace_rip == overflow_before.pc + index && trace_id == BLINK_GEM_HANDLER_OP_NOP);
+        }
+        assert(!gem_x64_runtime_handler_trace_read(r, kCapacity, &trace_rip, &trace_id));
+
+        /* Reset clears the trace and overflow flag, and the very next retired
+         * instruction appends exactly one entry with overflow=0. */
+        gem_x64_runtime_handler_trace_reset(r);
+        assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow));
+        assert(trace_count == 0U && trace_overflow == 0U);
+        init(c);
+        assert(gem_x64_runtime_run(r, &c, 1U) == GEM_STOP_BUDGET_EXPIRED);
+        assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow));
+        assert(trace_count == 1U && trace_overflow == 0U);
+        assert(gem_x64_runtime_handler_trace_read(r, 0, &trace_rip, &trace_id) &&
+               trace_rip == CODE && trace_id == BLINK_GEM_HANDLER_OP_NOP);
+
+        /* No state effect: a control runtime (separate guest-memory image) that
+         * never overflowed must agree on every touched CPU/register byte after
+         * the exact same kOverflow NOPs; only the runtime's trace, not the
+         * canonical CPU state, may differ. */
+        gem_memory *ctrl_m = gem_memory_create();
+        assert(ctrl_m);
+        map(ctrl_m, CODE, 4096, GEM_PAGE_EXECUTE_READWRITE);
+        map(ctrl_m, DATA, 8192, GEM_PAGE_READWRITE);
+        map(ctrl_m, STACK, 4096, GEM_PAGE_READWRITE);
+        gem_x64_runtime_config ctrl_cfg{};
+        ctrl_cfg.max_budget = 100U;
+        gem_x64_runtime *ctrl_r = gem_x64_runtime_create(ctrl_m, &ctrl_cfg);
+        assert(ctrl_r);
+        assert(gem_memory_write(ctrl_m, CODE, overflow_nops.data(), overflow_nops.size()) ==
+               GEM_MEMORY_OK);
+        gem_thread_context ctrl_c{};
+        init(ctrl_c);
+        for (unsigned step = 0; step < kOverflow; ++step) {
+            gem_x64_runtime_handler_trace_reset(ctrl_r);
+            assert(gem_x64_runtime_run(ctrl_r, &ctrl_c, 1U) == GEM_STOP_BUDGET_EXPIRED);
+            ctrl_c.stop_reason = GEM_STOP_NONE;
+        }
+        /* The control resets diagnostics between steps and therefore never
+         * overflows, while executing exactly the same guest instructions. */
+        assert(gem_x64_runtime_handler_trace_info(ctrl_r, &trace_count, &trace_overflow));
+        assert(trace_count == 1U && trace_overflow == 0U);
+        /* CPU state must match the overflowed runtime exactly; the only
+         * difference between the two runtimes is the diagnostic trace. */
+        assert(overflow_after.pc == ctrl_c.pc);
+        assert(!memcmp(overflow_after.x, ctrl_c.x, sizeof(ctrl_c.x)));
+        assert(overflow_after.sp == ctrl_c.sp && overflow_after.x64_rflags == ctrl_c.x64_rflags &&
+               overflow_after.x64_mxcsr == ctrl_c.x64_mxcsr &&
+               overflow_after.x64_fcw == ctrl_c.x64_fcw &&
+               overflow_after.x64_fsw == ctrl_c.x64_fsw);
+        assert(!memcmp(overflow_after.v, ctrl_c.v, sizeof(ctrl_c.v)));
+        assert(!memcmp(overflow_after.x87, ctrl_c.x87, sizeof(ctrl_c.x87)));
+        gem_x64_runtime_destroy(ctrl_r);
+        gem_memory_destroy(ctrl_m);
+    }
     gem_x64_runtime_destroy(r);
     gem_memory_destroy(m);
 }

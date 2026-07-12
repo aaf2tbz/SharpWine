@@ -7,6 +7,11 @@
 #if defined(_M_ARM64EC)
 extern int32_t fixture_x64_target(int32_t value);
 extern uint64_t fixture_x64_roundtrip(uint64_t value);
+extern uint64_t fixture_x64_normal_return(uint64_t value);
+extern uint64_t fixture_x64_callback_path(uint64_t value);
+extern uint64_t fixture_x64_tail_target(uint64_t value);
+extern uint64_t fixture_x64_nested_outer(uint64_t value);
+extern uint64_t fixture_x64_nested_inner(uint64_t value);
 extern double fixture_x64_floating_target(double value);
 extern arm64x_fixture_pair fixture_x64_aggregate_target(arm64x_fixture_pair value);
 extern int64_t fixture_x64_variadic_target(uint32_t count, ...);
@@ -47,6 +52,30 @@ int32_t fixture_indirect_x64(int32_t value) {
 
 uint64_t fixture_roundtrip_arm_finish(uint64_t value) {
     return value + UINT64_C(11);
+}
+
+uint64_t fixture_arm_callback(uint64_t value) {
+    return value * UINT64_C(5) + UINT64_C(3);
+}
+
+uint64_t fixture_arm_nested_callback(uint64_t value) {
+    return fixture_x64_nested_inner(value + UINT64_C(7)) + UINT64_C(11);
+}
+
+uint64_t fixture_direct_x64_call(uint64_t value) {
+    return fixture_x64_normal_return(value);
+}
+
+uint64_t fixture_callback_and_resume(uint64_t value) {
+    return fixture_x64_callback_path(value);
+}
+
+uint64_t fixture_tail_transfer(uint64_t value) {
+    return fixture_x64_tail_target(value);
+}
+
+uint64_t fixture_bounded_nested(uint64_t value) {
+    return fixture_x64_nested_outer(value);
 }
 
 uint64_t fixture_authentic_roundtrip(uint64_t value) {

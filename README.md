@@ -37,6 +37,7 @@ macOS ARM64 process
     ├── Windows virtual-memory and protection model
     ├── ARM64/ARM64EC correctness engine
     ├── Blink x86_64 engine
+    │    └─ decoder-owned retired-handler trace + last decode attempt (diagnostic only)
     ├── future i386 translated address space
     └── evidence-driven ARM64EC transition broker
 ```

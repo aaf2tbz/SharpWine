@@ -35,6 +35,8 @@ enum gem_stop_reason gem_x64_runtime_run(struct gem_x64_runtime *r, struct gem_t
     if (!r)
         return GEM_STOP_INVARIANT_VIOLATION;
     memset(&r->last_stop, 0, sizeof(r->last_stop));
+    r->last_instruction_was_call = false;
+    r->last_instruction_was_ret = false;
     if (r->running || !gem_context_x64_materialize(c, &in) ||
         (r->config.max_budget && budget > r->config.max_budget)) {
         r->last_stop.reason = GEM_STOP_INVARIANT_VIOLATION;
@@ -84,6 +86,12 @@ bool gem_x64_runtime_last_stop_info(const struct gem_x64_runtime *r, struct gem_
     *o = r->last_stop;
     return true;
 }
+bool gem_x64_runtime_last_instruction_was_call(const struct gem_x64_runtime *r) {
+    return r != NULL && r->last_stop.instructions_retired != 0U && r->last_instruction_was_call;
+}
+bool gem_x64_runtime_last_instruction_was_ret(const struct gem_x64_runtime *r) {
+    return r != NULL && r->last_stop.instructions_retired != 0U && r->last_instruction_was_ret;
+}
 void gem_x64_runtime_invalidate_code(struct gem_x64_runtime *r, uint64_t a, uint64_t s) {
     (void)r;
     (void)a;
@@ -101,6 +109,6 @@ const char *gem_x64_runtime_engine_license(const struct gem_x64_runtime *r) {
 const char *gem_x64_runtime_engine_provenance(const struct gem_x64_runtime *r) {
     return r ? "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;real-interpreter;"
                "DISABLE_JIT;patch-sha256="
-               "5db0ef0f144fe0df014496fe521e0640659f7dd44cfbb3e79defa7fb503551a6"
+               "03acc9bc848338e7614a1f487054cc6995e5826c94c4ddbf17365d6a7ae1891a"
              : "unavailable";
 }

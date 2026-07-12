@@ -84,25 +84,32 @@ EntryMap ReadEntryMap(const wchar_t *path) {
     std::FILE *input = nullptr;
     if (_wfopen_s(&input, path, L"rb") != 0 || input == nullptr)
         Fail("cannot open native ARM64EC entry map");
-    std::array<unsigned long long, 9> values{};
+    std::array<unsigned long long, 15> values{};
     const int matched = fscanf_s(input,
-                                 "MSWR_ARM64EC_ENTRY_MAP_V2\n"
+                                 "MSWR_ARM64EC_ENTRY_MAP_V3\n"
                                  "integer %I64x\n"
                                  "floating %I64x\n"
                                  "aggregate %I64x\n"
                                  "variadic %I64x\n"
                                  "roundtrip %I64x\n"
                                  "finish %I64x\n"
+                                 "direct %I64x\n"
+                                 "callbackResume %I64x\n"
+                                 "tailTransfer %I64x\n"
+                                 "boundedNested %I64x\n"
+                                 "armCallback %I64x\n"
+                                 "armNestedCallback %I64x\n"
                                  "checkerSlot %I64x\n"
                                  "dispatchCallSlot %I64x\n"
                                  "dispatchRetSlot %I64x",
                                  &values[0], &values[1], &values[2], &values[3], &values[4],
-                                 &values[5], &values[6], &values[7], &values[8]);
+                                 &values[5], &values[6], &values[7], &values[8], &values[9],
+                                 &values[10], &values[11], &values[12], &values[13], &values[14]);
     int trailing = 0;
     do {
         trailing = std::fgetc(input);
     } while (trailing == '\r' || trailing == '\n' || trailing == ' ' || trailing == '\t');
-    if (std::fclose(input) != 0 || matched != 9 || trailing != EOF)
+    if (std::fclose(input) != 0 || matched != 15 || trailing != EOF)
         Fail("native ARM64EC entry map is malformed");
     EntryMap result{};
     for (std::size_t index = 0; index < result.rvas.size(); ++index) {
@@ -119,9 +126,9 @@ EntryMap ReadEntryMap(const wchar_t *path) {
             Fail("native ARM64EC round-trip map RVA overflows");
     result.roundtrip_rva = static_cast<std::uint32_t>(values[4]);
     result.finish_rva = static_cast<std::uint32_t>(values[5]);
-    result.checker_slot_rva = static_cast<std::uint32_t>(values[6]);
-    result.dispatch_call_slot_rva = static_cast<std::uint32_t>(values[7]);
-    result.dispatch_ret_slot_rva = static_cast<std::uint32_t>(values[8]);
+    result.checker_slot_rva = static_cast<std::uint32_t>(values[12]);
+    result.dispatch_call_slot_rva = static_cast<std::uint32_t>(values[13]);
+    result.dispatch_ret_slot_rva = static_cast<std::uint32_t>(values[14]);
     return result;
 }
 

@@ -47,12 +47,26 @@ $a = Test-Arm64xBuildManifest $ManifestA
 $b = Test-Arm64xBuildManifest $ManifestB
 $ea = Read-Evidence $EvidenceA $ManifestA $a
 $eb = Read-Evidence $EvidenceB $ManifestB $b
+if ($a.outputs.host.sha256 -cne $b.outputs.host.sha256) {
+    $hostA = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($ManifestA))) $a.outputs.host.path
+    $hostB = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($ManifestB))) $b.outputs.host.path
+    $bytesA = [IO.File]::ReadAllBytes($hostA)
+    $bytesB = [IO.File]::ReadAllBytes($hostB)
+    $differences = [Collections.Generic.List[string]]::new()
+    $limit = [Math]::Min($bytesA.Length, $bytesB.Length)
+    for ($index = 0; $index -lt $limit -and $differences.Count -lt 32; ++$index) {
+        if ($bytesA[$index] -ne $bytesB[$index]) {
+            $differences.Add(('{0:x8}:{1:x2}/{2:x2}' -f $index, $bytesA[$index], $bytesB[$index]))
+        }
+    }
+    Fail "normalized hostSha256 differs between clean builds; sizes=$($bytesA.Length)/$($bytesB.Length); firstBytes=$($differences -join ',')"
+}
 $comparisons = [ordered]@{
     producerLock = @($a.producerLock, $b.producerLock)
     source = @((Canonical $a.source), (Canonical $b.source))
-    outputs = @((Canonical $a.outputs), (Canonical $b.outputs))
     dllSha256 = @($a.outputs.dll.sha256, $b.outputs.dll.sha256)
     hostSha256 = @($a.outputs.host.sha256, $b.outputs.host.sha256)
+    outputs = @((Canonical $a.outputs), (Canonical $b.outputs))
     parser = @((Canonical $ea.parser), (Canonical $eb.parser))
 }
 foreach ($name in $comparisons.Keys) {

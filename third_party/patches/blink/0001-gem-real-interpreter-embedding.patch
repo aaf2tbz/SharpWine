@@ -1,122 +1,9 @@
-diff --git a/blink/machine.h b/blink/machine.h
-index be17a8a..ffc24c2 100644
---- a/blink/machine.h
-+++ b/blink/machine.h
-@@ -440,0 +441 @@ struct Machine {               //
-+  bool gemembed;                         // structured embedding mode
-@@ -479,0 +481 @@ nexgen32e_f GetOp(long);
-+bool GemIsAllowedHandler(nexgen32e_f);
-diff --git a/blink/machine.c b/blink/machine.c
-index ad309eb..cd1e92b 100644
---- a/blink/machine.c
-+++ b/blink/machine.c
-@@ -2092,0 +2093,7 @@ nexgen32e_f GetOp(long op) {
-+bool GemIsAllowedHandler(nexgen32e_f handler) {
-+  return handler == OpNop || handler == OpMovZvqpIvqp ||
-+         handler == OpMovEvqpGvqp || handler == OpMovGvqpEvqp ||
-+         handler == OpBsuwiImm || handler == OpAlui || handler == OpJcc || handler == OpJmp ||
-+         handler == OpRet;
-+}
-+
-diff --git a/blink/throw.c b/blink/throw.c
-index a2f8a88..5943ee3 100644
---- a/blink/throw.c
-+++ b/blink/throw.c
-@@ -64,0 +65,6 @@ void HaltMachine(struct Machine *m, int code) {
-+  if (m->gemembed) {
-+    m->trapno = code;
-+    if (!m->faultaddr) m->faultaddr = m->ip;
-+    unassert(m->canhalt);
-+    siglongjmp(m->onhalt, code);
-+  }
-diff --git a/blink/gem_embed.h b/blink/gem_embed.h
-new file mode 100644
-index 0000000..b557c06
---- /dev/null
-+++ b/blink/gem_embed.h
-@@ -0,0 +1,76 @@
-+/*
-+ * Copyright 2022 Justine Alexandra Roberts Tunney
-+ * Copyright 2026 MetalSharp Wine Runtime contributors
-+ *
-+ * Permission to use, copy, modify, and/or distribute this software for
-+ * any purpose with or without fee is hereby granted, provided that the
-+ * above copyright notice and this permission notice appear in all copies.
-+ *
-+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
-+ * WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
-+ * WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
-+ * AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
-+ * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
-+ * PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-+ * PERFORMANCE OF THIS SOFTWARE.
-+ */
-+#ifndef BLINK_GEM_EMBED_H_
-+#define BLINK_GEM_EMBED_H_
-+#include <stddef.h>
-+#include <stdint.h>
-+#define BLINK_GEM_ABI_VERSION      1u
-+#define BLINK_GEM_MAX_SHADOW_PAGES 64u
-+enum blink_gem_access {
-+  BLINK_GEM_ACCESS_FETCH = 1,
-+  BLINK_GEM_ACCESS_READ = 2,
-+  BLINK_GEM_ACCESS_WRITE = 3
-+};
-+enum blink_gem_outcome {
-+  BLINK_GEM_RETIRED = 0,
-+  BLINK_GEM_MEMORY_FAULT = 1,
-+  BLINK_GEM_UNSUPPORTED = 2,
-+  BLINK_GEM_INVALID = 3
-+};
-+struct blink_gem_state {
-+  uint32_t abi_version, size;
-+  uint64_t gpr[16], rip, rflags;
-+  uint8_t xmm[16][16];
-+  uint32_t mxcsr;
-+  uint16_t fcw, fsw;
-+  uint8_t x87[8][16];
-+  uint64_t gs_base;
-+};
-+struct blink_gem_result {
-+  enum blink_gem_outcome outcome;
-+  uint32_t retired;
-+  uint64_t fault_address;
-+  enum blink_gem_access access;
-+  uint32_t memory_error, engine_status;
-+};
-+struct blink_gem_write {
-+  uint64_t address;
-+  const uint8_t* data;
-+  size_t size;
-+};
-+typedef uint32_t (*blink_gem_snapshot_fn)(void*, uint64_t, uint8_t[4096],
-+                                          uint32_t*);
-+typedef uint32_t (*blink_gem_validate_fn)(void*, uint64_t, size_t,
-+                                          enum blink_gem_access);
-+typedef uint32_t (*blink_gem_commit_fn)(void*, const struct blink_gem_write*,
-+                                        size_t, uint64_t*);
-+struct blink_gem_callbacks {
-+  uint32_t abi_version, size;
-+  blink_gem_snapshot_fn snapshot;
-+  blink_gem_validate_fn validate;
-+  blink_gem_commit_fn commit;
-+};
-+struct blink_gem_machine;
-+struct blink_gem_machine* blink_gem_machine_create(
-+    const struct blink_gem_callbacks*, void*);
-+void blink_gem_machine_destroy(struct blink_gem_machine*);
-+struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine*,
-+                                               const struct blink_gem_state*,
-+                                               struct blink_gem_state*);
-+const char* blink_gem_embedding_version(void);
-+#endif
 diff --git a/blink/gem_embed.c b/blink/gem_embed.c
 new file mode 100644
-index 0000000..0d92da7
+index 0000000..2708bb1
 --- /dev/null
 +++ b/blink/gem_embed.c
-@@ -0,0 +1,337 @@
+@@ -0,0 +1,427 @@
 +/*
 + * Copyright 2022 Justine Alexandra Roberts Tunney
 + * Copyright 2026 MetalSharp Wine Runtime contributors
@@ -141,6 +28,7 @@ index 0000000..0d92da7
 +#include <string.h>
 +
 +#include "blink/builtin.h"
++#include "blink/debug.h"
 +#include "blink/endian.h"
 +#include "blink/flag.h"
 +#include "blink/flags.h"
@@ -170,6 +58,10 @@ index 0000000..0d92da7
 +  void* opaque;
 +  struct shadow_page pages[BLINK_GEM_MAX_SHADOW_PAGES];
 +  size_t page_count;
++  struct blink_gem_trace_entry trace[BLINK_GEM_MAX_TRACE_ENTRIES];
++  uint32_t trace_count;
++  uint32_t trace_overflowed;
++  struct blink_gem_decode_attempt last_decode;
 +};
 +
 +static struct blink_gem_result result(enum blink_gem_outcome o) {
@@ -333,13 +225,20 @@ index 0000000..0d92da7
 +  struct blink_gem_write writes[BLINK_GEM_MAX_SHADOW_PAGES];
 +  size_t i, nwrites;
 +  uint32_t error = 0;
-+  int rc, retries;
++  int rc, retries, handler_id = 0;
 +  volatile int fetching;
 +  uint64_t fetch_address = 0, fetch_size = 0, commit_fault = 0;
 +  if (!g || !in || !out || in->abi_version != 1 || in->size != sizeof(*in) ||
 +      !canonical(in->rip) || !canonical(in->gpr[4]) || !canonical(in->gs_base))
 +    return result(BLINK_GEM_INVALID);
 +  m = g->machine;
++  /* Reset the machine-owned "last decode attempt" record at the start of
++   * every step.  Pre-decode faults, BLINK_GEM_INVALID short-circuits, and any
++   * path that returns before LoadInstruction succeeds will leave valid=false
++   * and an empty Blink-owned name. */
++  memset(&g->last_decode, 0, sizeof(g->last_decode));
++  g->last_decode.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
++  g->last_decode.size = sizeof(g->last_decode);
 +  for (retries = 0; retries < (int)BLINK_GEM_MAX_SHADOW_PAGES + 1; ++retries) {
 +    for (i = 0; i < g->page_count;) {
 +      if (refresh_page(g, g->pages + i, &error)) {
@@ -360,7 +259,23 @@ index 0000000..0d92da7
 +      LoadInstruction(m, m->ip);
 +      fetch_address = m->ip;
 +      fetch_size = Oplength(m->xedd->op.rde);
-+      if (!GemIsAllowedHandler(GetOp(Mopcode(m->xedd->op.rde)))) {
++      handler_id =
++          GemHandlerId(GetOp(Mopcode(m->xedd->op.rde)), m->xedd->op.rde);
++      /* Capture Blink's own decode dispatch result for the most recent
++       * LoadInstruction. handler_id is the reviewed allowlist id, or zero when
++       * outside that set; name is Blink's stable DescribeMopcode() mnemonic. */
++      g->last_decode.rip = (uint64_t)m->ip;
++      g->last_decode.mopcode = (uint32_t)Mopcode(m->xedd->op.rde);
++      g->last_decode.handler_id = (uint32_t)handler_id;
++      g->last_decode.valid = 1u;
++      {
++        const char* mnemonic = DescribeMopcode((int)g->last_decode.mopcode);
++        size_t i;
++        for (i = 0; i < sizeof(g->last_decode.name) - 1u && mnemonic[i]; ++i)
++          g->last_decode.name[i] = mnemonic[i];
++        g->last_decode.name[i] = '\0';
++      }
++      if (!handler_id) {
 +        m->canhalt = false;
 +        return result(BLINK_GEM_UNSUPPORTED);
 +      }
@@ -443,6 +358,14 @@ index 0000000..0d92da7
 +      return r;
 +    }
 +    export_state(m, in, out);
++    if (g->trace_count < BLINK_GEM_MAX_TRACE_ENTRIES) {
++      g->trace[g->trace_count].rip = fetch_address;
++      g->trace[g->trace_count].handler_id = (uint32_t)handler_id;
++      g->trace[g->trace_count].reserved = 0;
++      ++g->trace_count;
++    } else {
++      g->trace_overflowed = 1;
++    }
 +    r = result(BLINK_GEM_RETIRED);
 +    r.retired = 1;
 +    return r;
@@ -454,3 +377,269 @@ index 0000000..0d92da7
 +const char* blink_gem_embedding_version(void) {
 +  return "blink-f006a4fc-real-interpreter-gem-v1";
 +}
++void blink_gem_machine_trace_reset(struct blink_gem_machine* g) {
++  if (g) {
++    g->trace_count = 0;
++    g->trace_overflowed = 0;
++    memset(&g->last_decode, 0, sizeof(g->last_decode));
++    g->last_decode.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
++    g->last_decode.size = sizeof(g->last_decode);
++  }
++}
++bool blink_gem_machine_trace_info(const struct blink_gem_machine* g,
++                                  struct blink_gem_trace_info* out) {
++  if (!g || !out || out->abi_version != BLINK_GEM_TRACE_ABI_VERSION ||
++      out->size != sizeof(*out))
++    return false;
++  out->count = g->trace_count;
++  out->overflowed = g->trace_overflowed;
++  return true;
++}
++bool blink_gem_machine_trace_read(const struct blink_gem_machine* g, size_t index,
++                                  struct blink_gem_trace_entry* out) {
++  if (!g || !out || index >= g->trace_count) return false;
++  *out = g->trace[index];
++  return true;
++}
++const char* blink_gem_handler_name(uint32_t id) {
++  switch (id) {
++    case BLINK_GEM_HANDLER_OP_NOP: return "OpNop";
++    case BLINK_GEM_HANDLER_OP_MOV_ZVQP_IVQP: return "OpMovZvqpIvqp";
++    case BLINK_GEM_HANDLER_OP_MOV_EVQP_GVQP: return "OpMovEvqpGvqp";
++    case BLINK_GEM_HANDLER_OP_MOV_GVQP_EVQP: return "OpMovGvqpEvqp";
++    case BLINK_GEM_HANDLER_OP_BSUWI_IMM: return "OpBsuwiImm";
++    case BLINK_GEM_HANDLER_OP_ALUI: return "OpAlui";
++    case BLINK_GEM_HANDLER_OP_JCC: return "OpJcc";
++    case BLINK_GEM_HANDLER_OP_JMP: return "OpJmp";
++    case BLINK_GEM_HANDLER_OP_RET: return "OpRet";
++    case BLINK_GEM_HANDLER_OP_LEA_GVQP_M: return "OpLeaGvqpM";
++    case BLINK_GEM_HANDLER_OP_CALL_JVDS: return "OpCallJvds";
++    case BLINK_GEM_HANDLER_OP_ALU_FLIP: return "OpAluFlip";
++    default: return "OpUnknown";
++  }
++}
++bool blink_gem_machine_decode_attempt_info(const struct blink_gem_machine* g,
++                                           struct blink_gem_decode_attempt* out) {
++  if (!g || !out || out->abi_version != BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION ||
++      out->size != sizeof(*out))
++    return false;
++  *out = g->last_decode;
++  return true;
++}
++const char* blink_gem_decode_attempt_name(const struct blink_gem_decode_attempt* a) {
++  if (!a || !a->valid || a->name[0] == '\0')
++    return "OpInvalid";
++  return a->name;
++}
+diff --git a/blink/gem_embed.h b/blink/gem_embed.h
+new file mode 100644
+index 0000000..e366d86
+--- /dev/null
++++ b/blink/gem_embed.h
+@@ -0,0 +1,157 @@
++/*
++ * Copyright 2022 Justine Alexandra Roberts Tunney
++ * Copyright 2026 MetalSharp Wine Runtime contributors
++ *
++ * Permission to use, copy, modify, and/or distribute this software for
++ * any purpose with or without fee is hereby granted, provided that the
++ * above copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
++ * WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
++ * WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
++ * AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
++ * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
++ * PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
++ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
++ * PERFORMANCE OF THIS SOFTWARE.
++ */
++#ifndef BLINK_GEM_EMBED_H_
++#define BLINK_GEM_EMBED_H_
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++#define BLINK_GEM_ABI_VERSION       1u
++#define BLINK_GEM_MAX_SHADOW_PAGES  64u
++#define BLINK_GEM_TRACE_ABI_VERSION 1u
++#define BLINK_GEM_MAX_TRACE_ENTRIES 256u
++#define BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION 1u
++#define BLINK_GEM_DECODE_ATTEMPT_NAME_BYTES  32u
++/*
++ * Decoder-owned handler identity.  Each id names the exact Blink handler that
++ * Blink's own decode dispatch (GetOp(Mopcode(rde))) selected for a retired
++ * instruction; the numeric values match GemHandlerId() in blink/machine.c.
++ * The trace is diagnostic-only evidence.  It never influences execution,
++ * allowlisting, or committed architectural state.
++ */
++enum blink_gem_handler_id {
++  BLINK_GEM_HANDLER_UNKNOWN = 0,
++  BLINK_GEM_HANDLER_OP_NOP = 1,
++  BLINK_GEM_HANDLER_OP_MOV_ZVQP_IVQP = 2,
++  BLINK_GEM_HANDLER_OP_MOV_EVQP_GVQP = 3,
++  BLINK_GEM_HANDLER_OP_MOV_GVQP_EVQP = 4,
++  BLINK_GEM_HANDLER_OP_BSUWI_IMM = 5,
++  BLINK_GEM_HANDLER_OP_ALUI = 6,
++  BLINK_GEM_HANDLER_OP_JCC = 7,
++  BLINK_GEM_HANDLER_OP_JMP = 8,
++  BLINK_GEM_HANDLER_OP_RET = 9,
++  BLINK_GEM_HANDLER_OP_LEA_GVQP_M = 10,
++  BLINK_GEM_HANDLER_OP_CALL_JVDS = 11,
++  BLINK_GEM_HANDLER_OP_ALU_FLIP = 12
++};
++struct blink_gem_trace_entry {
++  uint64_t rip;
++  uint32_t handler_id;
++  uint32_t reserved;
++};
++struct blink_gem_trace_info {
++  uint32_t abi_version, size;
++  uint32_t count, overflowed;
++};
++/*
++ * Decoder-owned "last decode attempt" record.  Captured immediately after
++ * Blink's own successful LoadInstruction and reset at the start of every
++ * step.  For unsupported opcodes (e.g. LEA / CALL) the Blink-owned name
++ * (DescribeMopcode(Mopcode(rde))) is still populated and handler_id is 0.
++ * For pre-decode faults (sigsetjmp returning without a successful
++ * LoadInstruction), valid is 0 and name is empty.  The name buffer is
++ * bounded by BLINK_GEM_DECODE_ATTEMPT_NAME_BYTES (>= longest Blink mnemonic
++ * + NUL) and is always NUL-terminated.  This record is diagnostic-only
++ * evidence; it never influences execution, allowlisting, or committed
++ * architectural state.
++ */
++struct blink_gem_decode_attempt {
++  uint32_t abi_version;
++  uint32_t size;
++  uint64_t rip;
++  uint32_t mopcode;
++  uint32_t handler_id;
++  uint8_t  valid;
++  uint8_t  reserved[3];
++  char     name[BLINK_GEM_DECODE_ATTEMPT_NAME_BYTES];
++};
++enum blink_gem_access {
++  BLINK_GEM_ACCESS_FETCH = 1,
++  BLINK_GEM_ACCESS_READ = 2,
++  BLINK_GEM_ACCESS_WRITE = 3
++};
++enum blink_gem_outcome {
++  BLINK_GEM_RETIRED = 0,
++  BLINK_GEM_MEMORY_FAULT = 1,
++  BLINK_GEM_UNSUPPORTED = 2,
++  BLINK_GEM_INVALID = 3
++};
++struct blink_gem_state {
++  uint32_t abi_version, size;
++  uint64_t gpr[16], rip, rflags;
++  uint8_t xmm[16][16];
++  uint32_t mxcsr;
++  uint16_t fcw, fsw;
++  uint8_t x87[8][16];
++  uint64_t gs_base;
++};
++struct blink_gem_result {
++  enum blink_gem_outcome outcome;
++  uint32_t retired;
++  uint64_t fault_address;
++  enum blink_gem_access access;
++  uint32_t memory_error, engine_status;
++};
++struct blink_gem_write {
++  uint64_t address;
++  const uint8_t* data;
++  size_t size;
++};
++typedef uint32_t (*blink_gem_snapshot_fn)(void*, uint64_t, uint8_t[4096],
++                                          uint32_t*);
++typedef uint32_t (*blink_gem_validate_fn)(void*, uint64_t, size_t,
++                                          enum blink_gem_access);
++typedef uint32_t (*blink_gem_commit_fn)(void*, const struct blink_gem_write*,
++                                        size_t, uint64_t*);
++struct blink_gem_callbacks {
++  uint32_t abi_version, size;
++  blink_gem_snapshot_fn snapshot;
++  blink_gem_validate_fn validate;
++  blink_gem_commit_fn commit;
++};
++struct blink_gem_machine;
++struct blink_gem_machine* blink_gem_machine_create(
++    const struct blink_gem_callbacks*, void*);
++void blink_gem_machine_destroy(struct blink_gem_machine*);
++struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine*,
++                                               const struct blink_gem_state*,
++                                               struct blink_gem_state*);
++const char* blink_gem_embedding_version(void);
++/*
++ * Bounded, machine-owned, decode-order handler trace.  Storage is fixed at
++ * BLINK_GEM_MAX_TRACE_ENTRIES, is never wrapped, and sets a sticky overflow
++ * flag on the first entry that cannot be retained.  One entry is appended per
++ * retired instruction; unsupported/faulted/pre-decode outcomes append nothing.
++ */
++void blink_gem_machine_trace_reset(struct blink_gem_machine*);
++bool blink_gem_machine_trace_info(const struct blink_gem_machine*,
++                                  struct blink_gem_trace_info*);
++bool blink_gem_machine_trace_read(const struct blink_gem_machine*, size_t,
++                                  struct blink_gem_trace_entry*);
++const char* blink_gem_handler_name(uint32_t);
++/*
++ * Decoder-owned "last decode attempt" diagnostic query.  Copies the most
++ * recent machine-owned decode record; out->abi_version and out->size must
++ * match BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION and sizeof(struct
++ * blink_gem_decode_attempt).  Lifetime of the returned data is bound to the
++ * machine; the helper copies all fields, including the Blink-owned name,
++ * into caller-provided storage.
++ */
++bool blink_gem_machine_decode_attempt_info(const struct blink_gem_machine*,
++                                           struct blink_gem_decode_attempt*);
++const char* blink_gem_decode_attempt_name(const struct blink_gem_decode_attempt*);
++#endif
+diff --git a/blink/machine.c b/blink/machine.c
+index ad309eb..42a6d1b 100644
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2092,0 +2093,24 @@ nexgen32e_f GetOp(long op) {
++int GemHandlerId(nexgen32e_f handler, long rde) {
++  if (handler == OpNop) return 1;
++  if (handler == OpMovZvqpIvqp) return 2;
++  if (handler == OpMovEvqpGvqp) return 3;
++  if (handler == OpMovGvqpEvqp) return 4;
++  if (handler == OpBsuwiImm) return 5;
++  if (handler == OpAlui) return 6;
++  if (handler == OpJcc) return 7;
++  if (handler == OpJmp) return 8;
++  if (handler == OpRet) return 9;
++  if (handler == OpLeaGvqpM) return 10;
++  if (handler == OpCallJvds) return 11;
++  /* Narrow the shared ALU handler to the authentic register-register REX.W
++   * ADD Gvqp,Evqp. Other widths, memory forms, and operations remain rejected. */
++  if (handler == OpAluFlip && Mopcode(rde) == 0x003 && Rexw(rde) &&
++      IsModrmRegister(rde))
++    return 12;
++  return 0;
++}
++
++bool GemIsAllowedHandler(nexgen32e_f handler, long rde) {
++  return GemHandlerId(handler, rde) != 0;
++}
++
+diff --git a/blink/machine.h b/blink/machine.h
+index be17a8a..b0507cb 100644
+--- a/blink/machine.h
++++ b/blink/machine.h
+@@ -440,0 +441 @@ struct Machine {               //
++  bool gemembed;                         // structured embedding mode
+@@ -479,0 +481,2 @@ nexgen32e_f GetOp(long);
++bool GemIsAllowedHandler(nexgen32e_f, long);
++int GemHandlerId(nexgen32e_f, long);
+diff --git a/blink/throw.c b/blink/throw.c
+index a2f8a88..5943ee3 100644
+--- a/blink/throw.c
++++ b/blink/throw.c
+@@ -64,0 +65,6 @@ void HaltMachine(struct Machine *m, int code) {
++  if (m->gemembed) {
++    m->trapno = code;
++    if (!m->faultaddr) m->faultaddr = m->ip;
++    unassert(m->canhalt);
++    siglongjmp(m->onhalt, code);
++  }

@@ -145,15 +145,19 @@ GEM-owned fallback.
 - [x] Implement a bounded transition frame for ARM64EC return LR, x64 return address, aligned SP, and original x64 SP.
 - [x] Implement the evidenced dispatch-call and dispatch-ret stops used by the accepted integer path.
 - [x] Execute ARM64EC → exit thunk → Blink x64 → entry thunk → ARM64EC.
-- [ ] Add callbacks, tail calls, nested transitions, memory faults, and unsupported-instruction cases.
+- [x] Add callbacks, tail calls, nested transitions, memory faults, and unsupported-instruction cases.
 - [x] Compare every final canonical field and touched stack byte across repeated accepted-path runs.
 - [x] Keep Blink JIT disabled; any future generation remains process-serialized until concurrency is proven safe.
 - [x] Route all x64 memory effects through the proven memory-order and guest-page contracts; a byte-prefix scanner is not an acceptable decoder.
 - [x] Perform native instruction-cache maintenance only when host executable code is created or modified; the interpreter creates none and adds no transition `ISB`.
 
-**Exit gate:** in progress — CI run `29177433405` passed the authentic integer round trip, both
-cross-cutting suites, native ARM64/zero-Rosetta audits, and the supported local sanitizer checks.
-Callback and nested-transition coverage remains open, so Milestone 5 is not complete.
+**Exit gate:** complete — final implementation CI run
+[`29187287010`](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/actions/runs/29187287010)
+passed two reproducible native Windows ARM64 fixture builds, the strict one-day artifact handoff,
+the complete authentic transition/failure/oracle matrix on native macOS ARM64, Linux GCC/Clang and
+Apple Clang, x86 TSO, 4 KiB-on-16 KiB page isolation, policy/format/provenance/leakage checks, and
+zero-Rosetta audits. Local Apple Clang ASan+UBSan passed the complete 15-test matrix, and Apple
+`leaks` reported zero leaks. ADR 0008 is Accepted; Milestone 5 is complete.
 
 ## Milestone 6 — Release hardening
 

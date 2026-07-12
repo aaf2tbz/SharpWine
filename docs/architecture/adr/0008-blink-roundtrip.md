@@ -1,7 +1,8 @@
 # ADR 0008: Deterministic ARM64EC to Blink x64 round trip
 
 Date: 2026-07-11
-Status: Proposed
+Accepted: 2026-07-12
+Status: Accepted
 Issue: [#14](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/issues/14)
 
 ## Context
@@ -20,10 +21,11 @@ the pinned Blink revision's internal `Machine`, memory, execution, fault, dispat
 facilities can satisfy the same ownership contract. Names in existing boundary enums are not
 proof of dispatcher semantics.
 
-This ADR proposes the integration plan and acceptance contract. It does not accept an adapter or
-claim unreviewed Blink behavior.
+This ADR records the accepted integration and acceptance contract. The adapter and broker remain
+limited to the source-reviewed, evidence-backed behavior described below; no behavior is accepted
+merely because a private engine surface can express it.
 
-## Proposed decision
+## Decision
 
 ### Stable GEM x64-engine boundary
 
@@ -201,46 +203,46 @@ final oracle; no generated artifact enters the checkout.
 - Run repository policy, formatting, licensing/provenance, generated-artifact leakage, clean build,
   and the full CTest matrix.
 
-**Gate:** all validation items below pass repeatedly; otherwise this ADR remains Proposed.
+**Gate:** all validation items below pass repeatedly; failure at this gate would have prevented
+acceptance.
 
 ## Validation checklist
 
-- [ ] A stable GEM x64-engine interface hides Blink aliases, `Machine`, JIT, and host-private state.
-- [ ] Complete GPR, RIP/PC, RSP/SP, RFLAGS/NZCV, SIMD, FPCR/FPSR/MXCSR, x87/MM, TEB/GS, stack,
+- [x] A stable GEM x64-engine interface hides Blink aliases, `Machine`, JIT, and host-private state.
+- [x] Complete GPR, RIP/PC, RSP/SP, RFLAGS/NZCV, SIMD, FPCR/FPSR/MXCSR, x87/MM, TEB/GS, stack,
       and guest-memory synchronization is transactional and exact.
-- [ ] XMM6-XMM15 and all x87/MM state survive every applicable entry, exit, callback, and nesting
+- [x] XMM6-XMM15 and all x87/MM state survive every applicable entry, exit, callback, and nesting
       path.
-- [ ] GEM alone owns bounded instruction budgets, explicit stops, checked faults, guest mappings,
+- [x] GEM alone owns bounded instruction budgets, explicit stops, checked faults, guest mappings,
       and bounded transition frames.
-- [ ] Frames preserve evidenced ARM64EC return LR, x64 return address, aligned SP, original x64 SP,
+- [x] Frames preserve evidenced ARM64EC return LR, x64 return address, aligned SP, original x64 SP,
       and nested parent/depth state without changing the 720-byte ABI.
-- [ ] Documented dispatch-call and dispatch-ret stops use exact evidence-backed register, stack,
+- [x] Documented dispatch-call and dispatch-ret stops use exact evidence-backed register, stack,
       target, and return contracts; unknown variants fail closed.
-- [ ] The accepting round trip uses the authentic linked metadata/checker/exit-thunk/x64
+- [x] The accepting round trip uses the authentic linked metadata/checker/exit-thunk/x64
       target/entry-descriptor/entry-thunk path, with all generated artifacts build-tree-only.
-- [ ] Direct call and mandatory checked indirect-call cases stop and return deterministically.
-- [ ] Callback, tail-call, nested-transition, and normal-return cases stop and return deterministically.
-- [ ] Memory/protection faults, unsupported instructions, budget expiry, malformed metadata, and
+- [x] Direct call and mandatory checked indirect-call cases stop and return deterministically.
+- [x] Callback, tail-call, nested-transition, and normal-return cases stop and return deterministically.
+- [x] Memory/protection faults, unsupported instructions, budget expiry, malformed metadata, and
       frame mismatches produce exact fail-closed stops without partial state or memory effects.
-- [ ] `x[18] == teb` at every ARM64EC instruction and transition boundary, and x64 GS base agrees;
+- [x] `x[18] == teb` at every ARM64EC instruction and transition boundary, and x64 GS base agrees;
       Darwin x18 is never canonical.
-- [ ] Every x64 memory effect uses ADR 0006 ordering and ADR 0007 checked 4 KiB-page semantics,
+- [x] Every x64 memory effect uses ADR 0006 ordering and ADR 0007 checked 4 KiB-page semantics,
       including cross-page operations and canonical low addresses; no byte-prefix scanner is used.
-- [ ] The bounded interpreter passes as the correctness fallback; every demonstrated optimized path
-      produces the identical oracle or falls back deterministically.
-- [ ] Blink JIT host-code generation/modification is process-serialized, including all shared JIT
-      state, until a separate concurrency decision is accepted.
-- [ ] Cache maintenance occurs only for evidenced host executable-code creation/modification; there
+- [x] The bounded interpreter passes as the correctness fallback and Blink JIT remains disabled.
+- [x] Any future Blink JIT host-code generation/modification remains required to serialize all shared
+      JIT state until a separate concurrency decision is accepted.
+- [x] Cache maintenance occurs only for evidenced host executable-code creation/modification; there
       is no unconditional transition `ISB` or unproven private control.
-- [ ] The final oracle compares every expected register, flag, SIMD lane, FP/x87 field, stack byte,
+- [x] The final oracle compares every expected register, flag, SIMD lane, FP/x87 field, stack byte,
       transition frame, stop detail, and guest-memory mutation across repeated runs.
-- [ ] Existing x86 memory-order conformance and 4 KiB-on-16 KiB page-isolation suites continue to
+- [x] Existing x86 memory-order conformance and 4 KiB-on-16 KiB page-isolation suites continue to
       pass repeatedly with hardware TSO disabled or unavailable.
-- [ ] The process and every Mach-O dependency are native ARM64 and zero-Rosetta audits pass.
-- [ ] AddressSanitizer and UndefinedBehaviorSanitizer runs pass where the platform and dependencies
+- [x] The process and every Mach-O dependency are native ARM64 and zero-Rosetta audits pass.
+- [x] AddressSanitizer and UndefinedBehaviorSanitizer runs pass where the platform and dependencies
       support them; unsupported sanitizer combinations are explicitly reported, not silently
       skipped.
-- [ ] Linux GCC/Clang, macOS Apple Clang, native Windows ARM64 fixture/probe, formatting,
+- [x] Linux GCC/Clang, macOS Apple Clang, native Windows ARM64 fixture/probe, formatting,
       repository-policy, licensing/provenance, leakage, and full test gates pass.
 
 ## Phase 0–2 implementation increment
@@ -261,6 +263,34 @@ re-protection succeeds. Raw x87/MM slots remain a sidecar. Non-x64-mapped ARM re
 the canonical context across transient x64 synchronization; GEM does not infer or pack x6, x7,
 x9-x12, x15-x17, or LR into x87 slots. Handlers not proven independent of x87/MM fail closed before
 execution.
+
+In addition to the allowlist, the adapter exposes two diagnostic surfaces that are sourced
+exclusively from Blink's own decode dispatch (`GetOp(Mopcode(rde))` plus `DescribeMopcode()` in
+`blink/name.c`) and never alter execution, allowlisting, or committed architectural state. The
+retired-handler trace is a machine-owned, bounded (`256`-entry), sticky-overflow, non-wrapping array
+of `GemHandlerId(GetOp(Mopcode(rde)))` ids and RIPs, with exactly one entry appended per retired
+instruction and nothing for unsupported / faulted / pre-decode outcomes. The decoder-owned "last
+decode attempt" record is reset on every step, populated only after a successful `LoadInstruction`,
+and carries Blink's own `Mopcode(rde)`, the `DescribeMopcode()` mnemonic, and the `GemHandlerId()`
+allowlist id (or `0` when the selected handler is outside the reviewed manifest). Reviewed LEA
+`0x8d` ↦ `OpLeaGvqpM` and CALL `0xe8` ↦ `OpCallJvds` carry ids 10 and 11. ID 12 is
+restricted to Blink mopcode `0x003` (`OpAluwFlip`) with REX.W and register-register ModR/M;
+other widths, memory forms, and opcodes sharing the `OpAluFlip` pointer remain rejected. Both
+records are queried through private
+wrapper
+functions with explicit `abi_version` / `size` validation; trace storage is runtime-owned while
+decode-attempt records are copied into caller-owned storage. The provenance `handlerTrace` and
+`decodeAttempt` blocks pin their capacity,
+identity source, and overflow semantics.
+
+The reviewed manifest also admits `OpLeaGvqpM`, `OpCallJvds`, and the exact `0x003`
+`OpAluFlip` decoder variant for the authentic Issue 14.5 paths. LEA changes only its destination
+GPR, while the ALU variant updates its destination GPR and integer flags. Relative CALL uses
+Blink's existing checked stack
+write, which remains inside the embedding transaction: the return record and CPU effects commit
+together or roll back together. Conformance preserves raw x87/MM state for all three handlers, and
+the
+coordinator classifies the post-CALL PC with checked ARM64X metadata before another x64 fetch.
 
 The interpreter owns no decoded-code or JIT cache: its bounded page shadow is refreshed before
 each instruction. `gem_x64_runtime_invalidate_code` is therefore deliberately a no-op in this
@@ -288,10 +318,10 @@ maintains one GEM memory, a generation cookie rather than a host pointer, global
 accounting, and x18/TEB checks. Any failure restores the entry CPU context and the broker-inserted
 return record, clears its cookie/frame, and leaves the runtime reusable; memory effects of already
 retired instructions and one-shot guard consumption retain their normal per-instruction semantics.
-The deliberately narrow local Windows-VM/macOS evidence path is not acceptance: ADR 0008 remains
-Proposed and no Milestone 5 checkbox changes until two clean CI
-producer builds cross the strict ephemeral handoff and pass the native macOS consumer end to end.
-Callbacks, nesting, general returns, and the broader path matrix remain Phase 4.
+The deliberately narrow local Windows-VM/macOS evidence path was not acceptance: two clean CI
+producer builds still had to cross the strict ephemeral handoff and pass the native macOS consumer
+end to end. Callbacks, nesting, general returns, and the broader path matrix remained Phase 4 at
+that point.
 
 CI run `29177433405` is the accepted Phase 3 evidence, but not the final ADR gate. Two clean native
 Windows ARM64 builds produced the same Microsoft-linked DLL SHA-256
@@ -302,13 +332,48 @@ and the hash-bound one-day artifact passed the native macOS ARM64 consumer. That
 Blink, preserving the 720-byte context, x18/TEB, x87/MM and nonvolatile SIMD state, validating the
 aligned/original stack fields, balancing its frame/cookie, and matching the complete final context
 and touched stack page. Zero-Rosetta, interpreter-only, compiler, policy, provenance, leakage,
-memory-order, and page-isolation gates passed. ADR 0008 remains Proposed until Phase 4 callback,
-nesting, general-return, and negative hybrid paths satisfy the remaining checklist.
+memory-order, and page-isolation gates passed. That run remained a Phase 3 result pending the Phase
+4 callback, nesting, general-return, and negative hybrid matrix.
 
-Deterministic
-allocation-failure injection is not exposed by the pinned embedding or GEM allocator and is
-therefore explicitly unsupported in this increment; tests do not introduce nondeterministic host
-out-of-memory pressure as a substitute.
+## Phase 4 acceptance evidence
+
+Final implementation run
+[`29187287010`](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/actions/runs/29187287010)
+passed every job for PR head `7c81cd1cedbbc9241a94a59ea2db8077c5ec4f71` (GitHub test-merge
+`6bfcd1ba28e917421da0c12af7da0c1e3da83a14`). Two absent Windows ARM64 build
+directories independently produced the same authentic DLL SHA-256
+`b6e5d2c1e388bc1e885ff05a240d3a873c3e25dc38a55fc563dea076a1798a4c`. The
+one-day run-scoped artifact had Actions service digest
+`sha256:f2628786b74d9cc5e3f9789a7ecb3d9be24a850ddba729596abe4c5e6d5bcd6e`; its
+strict inner manifest bound every allowed file, source hash, producer lock, and Git test-merge SHA.
+The native Windows oracle returned round trip `30`, direct `47`, callback/resume `82`, tail
+`23120`, and nested `85` for both clean builds.
+
+The native macOS ARM64 consumer validated the service and inner digests before use, rebuilt pinned
+Dynarmic and the pinned Blink interpreter, and passed direct, checked-indirect, callback/resume,
+normal-return, explicit-tail, depth-two nested, malformed metadata/frame/cookie/depth,
+unsupported-instruction, exact fault, exhaustive sub-success budget, rollback, guard-consumption,
+and runtime-reuse cases. Every accepted path compares the complete 720-byte canonical context,
+including GPR, flag, SIMD/FP, MXCSR, and raw x87/MM state, plus the complete touched stack page and
+immutable guest pages. Repeated paths are deterministic, all broker frames balance to depth zero,
+and all targets remain checked-metadata classified.
+
+The same run passed Linux GCC and Clang, Apple Clang, formatting, policy, provenance and leakage,
+x86 TSO, 100 repeated 4 KiB-on-16 KiB page-isolation runs, native ARM64 engine conformance, full
+selected CTest, JIT-disabled verification, and zero-Rosetta Mach-O/process audits. A fresh local
+native ARM64 clean build passed all 15 tests. Apple Clang AddressSanitizer plus
+UndefinedBehaviorSanitizer instrumentation of GEM and Dynarmic also passed all 15 tests with
+halt-on-error enabled, including the full authentic hybrid matrix; Blink's pinned external build
+retained its separately audited upstream flags. LeakSanitizer explicitly reports that leak
+detection is unsupported on
+this macOS platform, so it was not silently treated as coverage; Apple `leaks` instead reported
+`0 leaks for 0 total leaked bytes` for the authentic matrix.
+
+Deterministic allocation-failure injection is not exposed by the pinned embedding or GEM allocator
+and remains explicitly unsupported; tests do not introduce nondeterministic host out-of-memory
+pressure as a substitute. General floating-point, aggregate, variadic, exception/APC, syscall,
+Unix-call, Wine-startup, JIT, and concurrent-transition behavior remains outside this accepted
+integer-only milestone.
 
 ## Consequences
 

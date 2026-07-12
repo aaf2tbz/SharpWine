@@ -44,8 +44,9 @@ if(BUILD_AS_ARM64X STREQUAL "ARM64EC")
   add_custom_command(
     OUTPUT "${x64_object}"
     COMMAND "${MSWR_X64_CL}" /nologo /c /W4 /WX /O2 /GS- /Zl /guard:cf
-            "/Fo${x64_object}" "${CMAKE_CURRENT_SOURCE_DIR}/fixture_x64.c"
-    DEPENDS fixture_x64.c
+            /DARM64X_FIXTURE_EXPORTS "/Fo${x64_object}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixture_x64.c"
+    DEPENDS fixture_x64.c fixture_api.h
     VERBATIM)
   add_custom_command(
     OUTPUT "${x64_roundtrip_object}"
@@ -59,8 +60,12 @@ if(BUILD_AS_ARM64X STREQUAL "ARM64EC")
 
   add_executable(arm64x_fixture_host host.c)
   target_compile_options(arm64x_fixture_host PRIVATE /W4 /WX /guard:cf)
-  target_link_options(arm64x_fixture_host PRIVATE /WX /DYNAMICBASE /GUARD:CF /Brepro)
-  target_link_libraries(arm64x_fixture_host PRIVATE arm64x_fixture)
+  get_filename_component(mswr_fixture_shared_temp "${CMAKE_BINARY_DIR}/../.." ABSOLUTE)
+  target_link_options(
+    arm64x_fixture_host
+    PRIVATE /WX /DYNAMICBASE /GUARD:CF /Brepro /DEBUG:NONE /INCREMENTAL:NO
+            "/PDB:${mswr_fixture_shared_temp}/arm64x_fixture_host.pdb"
+            /PDBALTPATH:arm64x_fixture_host.pdb)
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
