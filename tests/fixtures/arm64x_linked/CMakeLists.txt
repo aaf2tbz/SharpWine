@@ -66,7 +66,6 @@ if(BUILD_AS_ARM64X STREQUAL "ARM64EC")
     PRIVATE /WX /DYNAMICBASE /GUARD:CF /Brepro /DEBUG:NONE /INCREMENTAL:NO
             "/PDB:${mswr_fixture_shared_temp}/arm64x_fixture_host.pdb"
             /PDBALTPATH:arm64x_fixture_host.pdb)
-  target_link_libraries(arm64x_fixture_host PRIVATE arm64x_fixture)
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
