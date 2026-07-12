@@ -269,7 +269,10 @@ if(BUILD_TESTING)
             "${MSWR_ARM64X_ROUNDTRIP_ARTIFACT_DIR}/arm64x_fixture.dll")
         set(mswr_roundtrip_map
             "${MSWR_ARM64X_ROUNDTRIP_ARTIFACT_DIR}/arm64ec-entry-map.txt")
-        if(NOT EXISTS "${mswr_roundtrip_dll}" OR NOT EXISTS "${mswr_roundtrip_map}")
+        set(mswr_roundtrip_native_oracle
+            "${MSWR_ARM64X_ROUNDTRIP_ARTIFACT_DIR}/native-evidence.json")
+        if(NOT EXISTS "${mswr_roundtrip_dll}" OR NOT EXISTS "${mswr_roundtrip_map}" OR
+                NOT EXISTS "${mswr_roundtrip_native_oracle}")
             message(FATAL_ERROR "Issue #14 artifact directory is missing validated inputs")
         endif()
         add_executable(arm64x_roundtrip_conformance tests/arm64x_roundtrip_conformance.cpp)
@@ -279,7 +282,7 @@ if(BUILD_TESTING)
         target_compile_features(arm64x_roundtrip_conformance PRIVATE cxx_std_17)
         mswr_enable_warnings(arm64x_roundtrip_conformance)
         add_test(NAME gem.arm64x_roundtrip COMMAND arm64x_roundtrip_conformance
-            "${mswr_roundtrip_dll}" "${mswr_roundtrip_map}")
+            "${mswr_roundtrip_dll}" "${mswr_roundtrip_map}" "${mswr_roundtrip_native_oracle}")
         set_tests_properties(gem.arm64x_roundtrip PROPERTIES
             LABELS "zero-rosetta;gem.engine;authentic-arm64x")
     endif()

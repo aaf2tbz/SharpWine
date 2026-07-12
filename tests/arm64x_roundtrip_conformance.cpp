@@ -17,6 +17,7 @@
 #include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <iterator>
 #include <map>
 #include <sstream>
 #include <string>
@@ -42,6 +43,28 @@ std::vector<std::uint8_t> read_binary(const char *path) {
     std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
     assert(input.read(reinterpret_cast<char *>(bytes.data()), size));
     return bytes;
+}
+
+struct NativeOracle {
+    std::uint64_t roundtrip_input;
+    std::uint64_t roundtrip_result;
+    std::uint64_t direct_result;
+    std::uint64_t callback_resume_result;
+    std::uint64_t tail_transfer_result;
+    std::uint64_t nested_result;
+};
+
+NativeOracle read_native_oracle(const char *path) {
+    std::ifstream input(path, std::ios::binary);
+    assert(input);
+    const std::string text((std::istreambuf_iterator<char>(input)),
+                           std::istreambuf_iterator<char>());
+    const std::string expected =
+        "{\"schemaVersion\":2,\"nativeMachine\":\"arm64\",\"roundtripInput\":12,"
+        "\"roundtripResult\":30,\"directResult\":47,\"callbackResumeResult\":82,"
+        "\"tailTransferResult\":23120,\"nestedResult\":85,\"passed\":true}\n";
+    assert(text == expected);
+    return {12U, 30U, 47U, 82U, 23120U, 85U};
 }
 
 std::map<std::string, std::uint32_t> read_map(const char *path) {
@@ -168,6 +191,31 @@ gem_thread_context initial_context(std::uint64_t caller) {
         context.x87[index].hi = UINT64_C(0x4000000000000000) + index;
     }
     return context;
+}
+
+std::uint64_t fnv1a(const std::uint8_t *data, std::size_t size);
+
+void fill_stack_oracle(gem_memory *memory, std::uint8_t seed) {
+    std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> bytes{};
+    for (std::size_t i = 0; i < bytes.size(); ++i)
+        bytes[i] = static_cast<std::uint8_t>(seed + i * 17U);
+    assert(gem_memory_write(memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE, bytes.data(),
+                            bytes.size()) == GEM_MEMORY_OK);
+}
+
+void assert_stack_oracle(const std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> &before,
+                         const std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> &after,
+                         std::uint64_t expected_hash, std::size_t first_touched,
+                         std::size_t last_touched) {
+    assert(first_touched <= last_touched && last_touched < after.size());
+    assert(fnv1a(after.data(), after.size()) == expected_hash);
+    assert(std::equal(before.begin(), before.begin() + first_touched, after.begin()));
+    assert(std::equal(before.begin() + last_touched + 1U, before.end(),
+                      after.begin() + last_touched + 1U));
+}
+
+void assert_context_oracle(const gem_thread_context &actual, const gem_thread_context &expected) {
+    assert(std::memcmp(&actual, &expected, sizeof(actual)) == 0);
 }
 /* Authentic ARM64X first-boundary transitions captured against the validated
  * issue14-5 evidence build. The expected stop RVA per entry prevents the
@@ -698,17 +746,31 @@ void assert_stop(gem_hybrid_runtime *runtime, gem_stop_reason reason,
 } // namespace
 
 int main(int argc, char **argv) {
-    assert(argc == 3 || argc == 4);
+    assert(argc == 4 || argc == 5);
     test_frame_contract_validation();
     const auto bytes = read_binary(argv[1]);
     const auto entries = read_map(argv[2]);
+    const auto native = read_native_oracle(argv[3]);
     auto harness = make_harness(bytes, entries);
     const auto config = runtime_config();
     const auto *metadata = gem_pe_arm64x_materialized_metadata(harness.materialized);
-    gem_thread_context expected_context{};
+    const std::array<std::uint64_t, 4> immutable_page_addresses{
+        {config.loaded_base + UINT64_C(0x2000), config.loaded_base + UINT64_C(0x3000),
+         config.loaded_base + UINT64_C(0x4000), config.loaded_base + UINT64_C(0x7000)}};
+    std::array<std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE>, 4> immutable_pages{};
+    for (std::size_t i = 0; i < immutable_pages.size(); ++i)
+        assert(gem_memory_read(harness.memory, immutable_page_addresses[i],
+                               immutable_pages[i].data(),
+                               immutable_pages[i].size()) == GEM_MEMORY_OK);
+    gem_thread_context roundtrip_oracle_context{};
     std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> expected_stack{};
 
-    /* Authentic normal-return and explicit-tail paths.  These exact linked
+    /* The native evidence supplies externally observed results. Full 720-byte
+     * contexts below combine those results with the linked instruction/thunk
+     * contract and ABI-preserved entry fields. Deterministic stack seeds plus
+     * full-page hashes cover every byte, while touched bounds prove no write
+     * escaped the linked stack footprint. */
+    /* Authentic normal-return and explicit-tail paths. These exact linked
      * addresses bind the x0=x8 handback to the retained fixture evidence. */
     {
         struct ReturnCase {
@@ -721,15 +783,22 @@ int main(int argc, char **argv) {
         const std::array<ReturnCase, 2> cases{{
             {GEM_HYBRID_RETURN_NORMAL, config.loaded_base + entries.at("direct"),
              config.loaded_base + UINT64_C(0x2840), config.loaded_base + UINT64_C(0x4080),
-             UINT64_C(47)},
+             native.direct_result},
             {GEM_HYBRID_RETURN_TAIL, config.loaded_base + entries.at("tailTransfer"),
              config.loaded_base + UINT64_C(0x2AB0), config.loaded_base + UINT64_C(0x4090),
-             UINT64_C(23120)},
+             native.tail_transfer_result},
         }};
         gem_hybrid_runtime *runtime = gem_hybrid_runtime_create(harness.memory, metadata, &config);
         assert(runtime);
         for (const auto &test : cases) {
+            fill_stack_oracle(harness.memory, test.mode == GEM_HYBRID_RETURN_NORMAL
+                                                  ? UINT8_C(0x21)
+                                                  : UINT8_C(0x42));
             gem_thread_context oracle{};
+            std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> stack_before_first{};
+            assert(gem_memory_read(harness.memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
+                                   stack_before_first.data(),
+                                   stack_before_first.size()) == GEM_MEMORY_OK);
             std::uint64_t successful_budget = 0U;
             for (unsigned iteration = 0; iteration < 100U; ++iteration) {
                 auto context = initial_context(test.requested);
@@ -748,9 +817,19 @@ int main(int argc, char **argv) {
                         static_cast<unsigned long long>(stats.arm64ec_instructions_retired),
                         static_cast<unsigned long long>(stats.x64_instructions_retired));
                 assert(reason == GEM_STOP_HOST_RETURN);
-                assert(context.x[0] == test.expected && context.pc == kHostReturn &&
-                       context.sp == entry.sp && context.x[30] == entry.x[30] &&
-                       context.x[18] == entry.x[18] && context.transition_cookie == 0U);
+                auto expected_context = entry;
+                expected_context.x[0] = test.expected;
+                expected_context.x[8] = test.expected;
+                expected_context.x[9] = kChecker;
+                expected_context.x[10] = config.loaded_base + UINT64_C(0x3C50);
+                expected_context.x[11] = test.target;
+                expected_context.x[12] = test.target;
+                expected_context.pc = kHostReturn;
+                expected_context.x64_rflags =
+                    test.mode == GEM_HYBRID_RETURN_NORMAL ? UINT64_C(0x100100A) : UINT64_C(0x100E);
+                expected_context.isa = GEM_ISA_ARM64EC;
+                expected_context.stop_reason = GEM_STOP_HOST_RETURN;
+                assert_context_oracle(context, expected_context);
                 assert(stats.checker_boundaries == 1U && stats.dispatch_call_boundaries == 0U &&
                        stats.x64_to_arm64ec_boundaries == 1U && stats.frame_pushes == 1U &&
                        stats.frame_pops == 1U && stats.maximum_frame_depth == 1U &&
@@ -760,12 +839,22 @@ int main(int argc, char **argv) {
                                        &record_after, sizeof(record_after)) == GEM_MEMORY_OK &&
                        record_after == entry.x[30]);
                 if (iteration == 0U) {
+                    std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> stack_after_first{};
+                    assert(gem_memory_read(harness.memory,
+                                           kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
+                                           stack_after_first.data(),
+                                           stack_after_first.size()) == GEM_MEMORY_OK);
+                    const auto expected_stack_hash = test.mode == GEM_HYBRID_RETURN_NORMAL
+                                                         ? UINT64_C(0x6D8559F8E8A96B24)
+                                                         : UINT64_C(0xF59B1C37410F35D4);
+                    assert_stack_oracle(stack_before_first, stack_after_first, expected_stack_hash,
+                                        0xEF0U, 0xEFFU);
                     oracle = context;
                     successful_budget =
                         stats.arm64ec_instructions_retired + stats.x64_instructions_retired;
                     assert(successful_budget > 1U);
                 } else {
-                    assert(std::memcmp(&context, &oracle, sizeof(context)) == 0);
+                    assert_context_oracle(context, oracle);
                 }
             }
 
@@ -834,8 +923,13 @@ int main(int argc, char **argv) {
         };
         gem_hybrid_runtime *runtime = gem_hybrid_runtime_create(harness.memory, metadata, &config);
         assert(runtime);
+        fill_stack_oracle(harness.memory, UINT8_C(0x63));
         gem_thread_context oracle{};
         std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> oracle_stack{};
+        std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> stack_before_first{};
+        assert(gem_memory_read(harness.memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
+                               stack_before_first.data(),
+                               stack_before_first.size()) == GEM_MEMORY_OK);
         std::uint64_t successful_budget = 0U;
         for (unsigned iteration = 0; iteration < 100U; ++iteration) {
             auto context = initial_context(control.requested_start_va);
@@ -857,25 +951,38 @@ int main(int argc, char **argv) {
                     static_cast<unsigned long long>(stats.frame_pushes),
                     static_cast<unsigned long long>(stats.frame_pops), stats.maximum_frame_depth);
             assert(reason == GEM_STOP_HOST_RETURN);
-            assert(context.x[0] == 85U && context.pc == kHostReturn && context.sp == entry.sp &&
-                   context.x[30] == entry.x[30] && context.x[18] == entry.x[18] &&
-                   context.transition_cookie == 0U);
+            auto expected_context = entry;
+            expected_context.x[0] = native.nested_result;
+            expected_context.x[4] = entry.sp - UINT64_C(0x30);
+            expected_context.x[8] = native.nested_result;
+            expected_context.x[9] = kChecker;
+            expected_context.x[10] = config.loaded_base + UINT64_C(0x3C50);
+            expected_context.x[11] = control.inner_x64_target_va;
+            expected_context.x[12] = control.inner_x64_target_va;
+            expected_context.x[16] = kDispatchRet;
+            expected_context.pc = kHostReturn;
+            expected_context.x64_rflags = UINT64_C(0x100100A);
+            expected_context.isa = GEM_ISA_ARM64EC;
+            expected_context.stop_reason = GEM_STOP_HOST_RETURN;
+            assert_context_oracle(context, expected_context);
             assert(stats.x64_instructions_retired == 8U && stats.checker_boundaries == 2U &&
                    stats.dispatch_call_boundaries == 0U && stats.x64_to_arm64ec_boundaries == 3U &&
                    stats.descriptor_resolutions == 1U && stats.dispatch_ret_boundaries == 1U &&
                    stats.frame_pushes == 2U && stats.frame_pops == 2U &&
                    stats.maximum_frame_depth == 2U && stats.final_frame_depth == 0U);
             std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> current_stack{};
-            assert(gem_memory_read(harness.memory, kStackBase, current_stack.data(),
-                                   current_stack.size()) == GEM_MEMORY_OK);
+            assert(gem_memory_read(harness.memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
+                                   current_stack.data(), current_stack.size()) == GEM_MEMORY_OK);
             if (iteration == 0U) {
+                assert_stack_oracle(stack_before_first, current_stack, UINT64_C(0x834AA83BBDE4856C),
+                                    0xE00U, 0xEFFU);
                 oracle = context;
                 oracle_stack = current_stack;
                 successful_budget =
                     stats.arm64ec_instructions_retired + stats.x64_instructions_retired;
                 assert(successful_budget > 1U);
             } else {
-                assert(std::memcmp(&context, &oracle, sizeof(context)) == 0);
+                assert_context_oracle(context, oracle);
                 assert(current_stack == oracle_stack);
             }
         }
@@ -898,14 +1005,14 @@ int main(int argc, char **argv) {
             assert(gem_hybrid_runtime_run_integer_nested(runtime, &context, &control,
                                                          config.max_budget,
                                                          nullptr) == GEM_STOP_HOST_RETURN);
-            assert(context.x[0] == 85U);
+            assert(context.x[0] == native.nested_result);
         }
         assert(exhausted_at_depth_two);
         auto reused = initial_context(control.requested_start_va);
         reused.x[0] = 10U;
         assert(gem_hybrid_runtime_run_integer_nested(runtime, &reused, &control, config.max_budget,
                                                      nullptr) == GEM_STOP_HOST_RETURN);
-        assert(reused.x[0] == 85U);
+        assert(reused.x[0] == native.nested_result);
 
         const auto reject_control = [&](const gem_hybrid_nested_control &malformed) {
             auto rejected = initial_context(control.requested_start_va);
@@ -1080,8 +1187,13 @@ int main(int argc, char **argv) {
         const auto resume = config.loaded_base + UINT64_C(0x402D);
         gem_hybrid_runtime *runtime = gem_hybrid_runtime_create(harness.memory, metadata, &config);
         assert(runtime);
+        fill_stack_oracle(harness.memory, UINT8_C(0x84));
         gem_thread_context oracle{};
         std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> oracle_stack{};
+        std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> stack_before_first{};
+        assert(gem_memory_read(harness.memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
+                               stack_before_first.data(),
+                               stack_before_first.size()) == GEM_MEMORY_OK);
         std::uint64_t successful_budget = 0U;
         for (unsigned iteration = 0; iteration < 100U; ++iteration) {
             auto context = initial_context(harness.caller);
@@ -1095,7 +1207,8 @@ int main(int argc, char **argv) {
                        &stats) == GEM_STOP_ARCH_TRANSITION);
             assert_stop(runtime, GEM_STOP_ARCH_TRANSITION, GEM_HYBRID_STOP_SOURCE_BROKER);
             if (context.isa != GEM_ISA_X64 || context.pc != resume ||
-                context.sp != initial.sp - UINT64_C(0x28) || context.x[8] != 63U ||
+                context.sp != initial.sp - UINT64_C(0x28) ||
+                context.x[8] != native.callback_resume_result - UINT64_C(19) ||
                 context.x[18] != context.teb || context.transition_cookie != 0U)
                 std::fprintf(stderr,
                              "callback result x0=%llx x8=%llx pc=%llx sp=%llx initial_sp=%llx "
@@ -1107,11 +1220,20 @@ int main(int argc, char **argv) {
                              static_cast<unsigned long long>(initial.sp),
                              static_cast<unsigned long long>(context.x[30]),
                              static_cast<unsigned long long>(context.original_x64_sp));
-            assert(context.isa == GEM_ISA_X64 && context.pc == resume &&
-                   context.sp == initial.sp - UINT64_C(0x28) && context.x[0] == 63U &&
-                   context.x[8] == 63U && context.x[18] == context.teb &&
-                   context.transition_cookie == 0U);
-            assert(std::memcmp(context.x87, initial.x87, sizeof(context.x87)) == 0);
+            const auto intermediate = native.callback_resume_result - UINT64_C(19);
+            auto expected_context = initial;
+            expected_context.x[0] = intermediate;
+            expected_context.x[4] = initial.sp - UINT64_C(0x28);
+            expected_context.x[8] = intermediate;
+            expected_context.x[9] = callback.resolved_va;
+            expected_context.x[16] = kDispatchRet;
+            expected_context.x[30] = resume;
+            expected_context.sp = initial.sp - UINT64_C(0x28);
+            expected_context.pc = resume;
+            expected_context.x64_rflags = UINT64_C(0x100E);
+            expected_context.isa = GEM_ISA_X64;
+            expected_context.stop_reason = GEM_STOP_ARCH_TRANSITION;
+            assert_context_oracle(context, expected_context);
             assert(stats.x64_instructions_retired == 3U && stats.x64_to_arm64ec_boundaries == 1U &&
                    stats.descriptor_resolutions == 1U && stats.dispatch_ret_boundaries == 1U &&
                    stats.frame_pushes == 1U && stats.frame_pops == 1U &&
@@ -1124,13 +1246,15 @@ int main(int argc, char **argv) {
             assert(gem_memory_read(harness.memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
                                    stack.data(), stack.size()) == GEM_MEMORY_OK);
             if (iteration == 0U) {
+                assert_stack_oracle(stack_before_first, stack, UINT64_C(0xED2D68340821F5CD), 0xE20U,
+                                    0xED7U);
                 oracle = context;
                 oracle_stack = stack;
                 successful_budget =
                     stats.arm64ec_instructions_retired + stats.x64_instructions_retired;
                 assert(successful_budget > 1U);
             } else {
-                assert(std::memcmp(&context, &oracle, sizeof(context)) == 0);
+                assert_context_oracle(context, oracle);
                 assert(stack == oracle_stack);
             }
         }
@@ -1270,6 +1394,11 @@ int main(int argc, char **argv) {
         gem_hybrid_runtime_destroy(runtime);
     }
 
+    fill_stack_oracle(harness.memory, UINT8_C(0xA5));
+    std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> roundtrip_stack_before{};
+    assert(gem_memory_read(harness.memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
+                           roundtrip_stack_before.data(),
+                           roundtrip_stack_before.size()) == GEM_MEMORY_OK);
     for (unsigned iteration = 0; iteration < 100U; ++iteration) {
         gem_hybrid_runtime *runtime = gem_hybrid_runtime_create(harness.memory, metadata, &config);
         assert(runtime);
@@ -1301,10 +1430,21 @@ int main(int argc, char **argv) {
                 stats.final_frame_depth);
         assert(reason == GEM_STOP_HOST_RETURN);
         assert_stop(runtime, reason, GEM_HYBRID_STOP_SOURCE_BROKER);
-        assert(context.x[0] == 30U && context.pc == kHostReturn && context.x[18] == context.teb &&
-               context.transition_cookie == 0U && context.isa == GEM_ISA_ARM64EC);
-        assert(std::memcmp(&context.v[6], &initial.v[6], 10U * sizeof(context.v[0])) == 0);
-        assert(std::memcmp(context.x87, initial.x87, sizeof(context.x87)) == 0);
+        assert(initial.x[0] == native.roundtrip_input);
+        auto oracle_context = initial;
+        oracle_context.x[0] = native.roundtrip_result;
+        oracle_context.x[4] = initial.sp - UINT64_C(0x50);
+        oracle_context.x[8] = native.roundtrip_result;
+        oracle_context.x[9] = harness.finish;
+        oracle_context.x[10] = config.loaded_base + UINT64_C(0x3C50);
+        oracle_context.x[11] = config.loaded_base + UINT64_C(0x3C50);
+        oracle_context.x[16] = kDispatchRet;
+        oracle_context.x[17] = initial.sp - UINT64_C(0x10);
+        oracle_context.pc = kHostReturn;
+        oracle_context.x64_rflags = UINT64_C(0x100101A);
+        oracle_context.isa = GEM_ISA_ARM64EC;
+        oracle_context.stop_reason = GEM_STOP_HOST_RETURN;
+        assert_context_oracle(context, oracle_context);
         assert(stats.x64_instructions_retired == 4U && stats.checker_boundaries == 1U &&
                stats.dispatch_call_boundaries == 1U && stats.x64_to_arm64ec_boundaries == 1U &&
                stats.descriptor_resolutions == 1U && stats.dispatch_ret_boundaries == 1U &&
@@ -1314,10 +1454,12 @@ int main(int argc, char **argv) {
         assert(gem_memory_read(harness.memory, kStackBase + kStackSize - GEM_GUEST_PAGE_SIZE,
                                current_stack.data(), current_stack.size()) == GEM_MEMORY_OK);
         if (iteration == 0U) {
-            expected_context = context;
+            assert_stack_oracle(roundtrip_stack_before, current_stack, UINT64_C(0xED419578AAC667E),
+                                0xE00U, 0xEF7U);
+            roundtrip_oracle_context = context;
             expected_stack = current_stack;
         } else {
-            assert(std::memcmp(&context, &expected_context, sizeof(context)) == 0);
+            assert_context_oracle(context, roundtrip_oracle_context);
             assert(current_stack == expected_stack);
         }
         gem_hybrid_runtime_destroy(runtime);
@@ -1478,8 +1620,15 @@ int main(int argc, char **argv) {
         gem_hybrid_runtime_destroy(runtime);
     }
 
-    if (argc == 4)
-        write_phase_b_trace(argv[3], harness, entries, metadata);
+    for (std::size_t i = 0; i < immutable_pages.size(); ++i) {
+        std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> after{};
+        assert(gem_memory_read(harness.memory, immutable_page_addresses[i], after.data(),
+                               after.size()) == GEM_MEMORY_OK &&
+               after == immutable_pages[i]);
+    }
+
+    if (argc == 5)
+        write_phase_b_trace(argv[4], harness, entries, metadata);
 
     std::puts("authentic ARM64EC -> Blink -> ARM64EC integer round trip passed");
     return 0;
