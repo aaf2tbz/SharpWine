@@ -38,7 +38,7 @@ done
     echo "Wine foundation builds require a native macOS ARM64 host" >&2; exit 1;
 }
 
-for tool in git python3 make clang clang++ pkg-config bison flex file xcrun; do
+for tool in git python3 cmake make clang clang++ pkg-config bison flex file otool xcrun; do
     command -v "$tool" >/dev/null || { echo "missing required host tool: $tool" >&2; exit 1; }
 done
 [[ -d "$llvm_mingw/bin" ]] || { echo "invalid LLVM-MinGW root: $llvm_mingw" >&2; exit 1; }
@@ -130,6 +130,28 @@ trap 'rm -rf "$work"' EXIT INT TERM
 source_dir="$work/wine"
 build_dir="$work/build"
 stage="$work/stage"
+prefix="$stage/wine"
+gem_build="$work/gem-build"
+gem_prefix="$work/gem-prefix"
+[[ "$(git -C "$root" rev-parse HEAD)" == "$commit" ]] || {
+    echo "repository commit mismatch: expected $commit" >&2; exit 1;
+}
+[[ -z "$(git -C "$root" status --porcelain=v1 --untracked-files=all)" ]] || {
+    echo "repository must be clean before the integrated Wine build" >&2; exit 1;
+}
+cmake -S "$root" -B "$gem_build" -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$gem_prefix" \
+    -DMSWR_ENABLE_ARM64EC_ENGINE=ON -DMSWR_BUILD_WINE_BRIDGE=ON \
+    -DMSWR_WARNINGS_AS_ERRORS=ON
+cmake --build "$gem_build" --parallel "$jobs" --target metalsharp_gem_wine
+cmake --install "$gem_build" --component metalsharp-gem-wine
+bridge="$gem_prefix/lib/libmetalsharp-gem-wine.0.dylib"
+[[ -f "$bridge" && -L "$bridge" ]] || { echo "versioned GEM bridge is missing" >&2; exit 1; }
+file "$bridge" | grep -Eq 'Mach-O.*arm64' || { echo "GEM bridge is not ARM64 Mach-O" >&2; exit 1; }
+file "$bridge" | grep -qv x86_64 || { echo "GEM bridge contains x86_64" >&2; exit 1; }
+otool -D "$bridge" | grep -Fx '@rpath/libmetalsharp-gem-wine.0.dylib' >/dev/null || {
+    echo "GEM bridge install name is not relocatable" >&2; exit 1;
+}
 git clone --filter=blob:none --no-checkout "$wine_repo" "$source_dir"
 git -C "$source_dir" checkout --detach --quiet "$wine_revision"
 [[ "$(git -C "$source_dir" rev-parse HEAD)" == "$wine_revision" ]] || exit 1
@@ -144,10 +166,10 @@ export i386_CC="$llvm_mingw/bin/i686-w64-mingw32-clang"
 export x86_64_CC="$llvm_mingw/bin/x86_64-w64-mingw32-clang"
 export aarch64_CC="$llvm_mingw/bin/aarch64-w64-mingw32-clang"
 export arm64ec_CC="$llvm_mingw/bin/arm64ec-w64-mingw32-clang"
-prefix="$stage/wine"
 configure=("$source_dir/configure" "--host=aarch64-apple-darwin"
     "--enable-archs=i386,x86_64,aarch64,arm64ec" "--with-mingw=xllvm-mingw" "--with-x"
-    "--with-opengl" "--with-vulkan" "--with-sdl" "--prefix=$prefix"
+    "--with-opengl" "--with-vulkan" "--with-sdl" "--with-metalsharp-gem=$gem_prefix"
+    "--prefix=$prefix"
     "BISON=$brew_opt/bison/bin/bison" "FLEX=$(command -v flex)"
     "i386_CC=$llvm_mingw/bin/i686-w64-mingw32-clang"
     "x86_64_CC=$llvm_mingw/bin/x86_64-w64-mingw32-clang"
@@ -163,6 +185,45 @@ configure=("$source_dir/configure" "--host=aarch64-apple-darwin"
     make -j"$jobs" 2>&1 | tee "$work/build.log"
     make install 2>&1 | tee "$work/install.log"
 )
+cmake --install "$gem_build" --prefix "$prefix" --component metalsharp-gem-wine
+ntdll="$prefix/lib/wine/aarch64-unix/ntdll.so"
+[[ -f "$ntdll" ]] || { echo "staged native ntdll.so is missing" >&2; exit 1; }
+otool -L "$ntdll" | grep -F '@rpath/libmetalsharp-gem-wine.0.dylib' >/dev/null || {
+    echo "ntdll.so lacks the direct versioned GEM dependency" >&2; exit 1;
+}
+otool -l "$ntdll" | grep -F '@loader_path/../..' >/dev/null || {
+    echo "ntdll.so lacks the staged GEM runtime lookup path" >&2; exit 1;
+}
+probe_prefix="$work/probe-prefix"
+probe_log="$work/gem-lifecycle-probe.log"
+python3 - "$prefix" "$probe_prefix" "$probe_log" <<'PY'
+import os, pathlib, subprocess, sys
+
+prefix, wineprefix, log = map(pathlib.Path, sys.argv[1:])
+wineprefix.mkdir()
+env = os.environ.copy()
+env.update({"METALSHARP_GEM_LIFECYCLE_PROBE": "1", "WINEDEBUG": "+gem",
+            "WINEPREFIX": str(wineprefix)})
+try:
+    result = subprocess.run([str(prefix / "bin/wine"), "cmd.exe", "/c", "exit"],
+                            env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, timeout=60, check=False)
+except subprocess.TimeoutExpired as error:
+    output = error.stdout or ""
+    if isinstance(output, bytes): output = output.decode(errors="replace")
+    log.write_text(output, encoding="utf-8")
+    raise SystemExit("staged GEM lifecycle probe timed out")
+finally:
+    subprocess.run([str(prefix / "bin/wineserver"), "-k"], env=env,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+log.write_text(result.stdout, encoding="utf-8")
+required = ("process created ABI=1", "thread created teb=", "KUSER bound host=",
+            "lifecycle probe completed", "thread destroyed teb=", "process destroyed")
+missing = [marker for marker in required if marker not in result.stdout]
+if result.returncode or missing:
+    print(result.stdout, file=sys.stderr, end="")
+    raise SystemExit(f"staged GEM lifecycle probe failed: rc={result.returncode}, missing={missing}")
+PY
 
 find "$stage" \( -type f -o -type l \) | sort > "$work/install-files.txt"
 find "$stage" -type f -print0 | xargs -0 file > "$work/macho-files.txt"
@@ -174,6 +235,7 @@ while IFS= read -r installed; do
         }
     fi
 done < <(find "$stage" -type f | sort)
+"$root/tools/ci/audit-zero-rosetta.sh" "$stage" | tee "$work/zero-rosetta-audit.txt"
 cp -R "$prefix" "$output/wine"
 clang --version > "$work/clang-version.txt"
 make --version > "$work/make-version.txt"
@@ -199,9 +261,13 @@ for path in sorted(p for p in stage.rglob("*") if p.is_file() or p.is_symlink())
 value = {"schema": 1, "kind": "wine-foundation", "repositoryCommit": repository_commit,
          "source": {"repository": wine["repository"], "revision": wine["revision"],
                      "patchedHead": subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()},
-         "wine": {"version": wine["version"], "configure": ["--host=aarch64-apple-darwin", "--enable-archs=i386,x86_64,aarch64,arm64ec", "--with-mingw=xllvm-mingw", "--with-x", "--with-opengl", "--with-vulkan", "--with-sdl"]},
+         "wine": {"version": wine["version"], "configure": ["--host=aarch64-apple-darwin", "--enable-archs=i386,x86_64,aarch64,arm64ec", "--with-mingw=xllvm-mingw", "--with-x", "--with-opengl", "--with-vulkan", "--with-sdl", "--with-metalsharp-gem=<external-prefix>"]},
+         "bridge": {"abi": 1, "dependency": "@rpath/libmetalsharp-gem-wine.0.dylib", "rpath": "@loader_path/../..", "linkage": "direct"},
          "dependencies": {"llvmMingw": str(llvm), "homebrewPrefix": str(brew), "externalRuntime": str(deps), "bison": "required", "vulkan": "headers+loader+MoltenVK", "opengl": "macOS framework", "egl": "pkg-config/mesa", "sdl2": "required", "sdl3": "recorded; Wine 11.12 consumes SDL2"},
          "toolchain": {"host": "aarch64-apple-darwin", "uname": text("uname.txt"), "clang": text("clang-version.txt"), "make": text("make-version.txt"), "sdk": text("sdk-version.txt")},
+         "acceptance": {"lifecycleProbe": "passed before guest entry",
+                        "lifecycleLog": text("gem-lifecycle-probe.log"),
+                        "hostMachOClosure": text("zero-rosetta-audit.txt")},
          "build": {"jobs": int(jobs), "installRoot": "<external-stage>/wine", "files": files, "fileAudit": text("macho-files.txt")}}
 manifest.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY

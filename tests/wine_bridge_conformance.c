@@ -48,6 +48,12 @@ struct runner_state {
     enum gem_wine_status status;
 };
 
+struct churn_state {
+    struct gem_wine_process *process;
+    size_t host_page;
+    atomic_int failed;
+};
+
 static void store_word(uint8_t *memory, size_t offset, uint32_t word) {
     memory[offset] = (uint8_t)word;
     memory[offset + 1U] = (uint8_t)(word >> 8U);
@@ -111,6 +117,45 @@ static void *run_thread(void *opaque) {
     return NULL;
 }
 
+static void *churn_mappings(void *opaque) {
+    struct churn_state *state = (struct churn_state *)opaque;
+    unsigned int iteration;
+    for (iteration = 0U; iteration < 32U; ++iteration) {
+        uint8_t *host = mmap(NULL, state->host_page, PROT_READ | PROT_WRITE,
+                             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        uint32_t old = 0U;
+        if (host == MAP_FAILED ||
+            gem_wine_process_reserve(state->process, (uint64_t)(uintptr_t)host, state->host_page) !=
+                GEM_WINE_OK ||
+            gem_wine_process_reserve(state->process, (uint64_t)(uintptr_t)host, state->host_page) !=
+                GEM_WINE_CONFLICT ||
+            gem_wine_process_commit_identity(
+                state->process, (uint64_t)(uintptr_t)host, host + GEM_WINE_GUEST_PAGE_SIZE,
+                state->host_page, GEM_WINE_PAGE_READWRITE) != GEM_WINE_INVALID_ARGUMENT ||
+            gem_wine_process_commit_identity(state->process, (uint64_t)(uintptr_t)host, host,
+                                             state->host_page,
+                                             GEM_WINE_PAGE_READWRITE) != GEM_WINE_OK ||
+            gem_wine_process_protect(state->process, (uint64_t)(uintptr_t)host, state->host_page,
+                                     GEM_WINE_PAGE_WRITECOPY | GEM_WINE_PAGE_GUARD,
+                                     &old) != GEM_WINE_OK ||
+            old != GEM_WINE_PAGE_READWRITE ||
+            gem_wine_process_decommit(state->process, (uint64_t)(uintptr_t)host,
+                                      state->host_page) != GEM_WINE_OK ||
+            gem_wine_process_commit_identity(state->process, (uint64_t)(uintptr_t)host, host,
+                                             state->host_page,
+                                             GEM_WINE_PAGE_EXECUTE_READWRITE) != GEM_WINE_OK ||
+            gem_wine_process_invalidate_code(state->process, (uint64_t)(uintptr_t)host,
+                                             state->host_page) != GEM_WINE_OK ||
+            gem_wine_process_release(state->process, (uint64_t)(uintptr_t)host, state->host_page) !=
+                GEM_WINE_OK ||
+            munmap(host, state->host_page) != 0) {
+            atomic_store(&state->failed, 1);
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
 static void initialize_context(struct gem_thread_context *context, uint64_t pc) {
     memset(context, 0, sizeof(*context));
     context->layout_version = GEM_CONTEXT_LAYOUT_VERSION;
@@ -139,6 +184,9 @@ int main(void) {
     struct callback_state callback = {0};
     struct runner_state runner;
     pthread_t runner_thread;
+    pthread_t churn_threads[4];
+    struct churn_state churn;
+    unsigned int churn_index;
     struct gem_thread_context input;
     struct gem_thread_context output;
     struct gem_thread_context unchanged_output;
@@ -177,9 +225,21 @@ int main(void) {
     assert(process == NULL);
     assert(gem_wine_process_create(&process_config, &process) == GEM_WINE_OK);
     assert(process != NULL);
-    assert(gem_wine_process_map_identity(process, (uint64_t)(uintptr_t)mapping, mapping,
-                                         (uint64_t)host_page,
-                                         GEM_WINE_PAGE_EXECUTE_READ) == GEM_WINE_OK);
+    churn.process = process;
+    churn.host_page = host_page;
+    atomic_init(&churn.failed, 0);
+    for (churn_index = 0U; churn_index < 4U; ++churn_index)
+        assert(pthread_create(&churn_threads[churn_index], NULL, churn_mappings, &churn) == 0);
+    for (churn_index = 0U; churn_index < 4U; ++churn_index)
+        assert(pthread_join(churn_threads[churn_index], NULL) == 0);
+    assert(atomic_load(&churn.failed) == 0);
+    assert(gem_wine_process_reserve(process, (uint64_t)(uintptr_t)mapping, (uint64_t)host_page) ==
+           GEM_WINE_OK);
+    assert(gem_wine_process_reserve(process, (uint64_t)(uintptr_t)mapping, (uint64_t)host_page) ==
+           GEM_WINE_CONFLICT);
+    assert(gem_wine_process_commit_identity(process, (uint64_t)(uintptr_t)mapping, mapping,
+                                            (uint64_t)host_page,
+                                            GEM_WINE_PAGE_EXECUTE_READ) == GEM_WINE_OK);
     old_protection = 0U;
     assert(gem_wine_process_protect(process, (uint64_t)(uintptr_t)mapping, (uint64_t)host_page,
                                     GEM_WINE_PAGE_READONLY, &old_protection) == GEM_WINE_OK);
@@ -187,6 +247,14 @@ int main(void) {
     assert(gem_wine_process_protect(process, (uint64_t)(uintptr_t)mapping, (uint64_t)host_page,
                                     GEM_WINE_PAGE_EXECUTE_READ, &old_protection) == GEM_WINE_OK);
     assert(old_protection == GEM_WINE_PAGE_READONLY);
+    assert(gem_wine_process_decommit(process, (uint64_t)(uintptr_t)mapping, (uint64_t)host_page) ==
+           GEM_WINE_OK);
+    assert(gem_wine_process_protect(process, (uint64_t)(uintptr_t)mapping, (uint64_t)host_page,
+                                    GEM_WINE_PAGE_EXECUTE_READ,
+                                    &old_protection) == GEM_WINE_MEMORY_ERROR);
+    assert(gem_wine_process_commit_identity(process, (uint64_t)(uintptr_t)mapping, mapping,
+                                            (uint64_t)host_page,
+                                            GEM_WINE_PAGE_EXECUTE_READ) == GEM_WINE_OK);
 
     assert(posix_memalign((void **)&kuser, GEM_WINE_GUEST_PAGE_SIZE, GEM_WINE_GUEST_PAGE_SIZE) ==
            0);
@@ -320,7 +388,7 @@ int main(void) {
     assert(result.last_event == GEM_WINE_EVENT_SYSCALL);
     assert(result.boundary_callbacks == 0U);
     assert(gem_wine_thread_destroy(thread) == GEM_WINE_OK);
-    assert(gem_wine_process_unmap(process, (uint64_t)(uintptr_t)mapping, (uint64_t)host_page) ==
+    assert(gem_wine_process_release(process, (uint64_t)(uintptr_t)mapping, (uint64_t)host_page) ==
            GEM_WINE_OK);
     assert(gem_wine_process_destroy(process) == GEM_WINE_OK);
     free(kuser);

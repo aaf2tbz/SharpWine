@@ -207,6 +207,16 @@ GEM_WINE_API enum gem_wine_status
 gem_wine_process_create(const struct gem_wine_process_config *config,
                         struct gem_wine_process **out_process);
 GEM_WINE_API enum gem_wine_status gem_wine_process_destroy(struct gem_wine_process *process);
+GEM_WINE_API enum gem_wine_status gem_wine_process_reserve(struct gem_wine_process *process,
+                                                           uint64_t address, uint64_t size);
+GEM_WINE_API enum gem_wine_status gem_wine_process_commit_identity(struct gem_wine_process *process,
+                                                                   uint64_t address, void *host,
+                                                                   uint64_t size,
+                                                                   uint32_t protection);
+GEM_WINE_API enum gem_wine_status gem_wine_process_decommit(struct gem_wine_process *process,
+                                                            uint64_t address, uint64_t size);
+GEM_WINE_API enum gem_wine_status gem_wine_process_release(struct gem_wine_process *process,
+                                                           uint64_t address, uint64_t size);
 GEM_WINE_API enum gem_wine_status gem_wine_process_map_identity(struct gem_wine_process *process,
                                                                 uint64_t address, void *host,
                                                                 uint64_t size, uint32_t protection);

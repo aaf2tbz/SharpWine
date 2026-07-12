@@ -1,0 +1,897 @@
+From 4e324aef626e3845a4e3e8d67df5cbe65d47e9aa Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@users.noreply.github.com>
+Date: Sun, 12 Jul 2026 12:40:53 -0600
+Subject: [PATCH 6/6] ntdll: integrate native Darwin ARM64 GEM lifecycle
+
+---
+ configure                      | 131 ++++++++++++++-
+ configure.ac                   |  42 ++++-
+ dlls/ntdll/Makefile.in         |   5 +-
+ dlls/ntdll/unix/gem.c          | 283 +++++++++++++++++++++++++++++++++
+ dlls/ntdll/unix/loader.c       |   1 +
+ dlls/ntdll/unix/thread.c       |   1 +
+ dlls/ntdll/unix/unix_private.h |  17 ++
+ dlls/ntdll/unix/virtual.c      | 109 ++++++++++++-
+ 8 files changed, 582 insertions(+), 7 deletions(-)
+ create mode 100644 dlls/ntdll/unix/gem.c
+
+diff --git a/configure b/configure
+index e851b9f..cf34f2f 100755
+--- a/configure
++++ b/configure
+@@ -774,6 +774,8 @@ SUBDIRS
+ READELF
+ OTOOL
+ LDD
++METALSHARP_GEM_LIBS
++METALSHARP_GEM_CFLAGS
+ WINEPRELOADER_LDFLAGS
+ WINELOADER_LDFLAGS
+ TOP_INSTALL_DEV
+@@ -984,6 +986,7 @@ with_xshape
+ with_xshm
+ with_xxf86vm
+ with_system_dllpath
++with_metalsharp_gem
+ with_wine_tools
+ with_wine64
+ enable_largefile
+@@ -2654,6 +2657,8 @@ Optional Packages:
+   --with-system-dllpath=PATH
+                           load external PE dependencies from colon-separated
+                           path PATH
++  --with-metalsharp-gem=DIR
++                          require the native MetalSharp GEM Wine bridge in DIR
+   --with-wine-tools=DIR   use Wine tools from directory DIR
+   --with-wine64=DIR       use the 64-bit Wine in DIR for a Wow64 build
+   --with-x                use the X Window System
+@@ -3117,6 +3122,50 @@ printf '%s\n' "$ac_res" >&6; }
+ 
+ } # ac_fn_c_check_header_compile
+ 
++# ac_fn_c_try_run LINENO
++# ----------------------
++# Try to run conftest.$ac_ext, and return whether this succeeded. Assumes that
++# executables *can* be run.
++ac_fn_c_try_run ()
++{
++  as_lineno=${as_lineno-"$1"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
++  if { { ac_try="$ac_link"
++case "(($ac_try" in
++  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
++  *) ac_try_echo=$ac_try;;
++esac
++eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
++printf '%s\n' "$ac_try_echo"; } >&5
++  (eval "$ac_link") 2>&5
++  ac_status=$?
++  printf '%s\n' "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; } && { ac_try='./conftest$ac_exeext'
++  { { case "(($ac_try" in
++  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
++  *) ac_try_echo=$ac_try;;
++esac
++eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
++printf '%s\n' "$ac_try_echo"; } >&5
++  (eval "$ac_try") 2>&5
++  ac_status=$?
++  printf '%s\n' "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; }
++then :
++  ac_retval=0
++else case e in #(
++  e) printf '%s\n' "$as_me: program exited with status $ac_status" >&5
++       printf '%s\n' "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++       ac_retval=$ac_status ;;
++esac
++fi
++  rm -rf conftest.dSYM conftest_ipa8_conftest.oo
++  eval $as_lineno_stack; ${as_lineno_stack:+:} unset as_lineno
++  as_fn_set_status $ac_retval
++
++} # ac_fn_c_try_run
++
+ # ac_fn_objc_try_compile LINENO
+ # -----------------------------
+ # Try to compile conftest.$ac_ext, and return whether this succeeded.
+@@ -4634,6 +4683,13 @@ then :
+ fi
+ 
+ 
++# Check whether --with-metalsharp-gem was given.
++if test ${with_metalsharp_gem+y}
++then :
++  withval=$with_metalsharp_gem;
++fi
++
++
+ # Check whether --with-wine-tools was given.
+ if test ${with_wine_tools+y}
+ then :
+@@ -12038,6 +12094,10 @@ WINELOADER_LDFLAGS=""
+ 
+ WINEPRELOADER_LDFLAGS=""
+ 
++METALSHARP_GEM_CFLAGS=""
++
++METALSHARP_GEM_LIBS=""
++
+ LIBEXT="so"
+ # Extract the first word of "ldd", so it can be a program name with args.
+ set dummy ldd; ac_word=$2
+@@ -12360,7 +12420,74 @@ case $host_os in
+ 
+ 
+     case $HOST_ARCH in
+-      aarch64) WINELOADER_LDFLAGS="-Wl,-pagezero_size,0x100000000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
++      aarch64)
++        WINELOADER_LDFLAGS="-Wl,-pagezero_size,0x100000000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist"
++        test -n "$with_metalsharp_gem" || as_fn_error $? "native Darwin ARM64 requires --with-metalsharp-gem" "$LINENO" 5
++        case "$with_metalsharp_gem" in
++          /*) ;;
++          *) as_fn_error $? "--with-metalsharp-gem must be an absolute path" "$LINENO" 5 ;;
++        esac
++        test -f "$with_metalsharp_gem/include/metalsharp/gem/wine_bridge.h" ||
++          as_fn_error $? "MetalSharp GEM Wine bridge header is missing" "$LINENO" 5
++        test -f "$with_metalsharp_gem/lib/libmetalsharp-gem-wine.0.dylib" ||
++          as_fn_error $? "libmetalsharp-gem-wine.0.dylib is missing" "$LINENO" 5
++        gem_file_output=`file "$with_metalsharp_gem/lib/libmetalsharp-gem-wine.0.dylib" 2>/dev/null`
++        case "$gem_file_output" in
++          *Mach-O*arm64*) ;;
++          *) as_fn_error $? "MetalSharp GEM Wine bridge is not native ARM64 Mach-O" "$LINENO" 5 ;;
++        esac
++        case "$gem_file_output" in
++          *x86_64*) as_fn_error $? "MetalSharp GEM Wine bridge contains an x86_64 slice" "$LINENO" 5 ;;
++        esac
++        save_CPPFLAGS=$CPPFLAGS
++        save_LDFLAGS=$LDFLAGS
++        save_LIBS=$LIBS
++        CPPFLAGS="$CPPFLAGS -I$with_metalsharp_gem/include"
++        LDFLAGS="$LDFLAGS -L$with_metalsharp_gem/lib -Wl,-rpath,$with_metalsharp_gem/lib"
++        LIBS="-lmetalsharp-gem-wine $LIBS"
++        { printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for exact MetalSharp GEM Wine bridge ABI 1" >&5
++printf %s "checking for exact MetalSharp GEM Wine bridge ABI 1... " >&6; }
++        if test "$cross_compiling" = yes
++then :
++  { { printf '%s\n' "$as_me:${as_lineno-$LINENO}: error: in '$ac_pwd':" >&5
++printf '%s\n' "$as_me: error: in '$ac_pwd':" >&2;}
++as_fn_error $? "cannot execute the native MetalSharp GEM ABI probe
++See 'config.log' for more details" "$LINENO" 5; }
++else case e in #(
++  e) cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++#include <metalsharp/gem/wine_bridge.h>
++int
++main (void)
++{
++return GEM_WINE_BRIDGE_ABI_VERSION != 1 ||
++                                               gem_wine_bridge_abi_version() != 1;
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_run "$LINENO"
++then :
++  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: yes" >&5
++printf '%s\n' "yes" >&6; }
++else case e in #(
++  e) { { printf '%s\n' "$as_me:${as_lineno-$LINENO}: error: in '$ac_pwd':" >&5
++printf '%s\n' "$as_me: error: in '$ac_pwd':" >&2;}
++as_fn_error $? "MetalSharp GEM Wine bridge ABI mismatch
++See 'config.log' for more details" "$LINENO" 5; } ;;
++esac
++fi
++rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
++  conftest.$ac_objext conftest.beam conftest.$ac_ext ;;
++esac
++fi
++
++        CPPFLAGS=$save_CPPFLAGS
++        LDFLAGS=$save_LDFLAGS
++        LIBS=$save_LIBS
++        METALSHARP_GEM_CFLAGS="-I$with_metalsharp_gem/include"
++        METALSHARP_GEM_LIBS="-L$with_metalsharp_gem/lib -Wl,-rpath,@loader_path/../.. -lmetalsharp-gem-wine"
++        ;;
+       *) WINELOADER_LDFLAGS="-Wl,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
+     esac
+ 
+@@ -24293,6 +24420,8 @@ TOP_INSTALL_LIB = $TOP_INSTALL_LIB
+ TOP_INSTALL_DEV = $TOP_INSTALL_DEV
+ WINELOADER_LDFLAGS = $WINELOADER_LDFLAGS
+ WINEPRELOADER_LDFLAGS = $WINEPRELOADER_LDFLAGS
++METALSHARP_GEM_CFLAGS = $METALSHARP_GEM_CFLAGS
++METALSHARP_GEM_LIBS = $METALSHARP_GEM_LIBS
+ LDD = $LDD
+ OTOOL = $OTOOL
+ READELF = $READELF
+diff --git a/configure.ac b/configure.ac
+index 3806578..0c4a251 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -86,6 +86,7 @@ AC_ARG_WITH(xxf86vm,   AS_HELP_STRING([--without-xxf86vm],[do not use XFree vide
+ 
+ AC_ARG_WITH(system-dllpath,AS_HELP_STRING([--with-system-dllpath=PATH],[load external PE dependencies from colon-separated path PATH]),
+             AC_SUBST(system_dllpath,[$withval]))
++AC_ARG_WITH(metalsharp-gem,AS_HELP_STRING([--with-metalsharp-gem=DIR],[require the native MetalSharp GEM Wine bridge in DIR]))
+ AC_ARG_WITH(wine-tools,AS_HELP_STRING([--with-wine-tools=DIR],[use Wine tools from directory DIR]))
+ AC_ARG_WITH(wine64,    AS_HELP_STRING([--with-wine64=DIR],[use the 64-bit Wine in DIR for a Wow64 build]))
+ 
+@@ -962,6 +963,8 @@ AC_SUBST(TOP_INSTALL_LIB,"")
+ AC_SUBST(TOP_INSTALL_DEV,"")
+ AC_SUBST(WINELOADER_LDFLAGS,"")
+ AC_SUBST(WINEPRELOADER_LDFLAGS,"")
++AC_SUBST(METALSHARP_GEM_CFLAGS,"")
++AC_SUBST(METALSHARP_GEM_LIBS,"")
+ LIBEXT="so"
+ WINE_PATH_SONAME_TOOLS
+ WINE_CONFIG_HELPERS
+@@ -990,7 +993,44 @@ case $host_os in
+     AC_SUBST(SYSTEMCONFIGURATION_LIBS,"-framework SystemConfiguration")
+ 
+     case $HOST_ARCH in
+-      aarch64) WINELOADER_LDFLAGS="-Wl,-pagezero_size,0x100000000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
++      aarch64)
++        WINELOADER_LDFLAGS="-Wl,-pagezero_size,0x100000000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist"
++        test -n "$with_metalsharp_gem" || AC_MSG_ERROR([native Darwin ARM64 requires --with-metalsharp-gem])
++        case "$with_metalsharp_gem" in
++          /*) ;;
++          *) AC_MSG_ERROR([--with-metalsharp-gem must be an absolute path]) ;;
++        esac
++        test -f "$with_metalsharp_gem/include/metalsharp/gem/wine_bridge.h" ||
++          AC_MSG_ERROR([MetalSharp GEM Wine bridge header is missing])
++        test -f "$with_metalsharp_gem/lib/libmetalsharp-gem-wine.0.dylib" ||
++          AC_MSG_ERROR([libmetalsharp-gem-wine.0.dylib is missing])
++        gem_file_output=`file "$with_metalsharp_gem/lib/libmetalsharp-gem-wine.0.dylib" 2>/dev/null`
++        case "$gem_file_output" in
++          *Mach-O*arm64*) ;;
++          *) AC_MSG_ERROR([MetalSharp GEM Wine bridge is not native ARM64 Mach-O]) ;;
++        esac
++        case "$gem_file_output" in
++          *x86_64*) AC_MSG_ERROR([MetalSharp GEM Wine bridge contains an x86_64 slice]) ;;
++        esac
++        save_CPPFLAGS=$CPPFLAGS
++        save_LDFLAGS=$LDFLAGS
++        save_LIBS=$LIBS
++        CPPFLAGS="$CPPFLAGS -I$with_metalsharp_gem/include"
++        LDFLAGS="$LDFLAGS -L$with_metalsharp_gem/lib -Wl,-rpath,$with_metalsharp_gem/lib"
++        LIBS="-lmetalsharp-gem-wine $LIBS"
++        AC_MSG_CHECKING([for exact MetalSharp GEM Wine bridge ABI 1])
++        AC_RUN_IFELSE([AC_LANG_PROGRAM([[#include <metalsharp/gem/wine_bridge.h>]],
++                                      [[return GEM_WINE_BRIDGE_ABI_VERSION != 1 ||
++                                               gem_wine_bridge_abi_version() != 1;]])],
++                      [AC_MSG_RESULT([yes])],
++                      [AC_MSG_FAILURE([MetalSharp GEM Wine bridge ABI mismatch])],
++                      [AC_MSG_FAILURE([cannot execute the native MetalSharp GEM ABI probe])])
++        CPPFLAGS=$save_CPPFLAGS
++        LDFLAGS=$save_LDFLAGS
++        LIBS=$save_LIBS
++        METALSHARP_GEM_CFLAGS="-I$with_metalsharp_gem/include"
++        METALSHARP_GEM_LIBS="-L$with_metalsharp_gem/lib -Wl,-rpath,@loader_path/../.. -lmetalsharp-gem-wine"
++        ;;
+       *) WINELOADER_LDFLAGS="-Wl,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist" ;;
+     esac
+ 
+diff --git a/dlls/ntdll/Makefile.in b/dlls/ntdll/Makefile.in
+index 9a15bc3..18a313a 100644
+--- a/dlls/ntdll/Makefile.in
++++ b/dlls/ntdll/Makefile.in
+@@ -4,8 +4,8 @@ UNIXLIB   = ntdll.so
+ IMPORTLIB = ntdll
+ IMPORTS   = $(SYMCRYPT_PE_LIBS) $(ZLIB_PE_LIBS) $(MUSL_PE_LIBS)
+ EXTRAINCL = $(SYMCRYPT_PE_CFLAGS) $(ZLIB_PE_CFLAGS)
+-UNIX_CFLAGS  = $(HWLOC_CFLAGS)
+-UNIX_LIBS    = $(IOKIT_LIBS) $(COREFOUNDATION_LIBS) $(CORESERVICES_LIBS) $(RT_LIBS) $(PTHREAD_LIBS) $(I386_LIBS) $(PROCSTAT_LIBS) $(HWLOC_LIBS)
++UNIX_CFLAGS  = $(HWLOC_CFLAGS) $(METALSHARP_GEM_CFLAGS)
++UNIX_LIBS    = $(IOKIT_LIBS) $(COREFOUNDATION_LIBS) $(CORESERVICES_LIBS) $(RT_LIBS) $(PTHREAD_LIBS) $(I386_LIBS) $(PROCSTAT_LIBS) $(HWLOC_LIBS) $(METALSHARP_GEM_LIBS)
+ 
+ EXTRADLLFLAGS = -nodefaultlibs
+ i386_EXTRADLLFLAGS = -Wl,--image-base,0x7bc00000
+@@ -54,6 +54,7 @@ SOURCES = \
+ 	unix/debug.c \
+ 	unix/env.c \
+ 	unix/file.c \
++	unix/gem.c \
+ 	unix/loader.c \
+ 	unix/loadorder.c \
+ 	unix/process.c \
+diff --git a/dlls/ntdll/unix/gem.c b/dlls/ntdll/unix/gem.c
+new file mode 100644
+index 0000000..ae9f336
+--- /dev/null
++++ b/dlls/ntdll/unix/gem.c
+@@ -0,0 +1,283 @@
++/*
++ * Wine/GEM native lifecycle and checked-memory integration.
++ *
++ * Copyright 2026 Avery Felts
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ */
++
++#if 0
++#pragma makedep unix
++#endif
++
++#include "config.h"
++
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "ntstatus.h"
++#include "winternl.h"
++#include "unix_private.h"
++#include "wine/debug.h"
++
++#if defined(__APPLE__) && defined(__aarch64__)
++
++#include <metalsharp/gem/wine_bridge.h>
++
++WINE_DEFAULT_DEBUG_CHANNEL(gem);
++
++static struct gem_wine_process *gem_process;
++
++static NTSTATUS gem_status(enum gem_wine_status status)
++{
++    switch (status)
++    {
++    case GEM_WINE_OK:               return STATUS_SUCCESS;
++    case GEM_WINE_INVALID_ARGUMENT: return STATUS_INVALID_PARAMETER;
++    case GEM_WINE_NO_MEMORY:        return STATUS_NO_MEMORY;
++    case GEM_WINE_CONFLICT:         return STATUS_CONFLICTING_ADDRESSES;
++    case GEM_WINE_MEMORY_ERROR:     return STATUS_ACCESS_DENIED;
++    default:                        return STATUS_DLL_INIT_FAILED;
++    }
++}
++
++static BOOL executable_protection(ULONG protection)
++{
++    switch (protection & 0xff)
++    {
++    case PAGE_EXECUTE:
++    case PAGE_EXECUTE_READ:
++    case PAGE_EXECUTE_READWRITE:
++    case PAGE_EXECUTE_WRITECOPY:
++        return TRUE;
++    default:
++        return FALSE;
++    }
++}
++
++static void gem_fail(const char *operation, enum gem_wine_status status)
++{
++    ERR("GEM %s failed closed: %s\n", operation, gem_wine_status_name(status));
++    exit(1);
++}
++
++void gem_process_init(void)
++{
++    struct gem_wine_process_config config = {0};
++    enum gem_wine_status status;
++
++    if (gem_process || gem_wine_bridge_abi_version() != GEM_WINE_BRIDGE_ABI_VERSION)
++        gem_fail("ABI validation", GEM_WINE_ENGINE_ERROR);
++    config.version = GEM_WINE_PROCESS_CONFIG_VERSION;
++    config.struct_size = sizeof(config);
++    config.segment_instruction_budget = 100000;
++    config.total_instruction_budget = 1000000;
++    config.max_boundary_callbacks = 4096;
++    config.host_return_sentinel = UINT64_MAX - 15;
++    config.unix_call_dispatcher = (uint64_t)(uintptr_t)__wine_unix_call_dispatcher;
++    if ((status = gem_wine_process_create(&config, &gem_process)) != GEM_WINE_OK)
++        gem_fail("process create", status);
++    TRACE("process created ABI=%u\n", GEM_WINE_BRIDGE_ABI_VERSION);
++}
++
++NTSTATUS gem_thread_init(struct thread_data *data)
++{
++    struct gem_wine_thread_config config = {0};
++    enum gem_wine_status status;
++
++    if (!gem_process || !data || !data->teb || data->gem_thread)
++        return STATUS_INVALID_PARAMETER;
++    config.version = GEM_WINE_THREAD_CONFIG_VERSION;
++    config.struct_size = sizeof(config);
++    config.teb = (uint64_t)(uintptr_t)data->teb;
++    status = gem_wine_thread_create(gem_process, &config, &data->gem_thread);
++    if (status == GEM_WINE_OK) TRACE("thread created teb=%p\n", data->teb);
++    return gem_status(status);
++}
++
++void gem_thread_shutdown(struct thread_data *data)
++{
++    enum gem_wine_status status;
++
++    if (!data || !data->gem_thread) return;
++    status = gem_wine_thread_destroy(data->gem_thread);
++    if (status != GEM_WINE_OK) gem_fail("thread destroy", status);
++    TRACE("thread destroyed teb=%p\n", data->teb);
++    data->gem_thread = NULL;
++}
++
++void gem_process_shutdown(struct thread_data *data)
++{
++    enum gem_wine_status status;
++
++    if (!gem_process) return;
++    gem_thread_shutdown(data);
++    status = gem_wine_process_destroy(gem_process);
++    if (status != GEM_WINE_OK) gem_fail("process destroy", status);
++    gem_process = NULL;
++    TRACE("process destroyed\n");
++}
++
++NTSTATUS gem_virtual_map(void *base, SIZE_T size, ULONG protection, BOOL committed)
++{
++    enum gem_wine_status status;
++
++    if ((uint64_t)(uintptr_t)base == GEM_WINE_KUSER_CANONICAL_ADDRESS &&
++        size == GEM_WINE_GUEST_PAGE_SIZE) return STATUS_SUCCESS;
++    if (!gem_process) return STATUS_DLL_INIT_FAILED;
++    status = gem_wine_process_reserve(gem_process, (uint64_t)(uintptr_t)base, size);
++    if (status != GEM_WINE_OK) return gem_status(status);
++    if (!committed) return STATUS_SUCCESS;
++    status = gem_wine_process_commit_identity(gem_process, (uint64_t)(uintptr_t)base, base, size,
++                                              protection);
++    if (status != GEM_WINE_OK)
++    {
++        enum gem_wine_status rollback =
++            gem_wine_process_release(gem_process, (uint64_t)(uintptr_t)base, size);
++        if (rollback != GEM_WINE_OK) gem_fail("map rollback", rollback);
++        return gem_status(status);
++    }
++    if (executable_protection(protection))
++        return gem_status(gem_wine_process_invalidate_code(
++            gem_process, (uint64_t)(uintptr_t)base, size));
++    return STATUS_SUCCESS;
++}
++
++NTSTATUS gem_virtual_commit(void *base, SIZE_T size, ULONG protection)
++{
++    enum gem_wine_status status;
++
++    if ((uint64_t)(uintptr_t)base == GEM_WINE_KUSER_CANONICAL_ADDRESS &&
++        size == GEM_WINE_GUEST_PAGE_SIZE) return STATUS_SUCCESS;
++    if (!gem_process) return STATUS_DLL_INIT_FAILED;
++    status = gem_wine_process_commit_identity(gem_process, (uint64_t)(uintptr_t)base, base, size,
++                                              protection);
++    if (status == GEM_WINE_OK && executable_protection(protection))
++        status = gem_wine_process_invalidate_code(gem_process, (uint64_t)(uintptr_t)base, size);
++    return gem_status(status);
++}
++
++NTSTATUS gem_virtual_decommit(void *base, SIZE_T size)
++{
++    if (!gem_process) return STATUS_DLL_INIT_FAILED;
++    return gem_status(gem_wine_process_decommit(gem_process, (uint64_t)(uintptr_t)base, size));
++}
++
++NTSTATUS gem_virtual_unmap(void *base, SIZE_T size)
++{
++    if (!gem_process) return STATUS_DLL_INIT_FAILED;
++    return gem_status(gem_wine_process_unmap(gem_process, (uint64_t)(uintptr_t)base, size));
++}
++
++NTSTATUS gem_virtual_release(void *base, SIZE_T size)
++{
++    if ((uint64_t)(uintptr_t)base == GEM_WINE_KUSER_CANONICAL_ADDRESS &&
++        size == GEM_WINE_GUEST_PAGE_SIZE) return STATUS_SUCCESS;
++    if (!gem_process) return STATUS_DLL_INIT_FAILED;
++    return gem_status(gem_wine_process_release(gem_process, (uint64_t)(uintptr_t)base, size));
++}
++
++NTSTATUS gem_virtual_protect(void *base, SIZE_T size, ULONG protection, ULONG *old_protection)
++{
++    enum gem_wine_status status;
++    uint32_t old = 0;
++
++    if (!gem_process) return STATUS_DLL_INIT_FAILED;
++    status = gem_wine_process_protect(gem_process, (uint64_t)(uintptr_t)base, size, protection,
++                                      &old);
++    if (status != GEM_WINE_OK) return gem_status(status);
++    if (old_protection) *old_protection = old;
++    if (executable_protection(old) || executable_protection(protection))
++        status = gem_wine_process_invalidate_code(gem_process, (uint64_t)(uintptr_t)base, size);
++    return gem_status(status);
++}
++
++void gem_virtual_bind_kuser(void *host_page)
++{
++    enum gem_wine_status status;
++
++    if (!gem_process || (status = gem_wine_process_bind_kuser(gem_process, host_page)) != GEM_WINE_OK)
++        gem_fail("KUSER bind", !gem_process ? GEM_WINE_ENGINE_ERROR : status);
++    TRACE("KUSER bound host=%p guest=%p\n", host_page,
++          (void *)(uintptr_t)GEM_WINE_KUSER_SHARED_DATA_ADDRESS);
++}
++
++NTSTATUS gem_virtual_invalidate(const void *base, SIZE_T size)
++{
++    if (!gem_process || !size) return size ? STATUS_DLL_INIT_FAILED : STATUS_SUCCESS;
++    return gem_status(gem_wine_process_invalidate_code(
++        gem_process, (uint64_t)(uintptr_t)base, size));
++}
++
++BOOL gem_lifecycle_probe(void)
++{
++    const char *requested = getenv("METALSHARP_GEM_LIFECYCLE_PROBE");
++    void *base = NULL;
++    SIZE_T size = 2 * GEM_WINE_GUEST_PAGE_SIZE;
++    SIZE_T release_size;
++    ULONG old_protection;
++    NTSTATUS status;
++
++    if (!requested || strcmp( requested, "1" )) return FALSE;
++    if ((status = NtAllocateVirtualMemory( NtCurrentProcess(), &base, 0, &size,
++                                           MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE )))
++        gem_fail("lifecycle probe allocation", GEM_WINE_MEMORY_ERROR);
++    if ((status = NtProtectVirtualMemory( NtCurrentProcess(), &base, &size,
++                                          PAGE_READONLY, &old_protection )) ||
++        old_protection != PAGE_READWRITE)
++    {
++        ERR("lifecycle probe protection status=%08x old=%08x base=%p size=%lx\n",
++            status, old_protection, base, size);
++        gem_fail("lifecycle probe protection", GEM_WINE_MEMORY_ERROR);
++    }
++    if ((status = NtFlushInstructionCache( NtCurrentProcess(), base, size )))
++        gem_fail("lifecycle probe invalidation", GEM_WINE_MEMORY_ERROR);
++    if ((status = NtProtectVirtualMemory( NtCurrentProcess(), &base, &size,
++                                          PAGE_READWRITE | PAGE_GUARD, &old_protection )) ||
++        old_protection != PAGE_READONLY)
++        gem_fail("lifecycle probe guard", GEM_WINE_MEMORY_ERROR);
++    release_size = size;
++    if ((status = NtFreeVirtualMemory( NtCurrentProcess(), &base, &release_size, MEM_DECOMMIT )))
++        gem_fail("lifecycle probe decommit", GEM_WINE_MEMORY_ERROR);
++    if ((status = NtAllocateVirtualMemory( NtCurrentProcess(), &base, 0, &size,
++                                           MEM_COMMIT, PAGE_READWRITE )))
++        gem_fail("lifecycle probe recommit", GEM_WINE_MEMORY_ERROR);
++    release_size = 0;
++    if ((status = NtFreeVirtualMemory( NtCurrentProcess(), &base, &release_size, MEM_RELEASE )))
++        gem_fail("lifecycle probe release", GEM_WINE_MEMORY_ERROR);
++    TRACE("lifecycle probe completed\n");
++    return TRUE;
++}
++
++#else
++
++void gem_process_init(void) {}
++NTSTATUS gem_thread_init(struct thread_data *data) { return STATUS_SUCCESS; }
++void gem_thread_shutdown(struct thread_data *data) {}
++void gem_process_shutdown(struct thread_data *data) {}
++NTSTATUS gem_virtual_map(void *base, SIZE_T size, ULONG protection, BOOL committed)
++{
++    return STATUS_SUCCESS;
++}
++NTSTATUS gem_virtual_commit(void *base, SIZE_T size, ULONG protection) { return STATUS_SUCCESS; }
++NTSTATUS gem_virtual_decommit(void *base, SIZE_T size) { return STATUS_SUCCESS; }
++NTSTATUS gem_virtual_unmap(void *base, SIZE_T size) { return STATUS_SUCCESS; }
++NTSTATUS gem_virtual_release(void *base, SIZE_T size) { return STATUS_SUCCESS; }
++NTSTATUS gem_virtual_protect(void *base, SIZE_T size, ULONG protection, ULONG *old_protection)
++{
++    return STATUS_SUCCESS;
++}
++void gem_virtual_bind_kuser(void *host_page) {}
++NTSTATUS gem_virtual_invalidate(const void *base, SIZE_T size) { return STATUS_SUCCESS; }
++BOOL gem_lifecycle_probe(void) { return FALSE; }
++
++#endif
+diff --git a/dlls/ntdll/unix/loader.c b/dlls/ntdll/unix/loader.c
+index c1321ce..9a2a6db 100644
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -1865,6 +1865,7 @@ static void start_main_thread(void)
+     set_load_order_app_name( main_wargv[0] );
+     init_thread_stack( teb, 0, 0, 0 );
+     NtCreateKeyedEvent( &keyed_event, GENERIC_READ | GENERIC_WRITE, NULL, 0 );
++    if (gem_lifecycle_probe()) exit_process(0);
+     load_ntdll();
+     load_wow64_ntdll( main_image_info.Machine );
+     load_apiset_dll();
+diff --git a/dlls/ntdll/unix/thread.c b/dlls/ntdll/unix/thread.c
+index 546963a..b08f2e1 100644
+--- a/dlls/ntdll/unix/thread.c
++++ b/dlls/ntdll/unix/thread.c
+@@ -1546,6 +1546,7 @@ static DECLSPEC_NORETURN void exit_thread( int status )
+ void exit_process( int status )
+ {
+     pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
++    gem_process_shutdown( get_thread_data() );
+     process_exit_wrapper( get_unix_exit_code( status ));
+ }
+ 
+diff --git a/dlls/ntdll/unix/unix_private.h b/dlls/ntdll/unix/unix_private.h
+index c8ca97d..4b469de 100644
+--- a/dlls/ntdll/unix/unix_private.h
++++ b/dlls/ntdll/unix/unix_private.h
+@@ -100,6 +100,8 @@ static inline BOOL is_arm64ec(void)
+ 
+ /* per-thread data for the Unix side, stored at the bottom of the signal stack */
+ 
++struct gem_wine_thread;
++
+ struct thread_data
+ {
+     TEB         *teb;               /* TEB */
+@@ -114,6 +116,7 @@ struct thread_data
+     void        *jmp_buf;           /* setjmp buffer for exception handling */
+     void        *start;             /* thread entry point */
+     void        *param;             /* thread entry point parameter */
++    struct gem_wine_thread *gem_thread; /* authoritative GEM thread */
+     struct list  entry;             /* entry in TEB list */
+     char         debug_info[0x800]; /* debug_info structure */
+     char         signal_stack[];    /* signal stack */
+@@ -296,6 +299,20 @@ extern NTSTATUS system_time_precise( void *args );
+ extern void *anon_mmap_fixed( void *start, size_t size, int prot, int flags );
+ extern void *anon_mmap_alloc( size_t size, int prot );
+ extern void virtual_init(void);
++extern void gem_process_init(void);
++extern NTSTATUS gem_thread_init( struct thread_data *data );
++extern void gem_thread_shutdown( struct thread_data *data );
++extern void gem_process_shutdown( struct thread_data *data );
++extern NTSTATUS gem_virtual_map( void *base, SIZE_T size, ULONG protection, BOOL committed );
++extern NTSTATUS gem_virtual_commit( void *base, SIZE_T size, ULONG protection );
++extern NTSTATUS gem_virtual_decommit( void *base, SIZE_T size );
++extern NTSTATUS gem_virtual_unmap( void *base, SIZE_T size );
++extern NTSTATUS gem_virtual_release( void *base, SIZE_T size );
++extern NTSTATUS gem_virtual_protect( void *base, SIZE_T size, ULONG protection,
++                                     ULONG *old_protection );
++extern void gem_virtual_bind_kuser( void *host_page );
++extern NTSTATUS gem_virtual_invalidate( const void *base, SIZE_T size );
++extern BOOL gem_lifecycle_probe(void);
+ extern ULONG_PTR get_system_affinity_mask(void);
+ extern UINT_PTR get_host_page_size(void);
+ extern void virtual_get_system_info( SYSTEM_BASIC_INFORMATION *info, BOOL wow64 );
+diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
+index 0f96d09..e3d5d8c 100644
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -1786,6 +1786,8 @@ static void free_view( struct file_view *view )
+     next_free_view = view;
+ }
+ 
++static DWORD get_win32_prot( BYTE vprot, unsigned int map_prot );
++
+ 
+ /***********************************************************************
+  *           unregister_view
+@@ -1807,6 +1809,13 @@ static void unregister_view( struct file_view *view )
+  */
+ static void delete_view( struct file_view *view ) /* [in] View */
+ {
++    NTSTATUS status = gem_virtual_release( view->base, view->size );
++    if (status)
++    {
++        ERR( "GEM release failed for %p-%p: %08x\n", view->base,
++             (char *)view->base + view->size, status );
++        exit(1);
++    }
+     if (!(view->protect & VPROT_SYSTEM)) unmap_area( view->base, view->size );
+     set_page_vprot( view->base, view->size, 0 );
+     if (view->protect & VPROT_ARM64EC) clear_arm64ec_range( view->base, view->size );
+@@ -1836,6 +1845,7 @@ static void register_view( struct file_view *view )
+ static NTSTATUS create_view( struct file_view **view_ret, void *base, size_t size, unsigned int vprot )
+ {
+     struct file_view *view;
++    NTSTATUS status;
+ 
+     assert( !((UINT_PTR)base & host_page_mask) );
+     assert( !(size & page_mask) );
+@@ -1871,6 +1881,17 @@ static NTSTATUS create_view( struct file_view **view_ret, void *base, size_t siz
+     register_view( view );
+     kernel_writewatch_register_range( view, view->base, view->size );
+ 
++    status = gem_virtual_map( base, size, get_win32_prot( vprot, view->protect ),
++                              !!(vprot & VPROT_COMMITTED) );
++    if (status)
++    {
++        ERR( "GEM map failed for %p-%p: %08x\n", base, (char *)base + size, status );
++        unregister_view( view );
++        set_page_vprot( base, size, 0 );
++        free_view( view );
++        return status;
++    }
++
+     *view_ret = view;
+     return STATUS_SUCCESS;
+ }
+@@ -1993,6 +2014,7 @@ static int mprotect_range( void *base, size_t size, BYTE set, BYTE clear )
+  */
+ static BOOL set_vprot( struct file_view *view, void *base, size_t size, BYTE vprot )
+ {
++    NTSTATUS status;
+     if (!use_kernel_writewatch && view->protect & VPROT_WRITEWATCH)
+     {
+         /* each page may need different protections depending on write watch flag */
+@@ -2004,7 +2026,17 @@ static BOOL set_vprot( struct file_view *view, void *base, size_t size, BYTE vpr
+         else if (use_kernel_writewatch && view->protect & VPROT_WRITEWATCH) vprot &= ~VPROT_WRITEWATCH;
+         set_page_vprot( base, size, vprot );
+     }
+-    return !mprotect_range( base, size, 0, 0 );
++    if (mprotect_range( base, size, 0, 0 )) return FALSE;
++    if (vprot & VPROT_COMMITTED)
++        status = gem_virtual_commit( base, size, get_win32_prot( vprot, view->protect ) );
++    else status = gem_virtual_decommit( base, size );
++    if (status)
++    {
++        ERR( "GEM protection synchronization failed for %p-%p: %08x\n", base,
++             (char *)base + size, status );
++        exit(1);
++    }
++    return TRUE;
+ }
+ 
+ 
+@@ -2480,6 +2512,7 @@ static SIZE_T get_committed_size( struct file_view *view, void *base, size_t max
+ static NTSTATUS decommit_pages( struct file_view *view, char *base, size_t size )
+ {
+     char *host_end, *host_start = (char *)ROUND_SIZE( 0, base, host_page_mask );
++    NTSTATUS status;
+ 
+     if (!size)
+     {
+@@ -2489,6 +2522,11 @@ static NTSTATUS decommit_pages( struct file_view *view, char *base, size_t size
+     else host_end = ROUND_ADDR( base + size, host_page_mask );
+ 
+     if (host_start < host_end) anon_mmap_fixed( host_start, host_end - host_start, PROT_NONE, 0 );
++    if ((status = gem_virtual_decommit( base, size )))
++    {
++        ERR( "GEM decommit failed for %p-%p: %08x\n", base, base + size, status );
++        exit(1);
++    }
+     set_page_vprot_bits( base, size, 0, VPROT_COMMITTED );
+     if (host_start < host_end) kernel_writewatch_register_range( view, host_start, host_end - host_start );
+     return STATUS_SUCCESS;
+@@ -2569,8 +2607,26 @@ static NTSTATUS free_pages_preserve_placeholder( struct file_view *view, char *b
+         status = remove_pages_from_view( view, base, size );
+         if (status) return status;
+ 
++        if ((status = gem_virtual_unmap( base, size )))
++        {
++            ERR( "GEM placeholder split failed for %p-%p: %08x\n", base, base + size, status );
++            exit(1);
++        }
++
+         status = create_view( &view, base, size, VPROT_PLACEHOLDER | VPROT_FREE_PLACEHOLDER );
+-        if (status) return status;
++        if (status)
++        {
++            ERR( "GEM placeholder recreation failed for %p-%p: %08x\n", base, base + size, status );
++            exit(1);
++        }
++    }
++    else if (view->protect & VPROT_COMMITTED)
++    {
++        if ((status = gem_virtual_decommit( base, size )))
++        {
++            ERR( "GEM placeholder decommit failed for %p-%p: %08x\n", base, base + size, status );
++            exit(1);
++        }
+     }
+ 
+     view->protect = VPROT_PLACEHOLDER | VPROT_FREE_PLACEHOLDER;
+@@ -2621,6 +2677,11 @@ static NTSTATUS free_pages( struct file_view *view, char *base, size_t size )
+     status = remove_pages_from_view( view, base, size );
+     if (!status)
+     {
++        if ((status = gem_virtual_unmap( base, size )))
++        {
++            ERR( "GEM partial unmap failed for %p-%p: %08x\n", base, base + size, status );
++            exit(1);
++        }
+         set_page_vprot( base, size, 0 );
+         if (view->protect & VPROT_ARM64EC) clear_arm64ec_range( base, size );
+         if (host_base < host_end) unmap_area( host_base, host_end - host_base );
+@@ -2659,6 +2720,25 @@ static NTSTATUS coalesce_placeholders( struct file_view *view, char *base, size_
+ 
+     if (view_count < 2 || size != views_size) return STATUS_CONFLICTING_ADDRESSES;
+ 
++    curr_view = view;
++    for (i = 0; i < view_count; ++i)
++    {
++        NTSTATUS status = gem_virtual_release( curr_view->base, curr_view->size );
++        if (status)
++        {
++            ERR( "GEM placeholder coalesce release failed for %p-%p: %08x\n", curr_view->base,
++                 (char *)curr_view->base + curr_view->size, status );
++            exit(1);
++        }
++        if (i + 1 < view_count)
++            curr_view = RB_ENTRY_VALUE( rb_next( &curr_view->entry ), struct file_view, entry );
++    }
++    if (gem_virtual_map( base, size, PAGE_NOACCESS, FALSE ))
++    {
++        ERR( "GEM placeholder coalesce reserve failed for %p-%p\n", base, base + size );
++        exit(1);
++    }
++
+     for (i = 1; i < view_count; ++i)
+     {
+         curr_view = RB_ENTRY_VALUE( rb_next( &view->entry ), struct file_view, entry );
+@@ -3730,6 +3810,8 @@ void virtual_init(void)
+     size = (char *)address_space_start - (char *)0x10000;
+     if (size && mmap_is_in_reserved_area( (void*)0x10000, size ) == 1)
+         anon_mmap_fixed( (void *)0x10000, size, PROT_READ | PROT_WRITE, 0 );
++
++    gem_process_init();
+ }
+ 
+ 
+@@ -4093,6 +4175,11 @@ TEB *virtual_alloc_first_teb(void)
+     list_add_head( &teb_list, &thread_data->entry );
+     pthread_key_create( &thread_data_key, NULL );
+     pthread_setspecific( thread_data_key, thread_data );
++    if ((status = gem_thread_init( thread_data )))
++    {
++        ERR( "wine: failed to create the initial GEM thread: %08x\n", status );
++        exit(1);
++    }
+     return teb;
+ }
+ 
+@@ -4102,6 +4189,7 @@ TEB *virtual_alloc_first_teb(void)
+  */
+ NTSTATUS virtual_alloc_teb( struct thread_data *data )
+ {
++    BOOL signal_initialized = FALSE;
+     sigset_t sigset;
+     void *ptr = NULL;
+     NTSTATUS status = STATUS_SUCCESS;
+@@ -4136,8 +4224,16 @@ NTSTATUS virtual_alloc_teb( struct thread_data *data )
+     data->teb = init_teb( ptr, is_wow64() );
+     list_add_head( &teb_list, &data->entry );
+ 
+-    if ((status = signal_alloc_thread( data->teb )))
++    if (!(status = signal_alloc_thread( data->teb )))
+     {
++        signal_initialized = TRUE;
++        status = gem_thread_init( data );
++    }
++    if (status)
++    {
++        gem_thread_shutdown( data );
++        if (signal_initialized) signal_free_thread( data->teb );
++        list_remove( &data->entry );
+         *(void **)ptr = next_free_teb;
+         next_free_teb = ptr;
+     }
+@@ -4188,6 +4284,7 @@ void virtual_free_thread_data( struct thread_data *data )
+     sigset_t sigset;
+     WOW_TEB *wow_teb;
+ 
++    gem_thread_shutdown( data );
+     if (!(teb = data->teb)) goto done;
+ 
+     if (teb->DeallocationStack)
+@@ -4485,6 +4582,7 @@ void virtual_map_user_shared_data(void)
+         ERR( "failed to remap the process USD: %d\n", res );
+         exit(1);
+     }
++    gem_virtual_bind_kuser( user_shared_data );
+     if (needs_close) close( fd );
+     NtClose( section );
+ }
+@@ -7018,6 +7116,11 @@ NTSTATUS WINAPI NtFlushInstructionCache( HANDLE handle, const void *addr, SIZE_T
+     static int once;
+     if (!once++) FIXME( "%p %p %ld\n", handle, addr, size );
+ #endif
++    if (handle == GetCurrentProcess())
++    {
++        NTSTATUS status = gem_virtual_invalidate( addr, size );
++        if (status) return status;
++    }
+     return STATUS_SUCCESS;
+ }
+ 
+-- 
+2.54.0 (Apple Git-157)
+

@@ -167,16 +167,16 @@ zero-Rosetta audits. Local Apple Clang ASan+UBSan passed the complete 15-test ma
 
 - [x] Define and test the versioned native Wine/GEM bridge ABI, component install, exported-symbol allowlist, lifecycle conflicts, checked mapping surface, bounded callbacks, and native ARM64 execution profile in PR #20.
 - [x] Define fail-closed integrated-release asset, evidence, readiness, permission, and publication contracts while leaving publication inert in PR #20.
-- [ ] Complete #21: clean pinned Wine patch queue, Darwin ARM64 loader foundation, and reproducible four-architecture build.
-- [ ] Complete #22: direct ntdll linkage plus GEM process, memory, thread, KUSER, protection, and invalidation integration.
+- [x] Complete #21: clean pinned Wine patch queue, Darwin ARM64 loader foundation, and reproducible four-architecture build.
+- [x] Complete #22: direct ntdll linkage plus GEM process, memory, thread, KUSER, protection, and invalidation integration.
 - [ ] Complete #23: native ARM64 PE execution through GEM with syscall/Unix-call/exception boundaries, bounded `wineboot`, and ARM64 `cmd.exe`.
 - [ ] Complete #24: authentic ARM64EC/x64 execution through the integrated Wine path.
 - [ ] Complete #25: self-contained relocatable package, hardening, reproducibility, evidence, protected-main publication, and post-release verification.
 - [ ] Add deterministic trace format with versioning and redaction.
 - [ ] Add bounded stress tests and randomized state round trips.
 - [ ] Add ASan/UBSan Linux jobs and supported macOS sanitizer coverage.
-- [ ] Import required Wine 11.12 changes as an ordered, reviewed LGPL-2.1-or-later patch series; reject local dirty worktrees as build inputs.
-- [ ] Reproduce the native host plus `i386,x86_64,aarch64,arm64ec` PE build from pinned clean sources and toolchains.
+- [x] Import required Wine 11.12 changes as an ordered, reviewed LGPL-2.1-or-later patch series; reject local dirty worktrees as build inputs.
+- [x] Reproduce the native host plus `i386,x86_64,aarch64,arm64ec` PE build from pinned clean sources and toolchains.
 - [ ] Route initial PE thread entry and Wine virtual-memory events through GEM.
 - [ ] Implement the required syscall, Unix-call, exception, APC, suspend/resume, and thread boundaries without transferring canonical authority from GEM.
 - [ ] Reach x64 naturally through Wine's selected ARM64EC emulation interface and the accepted Blink adapter.

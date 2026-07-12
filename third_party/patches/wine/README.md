@@ -39,6 +39,13 @@ is not a release input.
    - selects each PE target's Clang triple for spec-object assembly;
    - preserves native-architecture metadata when combining ARM64EC and native
      ARM64 objects.
+6. `0006-ntdll-integrate-native-darwin-arm64-gem.patch`
+   - requires the exact native ARM64 bridge ABI at configure time and links
+     `ntdll.so` directly to `@rpath/libmetalsharp-gem-wine.0.dylib`;
+   - creates one GEM process and one GEM object per Wine guest thread;
+   - synchronizes reserve, identity commit, decommit, partial unmap, release,
+     protection, high KUSER backing, executable invalidation, and teardown;
+   - adds an opt-in pre-guest lifecycle probe for staged acceptance.
 
 ## Current evidence and limitation
 
@@ -46,18 +53,17 @@ The unpatched installed wrapper reached `reexec_loader()` and was terminated by
 `SIGKILL` in `execve`, producing no Wine log (`rc=-9`, retained bytes `0`). LLDB
 located the stop at Wine `dlls/ntdll/unix/loader.c` in the loader re-exec path.
 
-A research build carrying this queue exports `wine_main_preload_info` from the
-installed ARM64 wrapper and proceeds through `virtual_init`, high KUSER mapping,
-TEB/stack allocation, PE `ntdll.dll` mapping, and API-set loading without the
-re-exec `SIGKILL`. It then fails with Wine's existing direct native guest-entry
-path reporting `virtual_setup_exception stack overflow`. That later failure is
-expected evidence that the Wine-to-GEM execution handoff is still missing; it
-is not a passing `wineboot` result.
+A clean build carrying this queue proceeds through `virtual_init`, high KUSER
+mapping, TEB/stack allocation, PE `ntdll.dll` mapping, and API-set loading
+without the re-exec `SIGKILL`. Its bounded opt-in probe exercises Wine's real
+allocation, protection, instruction-cache flush, guard, decommit, recommit,
+release, thread teardown, and process teardown paths, then exits before guest
+entry. Native guest execution remains Issue #23 scope; this is not a passing
+`wineboot` result.
 
-The research build and prefixes are not release inputs. Release acceptance
-requires a clean rebuild from this queue plus the later reviewed bridge patches,
-bounded `wineboot`, command, hybrid, sanitizer, reproducibility, and zero-Rosetta
-evidence.
+Local build trees and prefixes are not release inputs. Release acceptance still
+requires bounded `wineboot`, command, hybrid, sanitizer, reproducibility, and
+zero-Rosetta evidence from the later reviewed integration stages.
 
 ## Clean build entrypoint
 
@@ -78,7 +84,10 @@ tools/release/build-integrated-wine.sh \
 The dependency lock requires the recorded LLVM-MinGW archive, Homebrew bison,
 Mesa/EGL, Vulkan headers/loader, SDL2, SDL3, and the macOS OpenGL framework.
 The external dependency directory must provide the locked ARM64 Vulkan loader
-and MoltenVK binaries. The resulting `wine-build-manifest.json` records the
-configure flags, toolchain, dependency roots, installed files, and Mach-O
-audit output; it is evidence of the foundation build only, not a release
+and MoltenVK binaries. The command also builds and stages the exact GEM bridge,
+verifies ntdll's direct versioned dependency and relocatable lookup path, audits
+every staged host Mach-O as ARM64-only, and runs the bounded pre-guest lifecycle
+probe against a fresh prefix. The resulting `wine-build-manifest.json` records
+those results, the configure flags, toolchain, dependency roots, installed
+files, and Mach-O audit output. It is integration evidence, not a release
 package or a claim that guest execution is complete.
