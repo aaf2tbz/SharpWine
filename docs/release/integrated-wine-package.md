@@ -49,6 +49,12 @@ The package creator uses a fixed lexical path order, numeric owner/group zero, e
 
 Two clean builds from the same source and declared toolchain must produce identical install manifests. Archive byte identity is required when the pinned macOS toolchain produces reproducible Wine outputs; otherwise every differing field must be identified and eliminated before v0.1 publication. A nondeterminism waiver is not a release path.
 
+## Workflow activation
+
+`.github/workflows/release.yml` is intentionally inert on `main` until the final Issue #15 change adds `release/v0.1.0-ready.json`. A pull request must not add that record until `tools/release/build-integrated-wine.sh` exists and all integration, packaging, reproducibility, evidence, and policy checks pass. The readiness record will bind its own schema, version, expected protected-main parent, release script hashes, and accepted evidence criteria; release CI must validate it before using it.
+
+A premature manual dispatch fails. A normal `main` push without the record succeeds without building or publishing. Once the reviewed record is present, the same workflow run builds the candidate with read-only repository permission, hands it to the publication job through a one-day same-run artifact with an Actions service digest, revalidates it, reconfirms the exact current `main` head, and only then uses a separate `contents: write` job to create the release.
+
 ## Publication assets
 
 The GitHub `v0.1.0` release receives:

@@ -1,0 +1,146 @@
+name: Integrated Wine release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: integrated-wine-v0.1.0
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Build integrated Wine release candidate
+    runs-on: macos-15
+    outputs:
+      ready: ${{ steps.readiness.outputs.ready }}
+      artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Detect the reviewed release-readiness record
+        id: readiness
+        shell: bash
+        run: |
+          if [[ -f release/v0.1.0-ready.json ]]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Reject a premature manual publication request
+        if: github.event_name == 'workflow_dispatch' && steps.readiness.outputs.ready != 'true'
+        run: |
+          echo 'release/v0.1.0-ready.json is absent; Issue #15 release gates are incomplete' >&2
+          exit 1
+      - name: Build, test, and package integrated Wine
+        if: steps.readiness.outputs.ready == 'true'
+        run: |
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+          tools/release/build-integrated-wine.sh \
+            --commit "$GITHUB_SHA" \
+            --output "${RUNNER_TEMP}/metalsharp-wine-v0.1.0-release"
+      - name: Validate release assets before handoff
+        if: steps.readiness.outputs.ready == 'true'
+        run: |
+          python3 tools/release/validate-release-assets.py \
+            --directory "${RUNNER_TEMP}/metalsharp-wine-v0.1.0-release" \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA" \
+            --version 0.1.0
+      - name: Upload the same-run release candidate
+        if: steps.readiness.outputs.ready == 'true'
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: integrated-wine-v0.1.0-${{ github.run_id }}
+          path: ${{ runner.temp }}/metalsharp-wine-v0.1.0-release/*
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    name: Publish immutable v0.1.0 assets
+    needs: candidate
+    if: needs.candidate.outputs.ready == 'true'
+    runs-on: macos-15
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Reject publication code not loaded from the exact main head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+          test "$main_sha" = "$GITHUB_SHA"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: integrated-wine-v0.1.0-${{ github.run_id }}
+          path: ${{ runner.temp }}/metalsharp-wine-v0.1.0-release
+      - name: Verify the Actions service artifact digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_DIGEST: ${{ needs.candidate.outputs.artifact-digest }}
+        run: |
+          actual="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
+            --jq '[.artifacts[] | select(.name == "integrated-wine-v0.1.0-${{ github.run_id }}") | .digest] | if length == 1 then .[0] else error("artifact count") end')"
+          test "$actual" = "$EXPECTED_DIGEST"
+      - name: Revalidate downloaded release assets
+        run: |
+          python3 tools/release/validate-release-assets.py \
+            --directory "${RUNNER_TEMP}/metalsharp-wine-v0.1.0-release" \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA" \
+            --version 0.1.0
+      - name: Reconfirm the exact protected-main head and unused release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+          test "$main_sha" = "$GITHUB_SHA"
+          if gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v0.1.0 already exists; release assets are never replaced' >&2
+            exit 1
+          fi
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" >/dev/null 2>&1; then
+            echo 'v0.1.0 tag already exists; release tags are never reused' >&2
+            exit 1
+          fi
+      - name: Create, verify, and publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET_DIR: ${{ runner.temp }}/metalsharp-wine-v0.1.0-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v0.1.0 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title 'MetalSharp Wine v0.1.0' \
+            --notes-file "$ASSET_DIR/RELEASE-NOTES.md" \
+            --draft \
+            "$ASSET_DIR/metalsharp-wine-v0.1.0-macos-arm64.tar.zst" \
+            "$ASSET_DIR/metalsharp-wine-v0.1.0-macos-arm64.tar.zst.sha256" \
+            "$ASSET_DIR/release-manifest.json" \
+            "$ASSET_DIR/wine-integration-evidence.json" \
+            "$ASSET_DIR/sbom.spdx.json" \
+            "$ASSET_DIR/evidence-index.json" \
+            "$ASSET_DIR/KNOWN-LIMITATIONS.md"
+          release_target="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" --jq .object.sha)"
+          test "$release_target" = "$GITHUB_SHA"
+          python3 tools/release/verify-published-release.py \
+            --directory "$ASSET_DIR" \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag v0.1.0 \
+            --commit "$GITHUB_SHA"
+          gh release edit v0.1.0 --repo "$GITHUB_REPOSITORY" --draft=false --latest
