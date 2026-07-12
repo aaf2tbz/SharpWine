@@ -3,3 +3,4 @@
 0003-darwin-arm64-high-guest-mappings.patch
 0004-arm64ec-avoid-x86-inline-assembly.patch
 0005-arm64x-pass-mode-to-winebuild.patch
+0006-ntdll-integrate-native-darwin-arm64-gem.patch

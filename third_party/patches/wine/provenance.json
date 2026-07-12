@@ -41,6 +41,13 @@
       "sha256": "3bae1232d61d1bece50cc29e8f8ccf583f6c4eba6e534ac7a6cdf2b60555420f",
       "authoringCommit": "5b18ac6488e3fa5701d9fb8d20b77281e6c51da0",
       "purpose": "Pass ARM64X mode to Wine's spec-object generator and select each PE target's Clang triple so native ARM64 metadata is preserved."
+    },
+    {
+      "order": 6,
+      "path": "third_party/patches/wine/0006-ntdll-integrate-native-darwin-arm64-gem.patch",
+      "sha256": "48c120dc1fdf6295a823261f1a13a88f8c2a61c170ad2605f34d402f617d8e18",
+      "authoringCommit": "4e324aef626e3845a4e3e8d67df5cbe65d47e9aa",
+      "purpose": "Require and directly link the exact native GEM bridge ABI, then synchronize Wine ntdll process, thread, memory, KUSER, protection, invalidation, and teardown lifecycle."
     }
   ],
   "researchEvidence": {

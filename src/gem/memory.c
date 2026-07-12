@@ -241,6 +241,36 @@ static enum gem_memory_error release_locked(struct gem_memory *m, uint64_t a, ui
     remove_pages(m, a, n);
     return GEM_MEMORY_OK;
 }
+static enum gem_memory_error unmap_locked(struct gem_memory *m, uint64_t a, uint64_t n) {
+    struct page *first;
+    uint64_t base, end, reservation_end, o;
+    enum gem_memory_error e = check(m, a, n, false);
+    if (e)
+        return e;
+    first = at(m, a);
+    base = first->reservation_base;
+    reservation_end = base + first->reservation_size;
+    end = a + n;
+    if (a < base || end > reservation_end)
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    for (o = 0; o < n; o += 4096U) {
+        struct page *p = at(m, a + o);
+        if (p->reservation_base != base || p->reservation_size != first->reservation_size)
+            return GEM_MEMORY_INVALID_ARGUMENT;
+    }
+    for (o = base; o < a; o += 4096U) {
+        struct page *p = at(m, o);
+        p->reservation_base = base;
+        p->reservation_size = a - base;
+    }
+    for (o = end; o < reservation_end; o += 4096U) {
+        struct page *p = at(m, o);
+        p->reservation_base = end;
+        p->reservation_size = reservation_end - end;
+    }
+    remove_pages(m, a, n);
+    return GEM_MEMORY_OK;
+}
 static enum gem_memory_error protect_locked(struct gem_memory *m, uint64_t a, uint64_t n,
                                             uint32_t prot, uint32_t *old) {
     uint64_t o;
@@ -295,22 +325,12 @@ static enum gem_memory_error alias_locked(struct gem_memory *m, uint64_t a, uint
     }
     return GEM_MEMORY_OK;
 }
-static uint64_t host_page_size(void) {
-#if defined(_WIN32)
-    SYSTEM_INFO info;
-    GetSystemInfo(&info);
-    return (uint64_t)info.dwPageSize;
-#else
-    const long size = sysconf(_SC_PAGESIZE);
-    return size > 0 ? (uint64_t)size : 0U;
-#endif
-}
 static enum gem_memory_error map_identity_locked(struct gem_memory *m, uint64_t a, void *h,
                                                  uint64_t n, uint32_t prot) {
-    uint64_t o, hs = host_page_size();
+    uint64_t o;
     enum gem_memory_error e;
-    if (!h || hs == 0U || a < UINT64_C(0x100000000) || a != (uint64_t)(uintptr_t)h ||
-        !range_ok(a, n) || !prot_ok(prot) || a % hs || n % hs)
+    if (!h || a < UINT64_C(0x100000000) || a != (uint64_t)(uintptr_t)h || !range_ok(a, n) ||
+        !prot_ok(prot))
         return GEM_MEMORY_INVALID_ARGUMENT;
     if ((e = reserve_locked(m, &a, n)))
         return e;
@@ -324,6 +344,45 @@ static enum gem_memory_error map_identity_locked(struct gem_memory *m, uint64_t 
         p->protection = prot;
     }
     return GEM_MEMORY_OK;
+}
+static enum gem_memory_error commit_identity_locked(struct gem_memory *m, uint64_t a, void *h,
+                                                    uint64_t n, uint32_t prot) {
+    uint64_t o;
+    struct backing **backings;
+    enum gem_memory_error e;
+    if (!h || a < UINT64_C(0x100000000) || a != (uint64_t)(uintptr_t)h || !range_ok(a, n) ||
+        !prot_ok(prot))
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    if ((e = check(m, a, n, false)))
+        return e;
+    backings = calloc((size_t)(n / 4096U), sizeof(*backings));
+    if (!backings)
+        return GEM_MEMORY_NO_MEMORY;
+    for (o = 0; o < n; o += 4096U) {
+        struct page *p = at(m, a + o);
+        if (p->backing) {
+            if (!p->backing->external || p->backing->data != (uint8_t *)h + o) {
+                e = GEM_MEMORY_CONFLICT;
+                goto rollback;
+            }
+        } else if (!(backings[o / 4096U] = new_backing((uint8_t *)h + o, true))) {
+            e = GEM_MEMORY_NO_MEMORY;
+            goto rollback;
+        }
+    }
+    for (o = 0; o < n; o += 4096U) {
+        struct page *p = at(m, a + o);
+        if (!p->backing)
+            p->backing = backings[o / 4096U];
+        p->protection = prot;
+    }
+    free(backings);
+    return GEM_MEMORY_OK;
+rollback:
+    for (o = 0; o < n; o += 4096U)
+        drop(backings[o / 4096U]);
+    free(backings);
+    return e;
 }
 static enum gem_memory_error bind_kuser_locked(struct gem_memory *m, void *host_page) {
     struct page *canonical, *alias;
@@ -340,7 +399,6 @@ static enum gem_memory_error bind_kuser_locked(struct gem_memory *m, void *host_
         return GEM_MEMORY_NO_MEMORY;
 
     old = canonical->backing;
-    memcpy(host_page, old->data, GEM_GUEST_PAGE_SIZE);
     external->refs = 2U;
     canonical->backing = external;
     alias->backing = external;
@@ -680,6 +738,16 @@ enum gem_memory_error gem_memory_commit(struct gem_memory *m, uint64_t a, uint64
     gem_lock_release(&m->lock);
     return e;
 }
+enum gem_memory_error gem_memory_commit_identity(struct gem_memory *m, uint64_t a, void *h,
+                                                 uint64_t n, uint32_t prot) {
+    enum gem_memory_error e;
+    if (!m)
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    gem_lock_acquire(&m->lock);
+    e = commit_identity_locked(m, a, h, n, prot);
+    gem_lock_release(&m->lock);
+    return e;
+}
 enum gem_memory_error gem_memory_decommit(struct gem_memory *m, uint64_t a, uint64_t n) {
     enum gem_memory_error e;
     if (!m)
@@ -703,7 +771,7 @@ enum gem_memory_error gem_memory_unmap(struct gem_memory *m, uint64_t a, uint64_
     if (!m)
         return GEM_MEMORY_INVALID_ARGUMENT;
     gem_lock_acquire(&m->lock);
-    e = release_locked(m, a, n);
+    e = unmap_locked(m, a, n);
     gem_lock_release(&m->lock);
     return e;
 }

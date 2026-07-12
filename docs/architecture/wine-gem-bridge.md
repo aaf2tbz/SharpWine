@@ -48,6 +48,14 @@ bound KUSER page. Those allocations must remain live until they are unmapped,
 rebound, or the process is destroyed. Wine may update the KUSER page directly;
 all guest accesses still use GEM's aliases and logical protections.
 
+Wine reserves ranges in GEM before publishing committed identity backing.
+Commit, decommit, partial unmap, full release, protection changes, guard and
+WRITECOPY state, and executable invalidation are synchronized through the
+versioned bridge. GEM tracks each 4 KiB guest page independently even when
+multiple guest pages share a 16 KiB Darwin host page. Bridge mutations validate
+the complete range before publication; a Wine-side synchronization failure
+terminates the process instead of continuing with divergent state.
+
 Destroying a process with registered threads returns `GEM_WINE_CONFLICT`.
 Destroying or re-entering a running thread returns `GEM_WINE_CONFLICT`. As with
 other opaque C handles, callers must prevent a new operation from starting once
@@ -124,3 +132,21 @@ supply bounded evidence for the clean Wine build (#21), lifecycle plus
 mapping/protection/invalidation wiring (#22), thread startup plus syscall,
 Unix-call, exception, and native ARM64 execution (#23), checked ARM64X and x64
 execution (#24), and packaged teardown, relocation, and release behavior (#25).
+
+## Wine integration acceptance
+
+Patch 6 makes native Darwin ARM64 configuration fail unless an absolute bridge
+prefix provides the exact ABI-1 header and an ARM64-only
+`libmetalsharp-gem-wine.0.dylib`. The resulting Unix `ntdll.so` has a direct
+`@rpath/libmetalsharp-gem-wine.0.dylib` load command and resolves the staged
+bridge through `@loader_path/../..`; there is no delayed loading or fallback.
+
+`tools/release/build-integrated-wine.sh` is the single documented clean-build
+entrypoint. It starts from a fresh checkout at the locked Wine 11.12 revision,
+applies the ordered queue without fuzz, builds the GEM bridge and all four PE
+architectures, stages both installations, audits every host Mach-O as ARM64-only,
+and runs `METALSHARP_GEM_LIFECYCLE_PROBE=1` against a fresh prefix. The probe
+must record process creation, initial thread creation, KUSER binding, checked
+allocation/protection/invalidation/decommit/recommit/release, thread destruction,
+and process destruction before guest entry. A timeout, signal, missing lifecycle
+event, bridge mismatch, or mapping conflict fails the command.

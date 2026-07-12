@@ -156,6 +156,43 @@ enum gem_wine_status gem_wine_process_destroy(struct gem_wine_process *process) 
     return GEM_WINE_OK;
 }
 
+enum gem_wine_status gem_wine_process_reserve(struct gem_wine_process *process, uint64_t address,
+                                              uint64_t size) {
+    uint64_t reserved = address;
+    enum gem_memory_error error;
+    if (process == NULL || address == 0U)
+        return GEM_WINE_INVALID_ARGUMENT;
+    error = gem_memory_reserve(process->memory, &reserved, size);
+    if (error == GEM_MEMORY_OK && reserved != address) {
+        (void)gem_memory_release(process->memory, reserved, size);
+        return GEM_WINE_MEMORY_ERROR;
+    }
+    return memory_status(error);
+}
+
+enum gem_wine_status gem_wine_process_commit_identity(struct gem_wine_process *process,
+                                                      uint64_t address, void *host, uint64_t size,
+                                                      uint32_t protection) {
+    if (process == NULL)
+        return GEM_WINE_INVALID_ARGUMENT;
+    return memory_status(
+        gem_memory_commit_identity(process->memory, address, host, size, protection));
+}
+
+enum gem_wine_status gem_wine_process_decommit(struct gem_wine_process *process, uint64_t address,
+                                               uint64_t size) {
+    if (process == NULL)
+        return GEM_WINE_INVALID_ARGUMENT;
+    return memory_status(gem_memory_decommit(process->memory, address, size));
+}
+
+enum gem_wine_status gem_wine_process_release(struct gem_wine_process *process, uint64_t address,
+                                              uint64_t size) {
+    if (process == NULL)
+        return GEM_WINE_INVALID_ARGUMENT;
+    return memory_status(gem_memory_release(process->memory, address, size));
+}
+
 enum gem_wine_status gem_wine_process_map_identity(struct gem_wine_process *process,
                                                    uint64_t address, void *host, uint64_t size,
                                                    uint32_t protection) {

@@ -67,6 +67,10 @@ enum gem_memory_error gem_memory_reserve(struct gem_memory *memory, uint64_t *ad
                                          uint64_t size);
 enum gem_memory_error gem_memory_commit(struct gem_memory *memory, uint64_t address, uint64_t size,
                                         uint32_t protection);
+/* Commits caller-owned identity storage into an existing reservation. The host
+ * range remains caller-owned and must stay live until decommit or release. */
+enum gem_memory_error gem_memory_commit_identity(struct gem_memory *memory, uint64_t address,
+                                                 void *host, uint64_t size, uint32_t protection);
 enum gem_memory_error gem_memory_decommit(struct gem_memory *memory, uint64_t address,
                                           uint64_t size);
 enum gem_memory_error gem_memory_release(struct gem_memory *memory, uint64_t address,
@@ -82,7 +86,7 @@ enum gem_memory_error gem_memory_map_identity(struct gem_memory *memory, uint64_
                                               void *host, uint64_t size, uint32_t protection);
 /* Rebinds both KUSER aliases to one caller-owned, 4 KiB-aligned host page.
  * The page must remain live until the memory object is destroyed or rebound.
- * Existing KUSER bytes are copied into the external page before publication. */
+ * The external page is authoritative and may be mapped read-only by the caller. */
 enum gem_memory_error gem_memory_bind_kuser(struct gem_memory *memory, void *host_page);
 enum gem_memory_error gem_memory_read(struct gem_memory *memory, uint64_t address, void *buffer,
                                       size_t size);

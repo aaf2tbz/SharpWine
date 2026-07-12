@@ -24,10 +24,11 @@ int main(void) {
            output[0] == input[0]);
     kuser = aligned_alloc(GEM_GUEST_PAGE_SIZE, GEM_GUEST_PAGE_SIZE);
     assert(kuser != NULL);
-    memset(kuser, 0, GEM_GUEST_PAGE_SIZE);
+    memset(kuser, 2, GEM_GUEST_PAGE_SIZE);
     assert(gem_memory_bind_kuser(memory, kuser + 1U) == GEM_MEMORY_INVALID_ARGUMENT);
     assert(gem_memory_bind_kuser(memory, kuser) == GEM_MEMORY_OK);
-    assert(kuser[0] == input[0]);
+    assert(gem_memory_read(memory, GEM_KUSER_CANONICAL_ADDRESS, output, 1U) == GEM_MEMORY_OK &&
+           output[0] == 2U);
     kuser[0] = 3U;
     assert(gem_memory_read(memory, GEM_KUSER_SHARED_DATA_ADDRESS, output, 1U) == GEM_MEMORY_OK &&
            output[0] == 3U);
@@ -73,6 +74,31 @@ int main(void) {
                                    GEM_PAGE_READWRITE) == GEM_MEMORY_INVALID_ARGUMENT);
     assert(gem_memory_unmap(memory, (uint64_t)(uintptr_t)identity, host_page_size) ==
            GEM_MEMORY_OK);
+    {
+        uint64_t identity_address = (uint64_t)(uintptr_t)identity;
+        assert(gem_memory_reserve(memory, &identity_address, host_page_size) == GEM_MEMORY_OK);
+        assert(gem_memory_commit_identity(memory, identity_address, identity, host_page_size,
+                                          GEM_PAGE_READWRITE) == GEM_MEMORY_OK);
+        ((uint8_t *)identity)[0] = 0x5a;
+        assert(gem_memory_read(memory, identity_address, output, 1U) == GEM_MEMORY_OK &&
+               output[0] == 0x5a);
+        assert(gem_memory_decommit(memory, identity_address, host_page_size) == GEM_MEMORY_OK);
+        assert(gem_memory_read(memory, identity_address, output, 1U) == GEM_MEMORY_NOT_COMMITTED);
+        assert(gem_memory_commit_identity(memory, identity_address, identity, host_page_size,
+                                          GEM_PAGE_READWRITE) == GEM_MEMORY_OK);
+        assert(gem_memory_release(memory, identity_address, host_page_size) == GEM_MEMORY_OK);
+    }
+    {
+        uint64_t split = UINT64_C(0x500000000);
+        assert(gem_memory_reserve(memory, &split, 3U * GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+        assert(gem_memory_commit(memory, split, 3U * GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+               GEM_MEMORY_OK);
+        assert(gem_memory_unmap(memory, split + GEM_GUEST_PAGE_SIZE, GEM_GUEST_PAGE_SIZE) ==
+               GEM_MEMORY_OK);
+        assert(gem_memory_release(memory, split, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+        assert(gem_memory_release(memory, split + 2U * GEM_GUEST_PAGE_SIZE, GEM_GUEST_PAGE_SIZE) ==
+               GEM_MEMORY_OK);
+    }
     free(identity);
 
     assert(gem_memory_protect(memory, base, GEM_GUEST_PAGE_SIZE,

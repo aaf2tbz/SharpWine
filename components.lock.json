@@ -52,6 +52,10 @@
         {
           "path": "third_party/patches/wine/0005-arm64x-pass-mode-to-winebuild.patch",
           "sha256": "3bae1232d61d1bece50cc29e8f8ccf583f6c4eba6e534ac7a6cdf2b60555420f"
+        },
+        {
+          "path": "third_party/patches/wine/0006-ntdll-integrate-native-darwin-arm64-gem.patch",
+          "sha256": "48c120dc1fdf6295a823261f1a13a88f8c2a61c170ad2605f34d402f617d8e18"
         }
       ]
     },

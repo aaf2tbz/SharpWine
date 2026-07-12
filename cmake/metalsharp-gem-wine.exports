@@ -2,6 +2,10 @@ _gem_wine_bridge_abi_version
 _gem_wine_status_name
 _gem_wine_process_create
 _gem_wine_process_destroy
+_gem_wine_process_reserve
+_gem_wine_process_commit_identity
+_gem_wine_process_decommit
+_gem_wine_process_release
 _gem_wine_process_map_identity
 _gem_wine_process_unmap
 _gem_wine_process_protect
