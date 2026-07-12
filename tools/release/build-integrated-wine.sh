@@ -182,7 +182,9 @@ uname -a > "$work/uname.txt"
 python3 - "$output/wine-build-manifest.json" "$lock" "$source_dir" "$prefix" "$work" "$jobs" "$llvm_mingw" "$brew_prefix" "$deps_root" "$commit" <<'PY'
 import hashlib, json, os, pathlib, stat, subprocess, sys
 
-manifest, lock_path, source, prefix, work, jobs, llvm, brew, deps = map(pathlib.Path, sys.argv[1:10])
+manifest, lock_path, source, prefix, work = map(pathlib.Path, sys.argv[1:6])
+jobs = sys.argv[6]
+llvm, brew, deps = map(pathlib.Path, sys.argv[7:10])
 repository_commit = sys.argv[10]
 lock = json.loads(lock_path.read_text(encoding="utf-8")); wine = lock["components"]["wine"]
 stage = pathlib.Path(prefix).parent
