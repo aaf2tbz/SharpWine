@@ -60,7 +60,9 @@ if(BUILD_AS_ARM64X STREQUAL "ARM64EC")
 
   add_executable(arm64x_fixture_host host.c)
   target_compile_options(arm64x_fixture_host PRIVATE /W4 /WX /guard:cf)
-  target_link_options(arm64x_fixture_host PRIVATE /WX /DYNAMICBASE /GUARD:CF /Brepro)
+  target_link_options(
+    arm64x_fixture_host PRIVATE /WX /DYNAMICBASE /GUARD:CF /Brepro /DEBUG:NONE
+                                  /INCREMENTAL:NO)
   target_link_libraries(arm64x_fixture_host PRIVATE arm64x_fixture)
 endif()
 
