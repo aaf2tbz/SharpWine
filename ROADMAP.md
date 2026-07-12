@@ -1,8 +1,8 @@
 # Roadmap
 
-## First completion target: v0.1 — Deterministic Hybrid Execution Proof
+## First completion target: v0.1 — Integrated deterministic Wine runtime
 
-The first roadmap ends with a standalone, repeatable ARM64EC → x86_64/Blink → ARM64EC round trip whose canonical state never depends on Darwin x18. It deliberately stops before modifying Wine startup. This gives the Wine integration a proven execution substrate instead of another speculative runtime path.
+Milestones 0–5 established a standalone, repeatable ARM64EC → x86_64/Blink → ARM64EC round trip whose canonical state never depends on Darwin x18. Issue #15 is the v0.1 release epic: the first official release must integrate that substrate into a clean, pinned Wine 11.12 build and publish an audited, self-contained native ARM64 runtime archive. PR #20 establishes the versioned Wine/GEM bridge and inert release contracts; Issues #21–#25 divide clean Wine construction, ntdll lifecycle/memory integration, native ARM64 execution, authentic hybrid execution, and final packaging/publication into separately accepted PRs. A standalone engine or vanilla Wine build with an adjacent unused engine is not a v0.1 release. See proposed [ADR 0009](docs/architecture/adr/0009-integrated-wine-v0.1-release.md).
 
 The evidence-corrected assessment in
 [`docs/architecture/arm64ec-arm64x-research-assessment.md`](docs/architecture/arm64ec-arm64x-research-assessment.md)
@@ -24,6 +24,10 @@ v0.1 is complete only when all of the following are demonstrated in CI-compatibl
 - The x64 engine passes an explicit x86 memory-order conformance suite; hardware TSO is optional and never assumed.
 - Four 4 KiB guest pages sharing one 16 KiB host page retain distinct logical permissions and deterministic checked faults without transiently exposing neighboring guest pages.
 - The macOS process and every Mach-O dependency are ARM64, with no Rosetta invocation.
+- Pinned Wine 11.12 is reproducibly built with `--enable-archs=i386,x86_64,aarch64,arm64ec` from an ordered, reviewed LGPL patch series.
+- Wine routes initial execution, virtual-memory events, required syscall/Unix-call boundaries, exceptions, and thread state through GEM without weakening its ownership contracts.
+- Bounded fresh-prefix `wineboot --init`, ARM64 `cmd.exe /c exit`, and accepted ARM64EC/x64 integration probes pass.
+- A deterministic `metalsharp-wine-v0.1.0-macos-arm64.tar.zst` and its checksum, SBOM, provenance, limitations, and evidence assets are published from the protected final `main` commit.
 - CI, formatting, repository-policy, licensing, and test gates pass.
 
 ## Milestone 0 — Repository and specification foundation
@@ -159,31 +163,42 @@ Apple Clang, x86 TSO, 4 KiB-on-16 KiB page isolation, policy/format/provenance/l
 zero-Rosetta audits. Local Apple Clang ASan+UBSan passed the complete 15-test matrix, and Apple
 `leaks` reported zero leaks. ADR 0008 is Accepted; Milestone 5 is complete.
 
-## Milestone 6 — Release hardening
+## Milestone 6 — Wine integration and release hardening
 
+- [x] Define and test the versioned native Wine/GEM bridge ABI, component install, exported-symbol allowlist, lifecycle conflicts, checked mapping surface, bounded callbacks, and native ARM64 execution profile in PR #20.
+- [x] Define fail-closed integrated-release asset, evidence, readiness, permission, and publication contracts while leaving publication inert in PR #20.
+- [ ] Complete #21: clean pinned Wine patch queue, Darwin ARM64 loader foundation, and reproducible four-architecture build.
+- [ ] Complete #22: direct ntdll linkage plus GEM process, memory, thread, KUSER, protection, and invalidation integration.
+- [ ] Complete #23: native ARM64 PE execution through GEM with syscall/Unix-call/exception boundaries, bounded `wineboot`, and ARM64 `cmd.exe`.
+- [ ] Complete #24: authentic ARM64EC/x64 execution through the integrated Wine path.
+- [ ] Complete #25: self-contained relocatable package, hardening, reproducibility, evidence, protected-main publication, and post-release verification.
 - [ ] Add deterministic trace format with versioning and redaction.
 - [ ] Add bounded stress tests and randomized state round trips.
 - [ ] Add ASan/UBSan Linux jobs and supported macOS sanitizer coverage.
+- [ ] Import required Wine 11.12 changes as an ordered, reviewed LGPL-2.1-or-later patch series; reject local dirty worktrees as build inputs.
+- [ ] Reproduce the native host plus `i386,x86_64,aarch64,arm64ec` PE build from pinned clean sources and toolchains.
+- [ ] Route initial PE thread entry and Wine virtual-memory events through GEM.
+- [ ] Implement the required syscall, Unix-call, exception, APC, suspend/resume, and thread boundaries without transferring canonical authority from GEM.
+- [ ] Reach x64 naturally through Wine's selected ARM64EC emulation interface and the accepted Blink adapter.
+- [ ] Pass bounded fresh-prefix `wineboot --init`, ARM64 `cmd.exe /c exit`, and accepted hybrid probes.
 - [ ] Add dependency license/SBOM generation.
 - [ ] Add reproducible toolchain and fixture-generation documentation.
-- [ ] Audit all Mach-O files and launched processes for ARM64-only execution.
-- [ ] Publish v0.1.0 with evidence, known limitations, and the Wine-integration plan.
+- [ ] Audit all packaged Mach-O files and launched processes for ARM64-only execution.
+- [ ] Produce and independently validate the deterministic package and publication assets defined in [`docs/release/integrated-wine-package.md`](docs/release/integrated-wine-package.md).
+- [ ] Publish immutable v0.1.0 assets from the protected final `main` commit through a least-privilege release job.
+- [ ] Replace README's development-status notice in the final merge with an accurate v0.1.0 status, supported scope, known-limitations link, release link, and evidence link; do not claim unaccepted acceleration, graphics, i386, or application support.
 
-**Exit gate:** all release acceptance criteria have links to CI runs, fixtures, test names, and architecture records.
+**Exit gate:** all release acceptance criteria have links to CI runs, fixtures, test names, and architecture records; the protected-main workflow builds and exercises integrated Wine, then publishes the hash-bound `.tar.zst`, checksum, SBOM, provenance, limitations, and evidence assets. The README on `main` reports the final supported v0.1.0 status and links to those published records rather than retaining the architecture-foundation notice.
 
 ## After v0.1
 
-The second roadmap integrates GEM into Wine ntdll without changing the v0.1 state contracts:
+The second roadmap improves performance and product coverage without changing the accepted v0.1 state contracts:
 
-1. route initial PE thread entry through GEM;
-2. connect Wine virtual-memory operations to GEM;
-3. implement syscall and Unix-call stop reasons;
-4. convert exceptions, APCs, suspend/resume, and new threads;
-5. pass `wineboot --init` and ARM64 `cmd.exe`;
-6. reach x64 naturally through `xtajit64` and pass hybrid application tests;
-7. introduce a validated accelerated ARM64EC engine;
-8. build and stage DXMT and Winemetal;
-9. address i386 only through a complete translated 32-bit address space.
+1. introduce a validated accelerated ARM64EC engine while retaining the correctness fallback;
+2. expand hybrid application and concurrent-transition coverage;
+3. build and stage DXMT and Winemetal;
+4. address i386 only through a complete translated 32-bit address space;
+5. add updater and signing/notarization policy after reproducible unsigned artifacts are established.
 
 ## Working rules
 

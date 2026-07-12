@@ -26,6 +26,7 @@ jobs:
           python-version: "3.13"
       - run: python3 tools/ci/check-repository.py
       - run: python3 tools/ci/test-check-repository.py
+      - run: python3 tools/release/test-release-tools.py
       - run: >-
           python3 -m py_compile
           tools/audit_blink_memory_order.py
@@ -36,6 +37,9 @@ jobs:
           tools/ci/test-check-repository.py
           tools/ci/validate-arm64x-issue14-artifact.py
           tools/ci/validate-blink-tso-evidence.py
+          tools/release/validate-release-assets.py
+          tools/release/verify-published-release.py
+          tools/release/test-release-tools.py
 
   formatting:
     name: Formatting

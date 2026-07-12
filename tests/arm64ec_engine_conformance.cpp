@@ -32,6 +32,8 @@ constexpr u32 AND_X4_X3_0xff = 0x92401c64U;
 constexpr u32 LSL_X5_X4_4 = 0xd37cec85U;
 constexpr u32 SUBS_X7_X0_X1 = 0xeb010007U;
 constexpr u32 MOV_X0_X18 = 0xaa1203e0U;
+constexpr u32 MOV_X0_X13 = 0xaa0d03e0U;
+constexpr u32 MOV_X18_X0 = 0xaa0003f2U;
 constexpr u32 ADD_X1_X18_8 = 0x91002241U;
 constexpr u32 MOV_X0_0x42 = 0xd2800840U;
 constexpr u32 MOV_X2_1 = 0xd2800022U;
@@ -771,6 +773,40 @@ void TestMetadataBrokerResumeToHostReturn() {
     EXPECT(gem_arm64ec_runtime_transition_count(fixture.runtime) == 1U);
 }
 
+void TestNativeArm64Profile() {
+    gem_memory *memory = gem_memory_create();
+    EXPECT(memory != nullptr);
+    gem_arm64ec_runtime_config config{};
+    config.host_return_sentinel = kHostReturn;
+    config.max_budget = 100U;
+    config.execution_profile = GEM_ARM64EC_PROFILE_NATIVE_ARM64;
+    gem_arm64ec_runtime *runtime = gem_arm64ec_runtime_create(memory, &config);
+    EXPECT(runtime != nullptr);
+
+    MapCode(memory, kCode, {MOV_X0_X13, RET});
+    gem_thread_context context{};
+    InitContext(context);
+    context.x[13] = 0x123456789abcdef0ULL;
+    EXPECT(gem_arm64ec_runtime_run(runtime, &context, 8U) == GEM_STOP_HOST_RETURN);
+    EXPECT(context.x[0] == context.x[13]);
+    EXPECT(context.x[18] == kTebA);
+
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
+           GEM_MEMORY_OK);
+    WriteWords(memory, kCode, {MOV_X18_X0, RET});
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READ, nullptr) ==
+           GEM_MEMORY_OK);
+    gem_arm64ec_runtime_invalidate_code(runtime, kCode, GEM_GUEST_PAGE_SIZE);
+    InitContext(context);
+    context.x[0] = kTebB;
+    EXPECT(gem_arm64ec_runtime_run(runtime, &context, 8U) == GEM_STOP_INVARIANT_VIOLATION);
+    EXPECT(context.pc == kCode);
+    EXPECT(context.x[18] == kTebA);
+
+    gem_arm64ec_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
 void TestSelfModifyingCodeAndCacheMaintenance() {
     Fixture fixture;
     MapCode(fixture.memory, kCode, {MOV_X2_1, RET}, GEM_PAGE_EXECUTE_READWRITE);
@@ -837,6 +873,7 @@ int main() {
     TestForbiddenPriorityAndInvalidation();
     TestPrefetchBoundaryBroker();
     TestMetadataBrokerResumeToHostReturn();
+    TestNativeArm64Profile();
     TestSelfModifyingCodeAndCacheMaintenance();
     return 0;
 }
