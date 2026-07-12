@@ -165,7 +165,7 @@ gem_pe_arm64x_materialize_preferred(struct gem_memory *memory, const uint8_t *by
 
     for (index = 0; index < options->binding_count; ++index) {
         const struct gem_pe_arm64x_binding *binding = &options->bindings[index];
-        struct gem_pe_arm64x_section section;
+        struct gem_pe_arm64x_section section = {0};
         size_t section_index;
         bool found = false;
         for (section_index = 0; section_index < gem_pe_arm64x_section_count(result->metadata);
