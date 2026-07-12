@@ -17,6 +17,8 @@ APPROVED_HANDLERS = (
     "OpJcc",
     "OpJmp",
     "OpRet",
+    "OpLeaGvqpM",
+    "OpCallJvds",
 )
 
 
@@ -83,7 +85,7 @@ def audit_handlers(source_root, provenance, machine_text):
 def audit_trace(provenance, machine_text, embedding_text, embedding_header):
     # The decoder-owned handler identity is the single authority for both the
     # allowlist decision and the diagnostic trace id.  GemHandlerId maps the
-    # exact Blink handler pointer to a stable 1..9 id, and GemIsAllowedHandler
+    # exact Blink handler pointer to a stable 1..11 id, and GemIsAllowedHandler
     # is derived from it, so no second allowlist or byte decoder is introduced.
     mapped = tuple(
         (name, int(value))

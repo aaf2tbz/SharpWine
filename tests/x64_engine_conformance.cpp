@@ -91,7 +91,7 @@ int main() {
     assert(r);
     assert(
         strstr(gem_x64_runtime_engine_provenance(r),
-               "patch-sha256=f3bbf69d305265dd63e7f30bffe22d1046c7e7144e7028098de502e4f6bd2637") !=
+               "patch-sha256=a56c8d383548da6d7918890981fdb07170e8be398929d2f2534243a9f5b372e4") !=
         nullptr);
     gem_thread_context c{};
     init(c);
@@ -408,31 +408,36 @@ int main() {
         assert(attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_NOP &&
                !strcmp(attempt.name, "OpNop") && attempt.rip == CODE);
 
-        /* LEA (0x8d) is outside the allowlist: handler_id must be 0, name
-         * must be Blink's actual DescribeMopcode("OpLeaGvqpM"). */
+        /* Reviewed LEA retires with Blink's decoder-owned handler id. */
         gem_x64_runtime_handler_trace_reset(r);
         const uint8_t lea[] = {0x48, 0x8d, 0x05, 0x2a, 0x00, 0x00, 0x00};
         assert(gem_memory_write(m, CODE, lea, sizeof(lea)) == GEM_MEMORY_OK);
         init(c);
         const auto lea_before = c;
-        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
-        assert(c.pc == lea_before.pc);
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(c.pc == CODE + sizeof(lea));
+        assert(!memcmp(c.x87, lea_before.x87, sizeof(c.x87)));
         assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
-        assert(attempt.valid && attempt.handler_id == 0U && !strcmp(attempt.name, "OpLeaGvqpM") &&
-               attempt.rip == CODE);
+        assert(attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_LEA_GVQP_M &&
+               !strcmp(attempt.name, "OpLeaGvqpM") && attempt.rip == CODE);
 
-        /* CALL (0xe8) is outside the allowlist: handler_id must be 0, name
-         * must be Blink's actual DescribeMopcode("OpCallJvds"). */
+        /* Reviewed relative CALL transactionally pushes its return address and
+         * retires with Blink's decoder-owned handler id. */
         gem_x64_runtime_handler_trace_reset(r);
         const uint8_t call[] = {0xe8, 0x00, 0x00, 0x00, 0x00};
         assert(gem_memory_write(m, CODE, call, sizeof(call)) == GEM_MEMORY_OK);
         init(c);
         const auto call_before = c;
-        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
-        assert(c.pc == call_before.pc);
+        const auto call_sp = c.sp;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(c.pc == CODE + sizeof(call) && c.sp == call_sp - sizeof(uint64_t));
+        uint64_t call_return = 0U;
+        assert(gem_memory_read(m, c.sp, &call_return, sizeof(call_return)) == GEM_MEMORY_OK);
+        assert(call_return == CODE + sizeof(call));
+        assert(!memcmp(c.x87, call_before.x87, sizeof(c.x87)));
         assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
-        assert(attempt.valid && attempt.handler_id == 0U && !strcmp(attempt.name, "OpCallJvds") &&
-               attempt.rip == CODE);
+        assert(attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_CALL_JVDS &&
+               !strcmp(attempt.name, "OpCallJvds") && attempt.rip == CODE);
         /* Pre-decode fault: a fetch outside mapped memory leaves valid=0 and
          * an empty name; canonical CPU state is unchanged. */
         gem_x64_runtime_handler_trace_reset(r);

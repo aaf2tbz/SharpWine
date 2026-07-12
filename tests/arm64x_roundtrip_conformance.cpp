@@ -183,39 +183,35 @@ struct PhaseBPath {
     std::uint32_t x64_decode_handler_id;
     const char *x64_decode_name;
 };
-/* Authentic decoder-owned x64 evidence pinned against pinned Blink's own decode
- * dispatch.  LEA (0x8d -> OpLeaGvqpM) and CALL (0xe8 -> OpCallJvds) are outside
- * the reviewed 9-handler allowlist, so the probe stops at those boundaries
- * instead of guessing callback/tail/nesting semantics.  Only OpAlui/
- * OpMovGvqpEvqp/OpRet retire.  Ids match GemHandlerId(): OpAlui=6,
- * OpMovGvqpEvqp=4, OpRet=9.  The decoder-attempt fields carry Blink's own
- * DescribeMopcode() identity for the unsupported boundary that produced the
- * stop; CALL uses the exact Blink result "OpCallJvds" rather than any
- * locally-named substitute. */
+/* Authentic decoder-owned x64 evidence pinned against Blink's own dispatch.
+ * LEA and CALL are reviewed handlers 10 and 11. Direct execution then reaches
+ * the still-unsupported OpAluFlip. Callback and nested CALLs retire normally,
+ * and checked ARM64X metadata stops the probe before any ARM64EC byte can be
+ * fetched as x64. */
 constexpr std::array<PhaseBPath, 4> kPhaseBPaths = {{
     {"direct",
      UINT32_C(0x4080),
      GEM_STOP_UNSUPPORTED_INSTRUCTION,
-     0U,
-     0U,
-     {0, 0, 0, 0},
-     {0, 0, 0, 0},
+     1U,
+     1U,
+     {10, 0, 0, 0},
+     {0x4080, 0, 0, 0},
      true,
-     UINT32_C(0x4080),
+     UINT32_C(0x4088),
      true,
      0U,
-     "OpLeaGvqpM"},
+     "OpAluwFlip"},
     {"callbackResume",
      UINT32_C(0x4020),
-     GEM_STOP_UNSUPPORTED_INSTRUCTION,
-     2U,
-     2U,
-     {6, 6, 0, 0},
-     {0x4020, 0x4024, 0, 0},
+     GEM_STOP_ARCH_TRANSITION,
+     3U,
+     3U,
+     {6, 6, 11, 0},
+     {0x4020, 0x4024, 0x4028, 0},
      true,
-     UINT32_C(0x4028),
+     UINT32_C(0x2790),
      true,
-     0U,
+     11U,
      "OpCallJvds"},
     {"tailTransfer",
      UINT32_C(0x4090),
@@ -231,15 +227,15 @@ constexpr std::array<PhaseBPath, 4> kPhaseBPaths = {{
      "OpRet"},
     {"boundedNested",
      UINT32_C(0x4060),
-     GEM_STOP_UNSUPPORTED_INSTRUCTION,
-     2U,
-     2U,
-     {6, 6, 0, 0},
-     {0x4060, 0x4064, 0, 0},
+     GEM_STOP_ARCH_TRANSITION,
+     3U,
+     3U,
+     {6, 6, 11, 0},
+     {0x4060, 0x4064, 0x4068, 0},
      true,
-     UINT32_C(0x4068),
+     UINT32_C(0x27A0),
      true,
-     0U,
+     11U,
      "OpCallJvds"},
 }};
 constexpr std::uint64_t kPhaseBLoadedBase = UINT64_C(0x180000000);
@@ -371,6 +367,15 @@ X64SegmentEvidence probe_x64_segment(gem_memory *memory, const gem_pe_arm64x_ima
         evidence.engine_status = info.engine_status;
         if (reason != GEM_STOP_BUDGET_EXPIRED)
             break;
+        if (context.pc < base || context.pc - base > UINT32_MAX)
+            break;
+        gem_pe_arm64x_rva_info next_info{};
+        assert(gem_pe_arm64x_classify_rva(metadata, static_cast<std::uint32_t>(context.pc - base),
+                                          &next_info) == GEM_PE_OK);
+        if (next_info.classification != GEM_PE_RVA_X64) {
+            reason = GEM_STOP_ARCH_TRANSITION;
+            break;
+        }
         context.stop_reason = GEM_STOP_NONE;
     }
     evidence.reason = reason;
@@ -535,10 +540,9 @@ void write_phase_b_trace(const char *path, Harness &harness,
         else
             assert(segment.stop_pc == kX64SegmentSentinel);
 
-        /* Decoder-owned last-decode-attempt: Blink's own DescribeMopcode()
-         * result for the exact unsupported boundary that produced the stop.
-         * The CALL entry asserts Blink's actual "OpCallJvds" mnemonic, never
-         * a locally-named substitute. */
+        /* Decoder-owned identity for the final attempted or retired instruction.
+         * CALL names come from Blink and metadata classification stops before
+         * ARM64EC bytes are passed back to Blink. */
         assert(segment.decode_valid == expected.x64_decode_valid);
         assert(segment.decode_handler_id == expected.x64_decode_handler_id);
         assert(segment.decode_name == std::string(expected.x64_decode_name));

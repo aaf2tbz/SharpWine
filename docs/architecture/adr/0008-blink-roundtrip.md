@@ -270,12 +270,18 @@ of `GemHandlerId(GetOp(Mopcode(rde)))` ids and RIPs, with exactly one entry appe
 instruction and nothing for unsupported / faulted / pre-decode outcomes. The decoder-owned "last
 decode attempt" record is reset on every step, populated only after a successful `LoadInstruction`,
 and carries Blink's own `Mopcode(rde)`, the `DescribeMopcode()` mnemonic, and the `GemHandlerId()`
-allowlist id (or `0` when the selected handler is outside the reviewed manifest — e.g. LEA `0x8d`
-↦ `OpLeaGvqpM`, CALL `0xe8` ↦ `OpCallJvds`). Both records are queried through private wrapper
+allowlist id (or `0` when the selected handler is outside the reviewed manifest). Reviewed LEA
+`0x8d` ↦ `OpLeaGvqpM` and CALL `0xe8` ↦ `OpCallJvds` carry ids 10 and 11. Both records are queried through private wrapper
 functions with explicit `abi_version` / `size` validation; trace storage is runtime-owned while
 decode-attempt records are copied into caller-owned storage. The provenance `handlerTrace` and
 `decodeAttempt` blocks pin their capacity,
 identity source, and overflow semantics.
+
+The reviewed manifest also admits `OpLeaGvqpM` and `OpCallJvds` for the authentic Issue 14.5
+paths. LEA changes only its destination GPR. Relative CALL uses Blink's existing checked stack
+write, which remains inside the embedding transaction: the return record and CPU effects commit
+together or roll back together. Conformance preserves raw x87/MM state for both handlers, and the
+coordinator classifies the post-CALL PC with checked ARM64X metadata before another x64 fetch.
 
 The interpreter owns no decoded-code or JIT cache: its bounded page shadow is refreshed before
 each instruction. `gem_x64_runtime_invalidate_code` is therefore deliberately a no-op in this

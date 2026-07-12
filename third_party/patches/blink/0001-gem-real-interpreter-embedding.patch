@@ -1,6 +1,6 @@
 diff --git a/blink/gem_embed.c b/blink/gem_embed.c
 new file mode 100644
-index 0000000..2364af6
+index 0000000..7e564a2
 --- /dev/null
 +++ b/blink/gem_embed.c
 @@ -0,0 +1,425 @@
@@ -261,10 +261,8 @@ index 0000000..2364af6
 +      fetch_size = Oplength(m->xedd->op.rde);
 +      handler_id = GemHandlerId(GetOp(Mopcode(m->xedd->op.rde)));
 +      /* Capture Blink's own decode dispatch result for the most recent
-+       * LoadInstruction, including unsupported opcodes such as LEA (0x8d ->
-+       * OpLeaGvqpM) and CALL (0xe8 -> OpCallJvds).  handler_id is the
-+       * allowlist id (0 when outside the reviewed 9-handler set); name is
-+       * always Blink's stable DescribeMopcode() mnemonic. */
++       * LoadInstruction. handler_id is the reviewed allowlist id, or zero when
++       * outside that set; name is Blink's stable DescribeMopcode() mnemonic. */
 +      g->last_decode.rip = (uint64_t)m->ip;
 +      g->last_decode.mopcode = (uint32_t)Mopcode(m->xedd->op.rde);
 +      g->last_decode.handler_id = (uint32_t)handler_id;
@@ -413,6 +411,8 @@ index 0000000..2364af6
 +    case BLINK_GEM_HANDLER_OP_JCC: return "OpJcc";
 +    case BLINK_GEM_HANDLER_OP_JMP: return "OpJmp";
 +    case BLINK_GEM_HANDLER_OP_RET: return "OpRet";
++    case BLINK_GEM_HANDLER_OP_LEA_GVQP_M: return "OpLeaGvqpM";
++    case BLINK_GEM_HANDLER_OP_CALL_JVDS: return "OpCallJvds";
 +    default: return "OpUnknown";
 +  }
 +}
@@ -431,10 +431,10 @@ index 0000000..2364af6
 +}
 diff --git a/blink/gem_embed.h b/blink/gem_embed.h
 new file mode 100644
-index 0000000..91ad52e
+index 0000000..2d97cf9
 --- /dev/null
 +++ b/blink/gem_embed.h
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,156 @@
 +/*
 + * Copyright 2022 Justine Alexandra Roberts Tunney
 + * Copyright 2026 MetalSharp Wine Runtime contributors
@@ -480,7 +480,9 @@ index 0000000..91ad52e
 +  BLINK_GEM_HANDLER_OP_ALUI = 6,
 +  BLINK_GEM_HANDLER_OP_JCC = 7,
 +  BLINK_GEM_HANDLER_OP_JMP = 8,
-+  BLINK_GEM_HANDLER_OP_RET = 9
++  BLINK_GEM_HANDLER_OP_RET = 9,
++  BLINK_GEM_HANDLER_OP_LEA_GVQP_M = 10,
++  BLINK_GEM_HANDLER_OP_CALL_JVDS = 11
 +};
 +struct blink_gem_trace_entry {
 +  uint64_t rip;
@@ -590,10 +592,10 @@ index 0000000..91ad52e
 +const char* blink_gem_decode_attempt_name(const struct blink_gem_decode_attempt*);
 +#endif
 diff --git a/blink/machine.c b/blink/machine.c
-index ad309eb..25709b5 100644
+index ad309eb..92f4bd3 100644
 --- a/blink/machine.c
 +++ b/blink/machine.c
-@@ -2092,0 +2093,17 @@ nexgen32e_f GetOp(long op) {
+@@ -2092,0 +2093,19 @@ nexgen32e_f GetOp(long op) {
 +int GemHandlerId(nexgen32e_f handler) {
 +  if (handler == OpNop) return 1;
 +  if (handler == OpMovZvqpIvqp) return 2;
@@ -604,6 +606,8 @@ index ad309eb..25709b5 100644
 +  if (handler == OpJcc) return 7;
 +  if (handler == OpJmp) return 8;
 +  if (handler == OpRet) return 9;
++  if (handler == OpLeaGvqpM) return 10;
++  if (handler == OpCallJvds) return 11;
 +  return 0;
 +}
 +
