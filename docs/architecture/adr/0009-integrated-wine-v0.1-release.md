@@ -23,7 +23,7 @@ The release gate requires all of the following:
 4. `wineboot --init`, ARM64 `cmd.exe /c exit`, and accepted ARM64EC/x64 transition probes run with fresh prefixes under bounded process-group and log limits.
 5. Every packaged Mach-O and every observed process is native ARM64. Rosetta, translated dependencies, native guest-PC invocation, process-global signal stepping, and guessed `ucontext_t` mutation are prohibited.
 6. Packaging is deterministic and allowlisted. The primary asset is `metalsharp-wine-v0.1.0-macos-arm64.tar.zst`; checksums, SPDX SBOM, provenance, known limitations, and an evidence index are separate release assets and are also represented inside the archive where appropriate.
-7. Publication runs only for the protected `main` commit produced by the final #25 release PR. Pull requests may build and validate the candidate but receive no `contents: write` permission and cannot create a release.
+7. Publication runs only for the protected `main` commit produced by the final #25 release PR. The native ARM64 release host uploads the accepted draft; pull requests and ordinary pushes receive no `contents: write` permission and cannot create a release.
 8. The publication job receives `contents: write` only after all build, integration-test, package-validation, and evidence gates succeed. The immutable `v0.1.0` tag and release must resolve to that exact tested commit.
 9. The final merge replaces README's development-status notice with an accurate v0.1.0 status and links to the release, known limitations, and evidence. It names only support demonstrated by release CI and continues to identify unaccepted acceleration, graphics, i386, and broader application coverage as out of scope.
 
@@ -31,9 +31,9 @@ A runtime-only archive, a vanilla Wine build with adjacent unused libraries, a p
 
 ## Release workflow shape
 
-PR #20 introduces the main-only release workflow in an intentionally inert state: without the reviewed readiness record it performs no build or publication. The final #25 release PR may add that record only after the intervening issue gates pass. The activated workflow repeats the release-critical build and tests rather than trusting an unrelated workflow run, creates the archive in runner-temporary storage, validates its manifest and architecture, then publishes with the GitHub CLI using the job token. An existing tag or release is never replaced; any pre-existing or mismatched publication fails.
+PR #20 introduces the release workflow in an intentionally inert state: without the reviewed readiness record and an exact-main draft it performs no publication. The final #25 release PR may add that record only after the intervening issue gates pass. The accepted Wine build is retained on the native ARM64 release host, staged twice into absent directories, audited, tested, and archived byte-identically there. The manually dispatched workflow redownloads the uploaded draft, validates its manifest and architecture, reruns native and hybrid package smoke, and then publishes the unchanged draft with the job token. A mismatched tag, commit, asset, or non-draft release fails closed.
 
-Pull-request CI validates scripts, manifests, patch application, clean Wine builds, runtime tests, and archive reproducibility without publishing. Release assets never pass through an untrusted pull-request artifact.
+Pull-request CI validates scripts, manifests, patch application, runtime tests, and release policy without publishing. Release assets never pass through an untrusted pull-request artifact; only assets uploaded by the release operator from the accepted native ARM64 build enter the draft gate.
 
 ## Consequences
 
@@ -41,4 +41,4 @@ Pull-request CI validates scripts, manifests, patch application, clean Wine buil
 - Issue #15 is a multi-PR epic, but the first official archive has an honest product meaning.
 - The local experimental Wine trees remain excluded from source and provenance.
 - DXMT, Winemetal, accelerated ARM64EC execution, and i386 execution remain post-v0.1 unless separately accepted.
-- ADR 0009 is accepted by the completed #21–#25 implementation chain. The protected-main workflow remains the final enforcement point: it publishes only after rebuilding twice, comparing byte-identical archives, redownloading every draft asset, and rerunning the packaged native/hybrid smoke test. A failure leaves the release unpublished.
+- ADR 0009 is accepted by the completed #21–#25 implementation chain. The protected-main workflow remains the final enforcement point: it publishes only after the accepted runtime is independently staged twice with byte-identical archives, every draft asset is redownloaded, and the packaged native/hybrid smoke test passes. A failure leaves the release unpublished.

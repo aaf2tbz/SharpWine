@@ -20,6 +20,13 @@ RUNTIME_LINKS = (
     "winecfg", "wineconsole", "winedbg", "winefile", "winemine", "winepath",
 )
 OPTIONAL_UNBOUND_MODULES = ("winex11.so", "winedmo.so", "winegstreamer.so")
+EMBEDDED_PREFIXES = (
+    re.compile(rb"/Users/[^\0\r\n]*"),
+    re.compile(rb"/home/runner/[^\0\r\n]*"),
+    re.compile(rb"/private/var/folders/[^\0\r\n]*"),
+    re.compile(rb"/usr/local/Cellar/[^\0\r\n]*"),
+    re.compile(rb"/opt/homebrew[^\0\r\n]*"),
+)
 LICENSES = {
     "freetype": ("LICENSE.TXT", "FTL.txt"),
     "libpng": ("LICENSE", "libpng-2.0.txt"),
@@ -276,31 +283,37 @@ def vendor_closure(package: Path) -> None:
         run("codesign", "--force", "--sign", "-", "--timestamp=none", str(origin))
 
 
-def scrub_bottle_prefixes(package: Path) -> None:
-    """Remove bottle prefixes after env-controlled data paths are vendored.
+def scrub_embedded_prefixes(package: Path) -> None:
+    """Remove inert build prefixes after env-controlled data paths are vendored.
 
-    Homebrew bottles compile optional search fallbacks into read-only strings.
-    Runtime lookups are redirected by the package launcher; retaining those
-    inert strings would nevertheless violate the no-Homebrew-path contract.
+    Wine and Homebrew bottles compile optional search fallbacks into read-only
+    strings. Runtime lookups are redirected by the package launcher; retaining
+    those inert strings would nevertheless violate the no-build-path contract.
+    Replacements never grow a file, so section offsets and load commands remain
+    stable. Any changed Mach-O is ad-hoc signed again.
     """
-    pattern = re.compile(rb"/opt/homebrew[^\0]*")
-    for path in sorted(p for p in package.rglob("*") if is_macho(p)):
+    for path in sorted(p for p in package.rglob("*") if p.is_file() and not p.is_symlink()):
         data = path.read_bytes()
         changed = False
-        for match in reversed(list(pattern.finditer(data))):
-            original = match.group()
-            replacement = b"/dev/null"
-            if b"xdg" in original.lower():
-                replacement = b"/etc/xdg"
-            elif b"share" in original.lower() and b":" in original:
-                replacement = b"/usr/share"
-            if len(replacement) > len(original):
-                fail(f"cannot scrub bottle search path in {path}")
-            data = data[:match.start()] + replacement + b"\0" * (len(original) - len(replacement)) + data[match.end():]
-            changed = True
+        for pattern in EMBEDDED_PREFIXES:
+            for match in reversed(list(pattern.finditer(data))):
+                original = match.group()
+                replacement = b"/dev/null"
+                if original.startswith(b"/opt/homebrew"):
+                    if b"xdg" in original.lower():
+                        replacement = b"/etc/xdg"
+                    elif b"share" in original.lower() and b":" in original:
+                        replacement = b"/usr/share"
+                if len(replacement) > len(original):
+                    fail(f"cannot scrub embedded search path in {path}")
+                data = (data[:match.start()] + replacement +
+                        b"\0" * (len(original) - len(replacement)) + data[match.end():])
+                changed = True
         if changed:
+            macho = is_macho(path)
             path.write_bytes(data)
-            run("codesign", "--force", "--sign", "-", "--timestamp=none", str(path))
+            if macho:
+                run("codesign", "--force", "--sign", "-", "--timestamp=none", str(path))
 
 
 def install_selftest(package: Path, foundation: Path, fixture: Path, host: Path,
@@ -387,7 +400,7 @@ def main() -> None:
     seed_runtime_libraries(runtime, args.brew_prefix.resolve(), args.deps.resolve())
     install_selftest(args.output, args.foundation.resolve(), fixture, host.resolve(), fixture_commit)
     vendor_closure(args.output)
-    scrub_bottle_prefixes(args.output)
+    scrub_embedded_prefixes(args.output)
     install_metadata(args.output, args.foundation.resolve(), args.brew_prefix.resolve(),
                      args.source_date_epoch)
     print(f"staged relocatable runtime: {args.output}")
