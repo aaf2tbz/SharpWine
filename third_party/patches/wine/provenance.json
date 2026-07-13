@@ -55,6 +55,13 @@
       "sha256": "d8c556a4731671a21aedb7e67a3ab7180fb1eb801939c971deafe56f2c788097",
       "authoringCommit": "953373784b3a6ec550d368ebcdde5326ac02a6be",
       "purpose": "Replace Darwin ARM64 native guest entry with bounded GEM execution and explicit syscall, Unix-call, fault, exception, suspend, and termination boundaries."
+    },
+    {
+      "order": 8,
+      "path": "third_party/patches/wine/0008-darwin-arm64-add-native-gem-launch-contract.patch",
+      "sha256": "203dd8a1b2a896240260f3374ecaea45ef5b735cb62b90d54467090c624a12de",
+      "authoringCommit": "13de9ec0c89e809e73f56bffc2604c2e686e9fb3",
+      "purpose": "Launch staged Darwin ARM64 builtins through a versioned in-process GEM contract, restore x18 at Wine syscall return, and make immediate process-exit teardown safe."
     }
   ],
   "researchEvidence": {
@@ -73,12 +80,13 @@
       "debuggerLocation": "dlls/ntdll/unix/loader.c: reexec_loader -> execv"
     },
     "patchedOutcome": {
-      "status": "expected-later-failure",
-      "returnCode": 1,
-      "retainedLogBytes": 19358,
-      "lastMilestone": "PE ntdll and API-set mapped",
-      "firstFailure": "virtual_setup_exception stack overflow before the Wine-to-GEM guest-entry handoff"
+      "status": "incremental-runtime-pass",
+      "winebootReturnCode": 0,
+      "cmdReturnCode": 0,
+      "winebootElapsedSeconds": 85.44,
+      "cmdElapsedSeconds": 66.18,
+      "lastMilestone": "fresh-prefix wineboot --init and cmd.exe /c exit completed through GEM"
     },
-    "acceptance": "research-only; clean release build and runtime gates remain required"
+    "acceptance": "incremental evidence only; the clean build entrypoint owns the release gate"
   }
 }

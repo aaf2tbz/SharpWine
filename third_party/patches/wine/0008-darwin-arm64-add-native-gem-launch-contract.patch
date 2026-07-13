@@ -1,0 +1,278 @@
+From 13de9ec0c89e809e73f56bffc2604c2e686e9fb3 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@users.noreply.github.com>
+Date: Sun, 12 Jul 2026 20:38:35 -0600
+Subject: [PATCH 8/8] darwin: add native ARM64 GEM launch contract
+
+---
+ dlls/ntdll/unix/gem.c          | 29 +++++++++++-
+ dlls/ntdll/unix/loader.c       | 26 ++++++++++-
+ dlls/ntdll/unix/signal_arm64.c |  7 +++
+ include/wine/gem_loader.h      | 29 ++++++++++++
+ tools/wine/wine.c              | 82 +++++++++++++++++++++++++++++++++-
+ 5 files changed, 169 insertions(+), 4 deletions(-)
+ create mode 100644 include/wine/gem_loader.h
+
+diff --git a/dlls/ntdll/unix/gem.c b/dlls/ntdll/unix/gem.c
+index abf82d9..92966e4 100644
+--- a/dlls/ntdll/unix/gem.c
++++ b/dlls/ntdll/unix/gem.c
+@@ -126,8 +126,35 @@ void gem_process_shutdown(struct thread_data *data)
+     enum gem_wine_status status;
+ 
+     if (!gem_process) return;
+-    gem_thread_shutdown(data);
++    if (data && data->gem_thread)
++    {
++        status = gem_wine_thread_destroy(data->gem_thread);
++        if (status == GEM_WINE_CONFLICT)
++        {
++            /* exit_process() is noreturn and may be reached from a guest
++             * syscall boundary while this exact runtime owns run_lock. It is
++             * impossible and unnecessary to free that live call stack; the
++             * host process is about to reclaim it. Ordinary thread teardown
++             * remains strict in gem_thread_shutdown(). */
++            TRACE("process exit abandoning active GEM runtime teb=%p\n", data->teb);
++            data->gem_thread = NULL;
++            gem_process = NULL;
++            return;
++        }
++        if (status != GEM_WINE_OK) gem_fail("process thread destroy", status);
++        TRACE("thread destroyed teb=%p during process exit\n", data->teb);
++        data->gem_thread = NULL;
++    }
+     status = gem_wine_process_destroy(gem_process);
++    if (status == GEM_WINE_CONFLICT)
++    {
++        /* Other Wine threads are terminated by the immediately following
++         * process_exit_wrapper(). Their runtimes are process-owned and may be
++         * reclaimed by the kernel without racing active execution. */
++        TRACE("process exit abandoning GEM runtimes owned by terminating threads\n");
++        gem_process = NULL;
++        return;
++    }
+     if (status != GEM_WINE_OK) gem_fail("process destroy", status);
+     gem_process = NULL;
+     TRACE("process destroyed\n");
+diff --git a/dlls/ntdll/unix/loader.c b/dlls/ntdll/unix/loader.c
+index 02225e4..f644603 100644
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -86,6 +86,7 @@
+ #include "winioctl.h"
+ #include "winternl.h"
+ #include "unix_private.h"
++#include "wine/gem_loader.h"
+ #include "wine/list.h"
+ #include "wine/debug.h"
+ 
+@@ -2117,13 +2118,13 @@ static void check_command_line( int argc, char *argv[] )
+  *
+  * Main entry point called by the wine loader.
+  */
+-DECLSPEC_EXPORT void __wine_main( int argc, char *argv[] )
++static void wine_main( int argc, char *argv[], BOOL check_loader )
+ {
+     main_argc = argc;
+     main_argv = argv;
+ 
+     init_paths();
+-    if (!getenv( "WINELOADERNOEXEC" ) || argc <= 1) check_command_line( argc, argv );
++    if (check_loader && (!getenv( "WINELOADERNOEXEC" ) || argc <= 1)) check_command_line( argc, argv );
+     unsetenv( "WINELOADERNOEXEC" );
+ 
+ #ifdef RLIMIT_NOFILE
+@@ -2144,3 +2145,24 @@ DECLSPEC_EXPORT void __wine_main( int argc, char *argv[] )
+ #endif
+     start_main_thread();
+ }
++
++DECLSPEC_EXPORT void __wine_main( int argc, char *argv[] )
++{
++    wine_main( argc, argv, TRUE );
++}
++
++#if defined(__APPLE__) && defined(__aarch64__)
++DECLSPEC_EXPORT void __wine_main_gem( const struct wine_gem_launch_request *request )
++{
++    const uint32_t required_flags = WINE_GEM_LAUNCH_IN_PROCESS | WINE_GEM_LAUNCH_BUILTIN_ALIAS;
++
++    if (!request || request->version != WINE_GEM_LAUNCH_VERSION ||
++        request->size != sizeof(*request) || request->flags != required_flags ||
++        request->reserved || request->argc <= 1 || !request->argv ||
++        !request->resolved_image || request->argv[1] != request->resolved_image ||
++        access( request->resolved_image, R_OK ))
++        fatal_error( "invalid native ARM64 launch request\n" );
++
++    wine_main( request->argc, request->argv, FALSE );
++}
++#endif
+diff --git a/dlls/ntdll/unix/signal_arm64.c b/dlls/ntdll/unix/signal_arm64.c
+index 8594b94..dee3a2b 100644
+--- a/dlls/ntdll/unix/signal_arm64.c
++++ b/dlls/ntdll/unix/signal_arm64.c
+@@ -2166,10 +2166,17 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
+                    "movk x0, #0x001c\n\t"
+                    "b " __ASM_LOCAL_LABEL("__wine_syscall_dispatcher_return") )
+ 
++#ifdef __APPLE__
++#define SYSCALL_RETURN_RESTORE_TEB "ldr x18, [sp, #0x90]\n\t"
++#else
++#define SYSCALL_RETURN_RESTORE_TEB
++#endif
+ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher_return,
++                   SYSCALL_RETURN_RESTORE_TEB
+                    "ldr w11, [x18, #0x380]\n\t" /* thread_data->syscall_trace */
+                    "cbnz x11, " __ASM_LOCAL_LABEL("trace_syscall_ret") "\n\t"
+                    "b " __ASM_LOCAL_LABEL("__wine_syscall_dispatcher_return") )
++#undef SYSCALL_RETURN_RESTORE_TEB
+ 
+ 
+ /***********************************************************************
+diff --git a/include/wine/gem_loader.h b/include/wine/gem_loader.h
+new file mode 100644
+index 0000000..b0106f7
+--- /dev/null
++++ b/include/wine/gem_loader.h
+@@ -0,0 +1,29 @@
++/*
++ * Private Darwin ARM64 launch contract for the installed Wine wrapper.
++ *
++ * This is an in-process ABI between tools/wine and Unix ntdll. It is not a
++ * Windows ABI and is intentionally versioned independently.
++ */
++
++#ifndef __WINE_GEM_LOADER_H
++#define __WINE_GEM_LOADER_H
++
++#include <stdint.h>
++
++#define WINE_GEM_LAUNCH_VERSION 1
++
++#define WINE_GEM_LAUNCH_IN_PROCESS    0x00000001u
++#define WINE_GEM_LAUNCH_BUILTIN_ALIAS 0x00000002u
++
++struct wine_gem_launch_request
++{
++    uint32_t version;
++    uint32_t size;
++    uint32_t flags;
++    uint32_t reserved;
++    int argc;
++    char **argv;
++    const char *resolved_image;
++};
++
++#endif /* __WINE_GEM_LOADER_H */
+diff --git a/tools/wine/wine.c b/tools/wine/wine.c
+index 01bac26..3074f1f 100644
+--- a/tools/wine/wine.c
++++ b/tools/wine/wine.c
+@@ -21,6 +21,7 @@
+ #include "config.h"
+ 
+ #include "../tools.h"
++#include "wine/gem_loader.h"
+ 
+ #include <dlfcn.h>
+ 
+@@ -32,6 +33,65 @@ static const char *libdir;
+  * low-address range. Export the loader marker so ntdll does not re-exec an
+  * equivalent Mach-O image, which Darwin terminates during execve. */
+ const __attribute__((used, visibility("default"))) void *wine_main_preload_info;
++
++static int prepare_gem_launch( int argc, char **argv, struct wine_gem_launch_request *request )
++{
++    struct target target = get_default_target();
++    const char *basename = strrchr( argv[0], '/' );
++    const char *builtin;
++    char **launch_argv;
++    char *image;
++    char *resolved_image;
++    int launch_argc;
++
++    basename = basename ? basename + 1 : argv[0];
++    if (!strcmp( basename, "wine" ))
++    {
++        if (argc <= 1 || argv[1][0] == '-' || strpbrk( argv[1], "/\\" ) ||
++            (argv[1][0] && argv[1][1] == ':'))
++            return 0;
++        builtin = argv[1];
++    }
++    else builtin = basename;
++
++    target.platform = PLATFORM_WINDOWS;
++    if (strendswith( builtin, ".exe" ))
++        image = strmake( "%s/wine%s/%s", libdir, get_arch_dir( target ), builtin );
++    else image = strmake( "%s/wine%s/%s.exe", libdir, get_arch_dir( target ), builtin );
++    if (access( image, R_OK ) || !(resolved_image = realpath( image, NULL )))
++    {
++        free( image );
++        return 0;
++    }
++    free( image );
++    image = resolved_image;
++
++    if (!strcmp( basename, "wine" ))
++    {
++        launch_argc = argc;
++        launch_argv = xmalloc( (launch_argc + 1) * sizeof(*launch_argv) );
++        memcpy( launch_argv, argv, (launch_argc + 1) * sizeof(*argv) );
++        launch_argv[1] = image;
++    }
++    else
++    {
++        launch_argc = argc + 1;
++        launch_argv = xmalloc( (launch_argc + 1) * sizeof(*launch_argv) );
++        launch_argv[0] = strmake( "%s/wine", bindir );
++        launch_argv[1] = image;
++        memcpy( launch_argv + 2, argv + 1, argc * sizeof(*argv) );
++    }
++
++    request->version = WINE_GEM_LAUNCH_VERSION;
++    request->size = sizeof(*request);
++    request->flags = WINE_GEM_LAUNCH_IN_PROCESS | WINE_GEM_LAUNCH_BUILTIN_ALIAS;
++    request->argc = launch_argc;
++    request->argv = launch_argv;
++    request->resolved_image = image;
++    if (getenv( "WINE_GEM_LAUNCH_TRACE" ))
++        fprintf( stderr, "wine: native ARM64 GEM launch image=%s\n", image );
++    return 1;
++}
+ #endif
+ 
+ static void *try_dlopen( const char *path, struct strarray *errors )
+@@ -69,11 +129,31 @@ static void *load_ntdll(void)
+ 
+ int main( int argc, char *argv[] )
+ {
++    void *handle;
+     void (*init_func)(int, char **);
++#if defined(__APPLE__) && defined(__aarch64__)
++    void (*gem_init_func)(const struct wine_gem_launch_request *);
++    struct wine_gem_launch_request request = {0};
++#endif
+ 
+     bindir = get_bindir( argv[0] );
+     libdir = get_libdir( bindir );
+-    init_func = dlsym( load_ntdll(), "__wine_main" );
++    handle = load_ntdll();
++#if defined(__APPLE__) && defined(__aarch64__)
++    if (prepare_gem_launch( argc, argv, &request ))
++    {
++        gem_init_func = dlsym( handle, "__wine_main_gem" );
++        if (!gem_init_func)
++        {
++            fprintf( stderr, "wine: native ARM64 builtin launch ABI not found in ntdll.so\n" );
++            exit(1);
++        }
++        gem_init_func( &request );
++        fprintf( stderr, "wine: native ARM64 builtin launch returned unexpectedly\n" );
++        exit(1);
++    }
++#endif
++    init_func = dlsym( handle, "__wine_main" );
+     if (init_func) init_func( argc, argv );
+ 
+     fprintf( stderr, "wine: __wine_main function not found in ntdll.so\n" );
+-- 
+2.54.0 (Apple Git-157)

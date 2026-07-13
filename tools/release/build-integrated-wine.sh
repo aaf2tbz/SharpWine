@@ -38,7 +38,7 @@ done
     echo "Wine foundation builds require a native macOS ARM64 host" >&2; exit 1;
 }
 
-for tool in git python3 cmake make clang clang++ pkg-config bison flex file otool xcrun; do
+for tool in git python3 cmake make clang clang++ pkg-config bison flex file nm otool xcrun; do
     command -v "$tool" >/dev/null || { echo "missing required host tool: $tool" >&2; exit 1; }
 done
 [[ -d "$llvm_mingw/bin" ]] || { echo "invalid LLVM-MinGW root: $llvm_mingw" >&2; exit 1; }
@@ -203,6 +203,12 @@ install -m 755 "$brew_opt/sdl3/lib/libSDL3.0.dylib" "$runtime_dir/libSDL3.0.dyli
 ln -sfn libSDL3.0.dylib "$runtime_dir/libSDL3.dylib"
 ntdll="$prefix/lib/wine/aarch64-unix/ntdll.so"
 [[ -f "$ntdll" ]] || { echo "staged native ntdll.so is missing" >&2; exit 1; }
+nm -gjU "$ntdll" | grep -Fx '___wine_main_gem' >/dev/null || {
+    echo "ntdll.so lacks the native ARM64 GEM launch ABI" >&2; exit 1;
+}
+nm -gjU "$prefix/bin/wine" | grep -Fx '_wine_main_preload_info' >/dev/null || {
+    echo "installed wrapper lacks the in-process loader marker" >&2; exit 1;
+}
 otool -L "$ntdll" | grep -F '@rpath/libmetalsharp-gem-wine.0.dylib' >/dev/null || {
     echo "ntdll.so lacks the direct versioned GEM dependency" >&2; exit 1;
 }
@@ -257,7 +263,8 @@ import time
 prefix, wineprefix, evidence = map(pathlib.Path, sys.argv[1:])
 wineprefix.mkdir()
 env = os.environ.copy()
-env.update({"WINEDEBUG": "+gem,-all", "WINEPREFIX": str(wineprefix)})
+env.update({"WINEDEBUG": "+gem,-all", "WINE_GEM_LAUNCH_TRACE": "1",
+            "WINEPREFIX": str(wineprefix)})
 libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
 libproc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
 libproc.proc_pidpath.restype = ctypes.c_int
@@ -368,10 +375,13 @@ if audit_failure:
 combined = wineboot_log.read_text(encoding="utf-8", errors="replace") + \
            cmd_log.read_text(encoding="utf-8", errors="replace")
 required = ("gem_signal_run enter pc=", "boundary syscall", "boundary unix-call",
-            "callback enter", "callback return")
+            "callback enter", "callback return",
+            f"wine: native ARM64 GEM launch image={prefix}/lib/wine/aarch64-windows/wineboot.exe",
+            f"wine: native ARM64 GEM launch image={prefix}/lib/wine/aarch64-windows/cmd.exe")
 missing = [marker for marker in required if marker not in combined]
 forbidden = ("Unhandled EXC_BAD_ACCESS", "GEM execution failed", "boot event wait timed out",
-             "could not load", "status=c0000135")
+             "could not load", "status=c0000135", "start.exe",
+             "native ARM64 builtin launch ABI not found", "returned unexpectedly")
 found = [marker for marker in forbidden if marker in combined]
 if missing or found:
     raise SystemExit(f"runtime evidence rejected: missing={missing}, forbidden={found}")
@@ -429,6 +439,7 @@ value = {"schema": 1, "kind": "wine-foundation", "repositoryCommit": repository_
          "dependencies": {"llvmMingw": str(llvm), "homebrewPrefix": str(brew), "externalRuntime": str(deps), "bison": "required", "freetype": "required+staged", "vulkan": "headers+loader+MoltenVK staged", "opengl": "macOS framework", "egl": "pkg-config/mesa+staged", "sdl2": "required+staged", "sdl3": "staged; Wine 11.12 consumes SDL2"},
          "toolchain": {"host": "aarch64-apple-darwin", "uname": text("uname.txt"), "clang": text("clang-version.txt"), "make": text("make-version.txt"), "sdk": text("sdk-version.txt")},
          "acceptance": {"lifecycleProbe": "passed before guest entry",
+                        "nativeLaunchContract": "version 1; exact staged builtin PE selected in-process",
                         "winebootInit": "passed with a fresh prefix within 1800 seconds",
                         "nativeArm64CmdExit": "passed within 600 seconds",
                         "processAudit": "all observed Mach-O executables are ARM64-only",

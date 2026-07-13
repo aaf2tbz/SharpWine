@@ -55,6 +55,15 @@ is not a release input.
      faults and BRK stops to Windows exceptions, and handles bounded suspend
      and termination safe points;
    - fails closed for unknown stops instead of invoking a guest PC natively.
+8. `0008-darwin-arm64-add-native-gem-launch-contract.patch`
+   - resolves installed builtin aliases to their exact staged ARM64 PE image
+     and enters Unix ntdll through a private, versioned, in-process ABI;
+   - fails closed if the matching ntdll ABI is absent instead of re-executing
+     the loader or falling back through `start.exe`;
+   - restores Wine's x18/TEB value from the syscall frame before Darwin resumes
+     the syscall-return dispatcher;
+   - preserves strict ordinary thread teardown while allowing the immediately
+     terminating host process to reclaim its currently executing GEM runtime.
 
 ## Current evidence and limitation
 
@@ -62,12 +71,15 @@ The unpatched installed wrapper reached `reexec_loader()` and was terminated by
 `SIGKILL` in `execve`, producing no Wine log (`rc=-9`, retained bytes `0`). LLDB
 located the stop at Wine `dlls/ntdll/unix/loader.c` in the loader re-exec path.
 
-A clean build carrying this queue proceeds through `virtual_init`, high KUSER
-mapping, TEB/stack allocation, PE `ntdll.dll` mapping, and API-set loading
-without the re-exec `SIGKILL`. Its bounded opt-in probe exercises Wine's real
-allocation, protection, instruction-cache flush, guard, decommit, recommit,
-release, thread teardown, and process teardown paths. Normal Darwin ARM64
-startup then enters PE `LdrInitializeThunk` only through GEM.
+A build carrying this queue proceeds through `virtual_init`, high KUSER
+mapping, TEB/stack allocation, PE `ntdll.dll` mapping, API-set loading, syscall
+and Unix-call boundaries, callbacks, and process exit without the re-exec
+`SIGKILL`. Its bounded opt-in probe exercises Wine's real allocation,
+protection, instruction-cache flush, guard, decommit, recommit, release, thread
+teardown, and process teardown paths. Normal Darwin ARM64 startup enters PE
+`LdrInitializeThunk` only through GEM. Incremental staging completed a fresh
+`wineboot --init` and `cmd.exe /c exit` with return code 0; those results are
+diagnostic evidence, while the clean command below remains authoritative.
 
 Local build trees and prefixes are not release inputs. The clean build command
 now owns the issue #23 runtime gate: it initializes one fresh prefix with
@@ -96,9 +108,11 @@ The dependency lock requires the recorded LLVM-MinGW archive, Homebrew bison,
 Mesa/EGL, Vulkan headers/loader, SDL2, SDL3, and the macOS OpenGL framework.
 The external dependency directory must provide the locked ARM64 Vulkan loader
 and MoltenVK binaries. The command also builds and stages the exact GEM bridge,
-verifies ntdll's direct versioned dependency and relocatable lookup path, audits
-every staged host Mach-O as ARM64-only, runs the bounded pre-guest lifecycle
-probe, and executes the full fresh-prefix `wineboot`/`cmd.exe` gate. The
+verifies ntdll's direct versioned dependency, native launch ABI, and relocatable
+lookup path, audits every staged host Mach-O as ARM64-only, runs the bounded
+pre-guest lifecycle probe, and executes the full fresh-prefix
+`wineboot`/`cmd.exe` gate. The gate records the exact staged PE selected by the
+wrapper and rejects loader re-exec or `start.exe` fallback evidence. The
 resulting `wine-build-manifest.json` records those results, evidence hashes,
 configure flags, toolchain, dependency roots, installed files, and Mach-O audit
 output. It is integration evidence, not a final release package.

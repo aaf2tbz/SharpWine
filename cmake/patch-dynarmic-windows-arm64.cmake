@@ -153,10 +153,37 @@ endif()
 string(FIND "${emit_contents}" "${budget_old}" budget_offset)
 string(FIND "${emit_contents}" "${budget_new}" budget_new_offset)
 if(budget_offset EQUAL -1 AND NOT budget_new_offset EQUAL -1)
-    return()
-endif()
-if(budget_offset EQUAL -1 OR NOT budget_new_offset EQUAL -1)
+    set(budget_already_patched TRUE)
+elseif(budget_offset EQUAL -1 OR NOT budget_new_offset EQUAL -1)
     message(FATAL_ERROR "pinned Dynarmic ARM64 budget-guard text changed or is partially patched")
 endif()
-string(REPLACE "${budget_old}" "${budget_new}" emit_contents "${emit_contents}")
-file(WRITE "${emit_source}" "${emit_contents}")
+if(NOT budget_already_patched)
+    string(REPLACE "${budget_old}" "${budget_new}" emit_contents "${emit_contents}")
+    file(WRITE "${emit_source}" "${emit_contents}")
+endif()
+
+# A directly linked block has not passed through the dispatcher, so its guest
+# PC is not yet present in JIT state. Record the destination before following
+# the link; if the destination's exact-budget guard returns to the dispatcher,
+# GEM can then execute the correct bounded tail instead of resuming a stale PC.
+set(a64_terminal_source "${DYNARMIC_SOURCE_DIR}/src/dynarmic/backend/arm64/emit_arm64_a64.cpp")
+file(READ "${a64_terminal_source}" a64_terminal_contents)
+set(link_old [=[            code.CMP(Xticks, 0);
+            code.B(LE, fail);
+            EmitBlockLinkRelocation(code, ctx, terminal.next, BlockRelocationType::Branch);]=])
+set(link_new [=[            code.CMP(Xticks, 0);
+            code.B(LE, fail);
+            code.MOV(Xscratch0, A64::LocationDescriptor{terminal.next}.PC());
+            code.STR(Xscratch0, Xstate, offsetof(A64JitState, pc));
+            EmitBlockLinkRelocation(code, ctx, terminal.next, BlockRelocationType::Branch);]=])
+string(FIND "${a64_terminal_contents}" "${link_old}" link_offset)
+string(FIND "${a64_terminal_contents}" "${link_new}" link_new_offset)
+if(link_offset EQUAL -1 AND NOT link_new_offset EQUAL -1)
+    set(link_already_patched TRUE)
+elseif(link_offset EQUAL -1 OR NOT link_new_offset EQUAL -1)
+    message(FATAL_ERROR "pinned Dynarmic ARM64 linked-block text changed or is partially patched")
+endif()
+if(NOT link_already_patched)
+    string(REPLACE "${link_old}" "${link_new}" a64_terminal_contents "${a64_terminal_contents}")
+    file(WRITE "${a64_terminal_source}" "${a64_terminal_contents}")
+endif()

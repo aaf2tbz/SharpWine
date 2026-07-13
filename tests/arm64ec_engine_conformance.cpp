@@ -837,6 +837,19 @@ void TestNativeArm64Profile() {
 
     EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
            GEM_MEMORY_OK);
+    WriteWords(memory, kCode, {ADD_X0_X0_1, B_MINUS_4});
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READ, nullptr) ==
+           GEM_MEMORY_OK);
+    gem_arm64ec_runtime_invalidate_code(runtime, kCode, GEM_GUEST_PAGE_SIZE);
+    InitContext(context);
+    EXPECT(gem_arm64ec_runtime_run(runtime, &context, 17U) == GEM_STOP_BUDGET_EXPIRED);
+    EXPECT(context.pc == kCode + 4U);
+    EXPECT(context.x[0] == 9U);
+    EXPECT(gem_arm64ec_runtime_last_stop_info(runtime, &info));
+    EXPECT(info.instructions_retired == 17U);
+
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
+           GEM_MEMORY_OK);
     WriteWords(memory, kCode, {MOV_X18_X0, RET});
     EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READ, nullptr) ==
            GEM_MEMORY_OK);

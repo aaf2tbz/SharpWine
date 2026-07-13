@@ -61,6 +61,10 @@
         {
           "path": "third_party/patches/wine/0007-ntdll-execute-native-arm64-through-gem.patch",
           "sha256": "d8c556a4731671a21aedb7e67a3ab7180fb1eb801939c971deafe56f2c788097"
+        },
+        {
+          "path": "third_party/patches/wine/0008-darwin-arm64-add-native-gem-launch-contract.patch",
+          "sha256": "203dd8a1b2a896240260f3374ecaea45ef5b735cb62b90d54467090c624a12de"
         }
       ]
     },
