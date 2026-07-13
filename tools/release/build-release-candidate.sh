@@ -40,7 +40,7 @@ trap 'rm -rf "$work"' EXIT INT TERM
 
 # Re-run the supported Apple Clang sanitizer matrix against the pinned engines.
 sanitizer="$work/sanitizer"
-cmake -S "$root" -B "$sanitizer" -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+cmake -S "$root" -B "$sanitizer" -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
     -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
     -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined' \
