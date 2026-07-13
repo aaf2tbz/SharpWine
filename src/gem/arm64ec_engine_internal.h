@@ -26,6 +26,7 @@ bool gem_arm64ec_dynarmic_create(struct gem_arm64ec_runtime *runtime);
 void gem_arm64ec_dynarmic_destroy(struct gem_arm64ec_runtime *runtime);
 enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runtime *runtime,
                                               struct gem_thread_context *context, uint64_t budget);
+void gem_arm64ec_dynarmic_request_async_stop(struct gem_arm64ec_runtime *runtime);
 void gem_arm64ec_dynarmic_invalidate_code(struct gem_arm64ec_runtime *runtime, uint64_t address,
                                           uint64_t size);
 const char *gem_arm64ec_dynarmic_engine_name(void);

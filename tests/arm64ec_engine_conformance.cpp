@@ -4,11 +4,13 @@
 #include "pe_arm64x_fixture_builder.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <thread>
 
 namespace {
 
@@ -24,6 +26,7 @@ constexpr u64 kHostReturn = GEM_ARM64EC_DEFAULT_HOST_RETURN_SENTINEL;
 constexpr u64 kTransition = GEM_ARM64EC_DEFAULT_ARCH_TRANSITION_SENTINEL;
 
 constexpr u32 NOP = 0xd503201fU;
+constexpr u32 YIELD = 0xd503203fU;
 constexpr u32 RET = 0xd65f03c0U;
 constexpr u32 ADD_X0_X0_1 = 0x91000400U;
 constexpr u32 ADD_X2_X0_X1 = 0x8b010002U;
@@ -56,6 +59,7 @@ constexpr u32 DC_CVAU_X0 = 0xd50b7b20U;
 constexpr u32 DSB_ISH = 0xd5033b9fU;
 constexpr u32 ISB = 0xd5033fdfU;
 constexpr u32 BR_X0 = 0xd61f0000U;
+constexpr u32 B_SELF = 0x14000000U;
 constexpr u32 B_MINUS_4 = 0x17ffffffU;
 constexpr u32 STR_W1_X0 = 0xb9000001U;
 
@@ -790,6 +794,18 @@ void TestNativeArm64Profile() {
     EXPECT(gem_arm64ec_runtime_run(runtime, &context, 8U) == GEM_STOP_HOST_RETURN);
     EXPECT(context.x[0] == context.x[13]);
     EXPECT(context.x[18] == kTebA);
+    EXPECT(context.pc == kHostReturn);
+
+    /* Windows uses the architectural YIELD hint in ordinary spin loops. */
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
+           GEM_MEMORY_OK);
+    WriteWords(memory, kCode, {YIELD, RET});
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READ, nullptr) ==
+           GEM_MEMORY_OK);
+    gem_arm64ec_runtime_invalidate_code(runtime, kCode, GEM_GUEST_PAGE_SIZE);
+    InitContext(context);
+    EXPECT(gem_arm64ec_runtime_run(runtime, &context, 8U) == GEM_STOP_HOST_RETURN);
+    EXPECT(context.pc == kHostReturn);
 
     /* Native ARM64 retains the checked-memory contract: a failed guest read
      * leaves the faulting instruction unconsumed and preserves its target. */
@@ -810,6 +826,31 @@ void TestNativeArm64Profile() {
     EXPECT(info.instructions_retired == 1U);
     EXPECT(info.access == GEM_ARM64EC_ACCESS_READ);
     EXPECT(info.fault_address == kData);
+
+    /* The accelerated native block may observe PAGE_GUARD, but only precise
+     * replay may consume it and expose the architecturally exact fault. */
+    MapData(memory, kData);
+    EXPECT(gem_memory_protect(memory, kData, GEM_GUEST_PAGE_SIZE,
+                              GEM_PAGE_READWRITE | GEM_PAGE_GUARD, nullptr) == GEM_MEMORY_OK);
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
+           GEM_MEMORY_OK);
+    WriteWords(memory, kCode, {STR_W1_X0, RET});
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READ, nullptr) ==
+           GEM_MEMORY_OK);
+    gem_arm64ec_runtime_invalidate_code(runtime, kCode, GEM_GUEST_PAGE_SIZE);
+    InitContext(context);
+    context.x[0] = kData;
+    context.x[1] = 0x5aU;
+    EXPECT(gem_arm64ec_runtime_run(runtime, &context, 8U) == GEM_STOP_MEMORY_FAULT);
+    EXPECT(context.pc == kCode);
+    EXPECT(gem_arm64ec_runtime_last_stop_info(runtime, &info));
+    EXPECT(info.instructions_retired == 0U);
+    EXPECT(info.access == GEM_ARM64EC_ACCESS_WRITE);
+    EXPECT(info.memory_error == GEM_MEMORY_GUARD_PAGE);
+    EXPECT(ReadU64(memory, kData) == 0U);
+    const std::uint64_t guard_retry = 0x5aU;
+    EXPECT(gem_memory_write(memory, kData, &guard_retry, sizeof(guard_retry)) == GEM_MEMORY_OK);
+    EXPECT(ReadU64(memory, kData) == 0x5aU);
 
     EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
            GEM_MEMORY_OK);
@@ -859,6 +900,45 @@ void TestNativeArm64Profile() {
     EXPECT(gem_arm64ec_runtime_run(runtime, &context, 8U) == GEM_STOP_INVARIANT_VIOLATION);
     EXPECT(context.pc == kCode);
     EXPECT(context.x[18] == kTebA);
+
+    gem_arm64ec_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+void TestNativeAsyncStop() {
+    gem_memory *memory = gem_memory_create();
+    EXPECT(memory != nullptr);
+    gem_arm64ec_runtime_config config{};
+    config.host_return_sentinel = kHostReturn;
+    config.max_budget = UINT64_C(1000000000);
+    config.execution_profile = GEM_ARM64EC_PROFILE_NATIVE_ARM64;
+    gem_arm64ec_runtime *runtime = gem_arm64ec_runtime_create(memory, &config);
+    EXPECT(runtime != nullptr);
+    MapCode(memory, kCode, {B_SELF});
+
+    gem_thread_context context{};
+    InitContext(context);
+    std::atomic<bool> started{false};
+    std::atomic<bool> finished{false};
+    gem_stop_reason reason = GEM_STOP_NONE;
+    std::thread runner([&] {
+        started.store(true);
+        reason = gem_arm64ec_runtime_run(runtime, &context, config.max_budget);
+        finished.store(true);
+    });
+    while (!started.load())
+        std::this_thread::yield();
+    do {
+        gem_arm64ec_runtime_request_async_stop(runtime);
+        std::this_thread::yield();
+    } while (!finished.load());
+    runner.join();
+
+    EXPECT(reason == GEM_STOP_ASYNC_REQUEST);
+    EXPECT(context.stop_reason == GEM_STOP_ASYNC_REQUEST);
+    gem_arm64ec_stop_info info{};
+    EXPECT(gem_arm64ec_runtime_last_stop_info(runtime, &info));
+    EXPECT(info.reason == GEM_STOP_ASYNC_REQUEST);
 
     gem_arm64ec_runtime_destroy(runtime);
     gem_memory_destroy(memory);
@@ -931,6 +1011,7 @@ int main() {
     TestPrefetchBoundaryBroker();
     TestMetadataBrokerResumeToHostReturn();
     TestNativeArm64Profile();
+    TestNativeAsyncStop();
     TestSelfModifyingCodeAndCacheMaintenance();
     return 0;
 }

@@ -415,7 +415,8 @@ static bool allowed(uint32_t p, bool w, bool x) {
     return b != 1 && b != 16;
 }
 static enum gem_memory_error access_memory_locked(struct gem_memory *m, uint64_t a, void *b,
-                                                  size_t n, bool w, bool x, bool query) {
+                                                  size_t n, bool w, bool x, bool query,
+                                                  bool consume_guard) {
     size_t done = 0, i, pages;
     struct page **ps;
     struct backing **copies = NULL;
@@ -456,7 +457,8 @@ static enum gem_memory_error access_memory_locked(struct gem_memory *m, uint64_t
         for (i = 0; i < pages; i++)
             if (ps[i]->protection & GEM_PAGE_GUARD) {
                 /* This is a real access: consume only its guard after all pages validated. */
-                ps[i]->protection &= ~(uint32_t)GEM_PAGE_GUARD;
+                if (consume_guard)
+                    ps[i]->protection &= ~(uint32_t)GEM_PAGE_GUARD;
                 free(ps);
                 return GEM_MEMORY_GUARD_PAGE;
             }
@@ -596,8 +598,8 @@ enum gem_memory_error gem_memory_transaction_validate(struct gem_memory_transact
     temporary = malloc(size);
     if (temporary == NULL)
         return GEM_MEMORY_NO_MEMORY;
-    error =
-        access_memory_locked(transaction->memory, address, temporary, size, write, execute, write);
+    error = access_memory_locked(transaction->memory, address, temporary, size, write, execute,
+                                 write, true);
     free(temporary);
     if (error == GEM_MEMORY_OK && write) {
         size_t done = 0U;
@@ -827,7 +829,7 @@ enum gem_memory_error gem_memory_read(struct gem_memory *m, uint64_t a, void *b,
     if (!m)
         return GEM_MEMORY_INVALID_ARGUMENT;
     gem_lock_acquire(&m->lock);
-    e = access_memory_locked(m, a, b, n, false, false, false);
+    e = access_memory_locked(m, a, b, n, false, false, false, true);
     gem_lock_release(&m->lock);
     return e;
 }
@@ -836,7 +838,7 @@ enum gem_memory_error gem_memory_write(struct gem_memory *m, uint64_t a, const v
     if (!m)
         return GEM_MEMORY_INVALID_ARGUMENT;
     gem_lock_acquire(&m->lock);
-    e = access_memory_locked(m, a, (void *)b, n, true, false, false);
+    e = access_memory_locked(m, a, (void *)b, n, true, false, false, true);
     gem_lock_release(&m->lock);
     return e;
 }
@@ -845,7 +847,7 @@ enum gem_memory_error gem_memory_fetch(struct gem_memory *m, uint64_t a, void *b
     if (!m)
         return GEM_MEMORY_INVALID_ARGUMENT;
     gem_lock_acquire(&m->lock);
-    e = access_memory_locked(m, a, b, n, false, true, false);
+    e = access_memory_locked(m, a, b, n, false, true, false, true);
     gem_lock_release(&m->lock);
     return e;
 }
@@ -858,12 +860,32 @@ enum gem_memory_error gem_memory_peek(struct gem_memory *m, uint64_t a, void *b,
     gem_lock_release(&m->lock);
     return e;
 }
+enum gem_memory_error gem_memory_read_deferred_guard(struct gem_memory *m, uint64_t a, void *b,
+                                                     size_t n) {
+    enum gem_memory_error e;
+    if (!m)
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    gem_lock_acquire(&m->lock);
+    e = access_memory_locked(m, a, b, n, false, false, false, false);
+    gem_lock_release(&m->lock);
+    return e;
+}
+enum gem_memory_error gem_memory_write_deferred_guard(struct gem_memory *m, uint64_t a,
+                                                      const void *b, size_t n) {
+    enum gem_memory_error e;
+    if (!m)
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    gem_lock_acquire(&m->lock);
+    e = access_memory_locked(m, a, (void *)b, n, true, false, false, false);
+    gem_lock_release(&m->lock);
+    return e;
+}
 bool gem_memory_is_executable(struct gem_memory *m, uint64_t a, size_t n) {
     enum gem_memory_error e;
     if (!m)
         return false;
     gem_lock_acquire(&m->lock);
-    e = access_memory_locked(m, a, NULL, n, false, true, true);
+    e = access_memory_locked(m, a, NULL, n, false, true, true, true);
     gem_lock_release(&m->lock);
     return e == GEM_MEMORY_OK;
 }

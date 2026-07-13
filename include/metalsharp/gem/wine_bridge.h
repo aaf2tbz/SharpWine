@@ -241,6 +241,9 @@ gem_wine_thread_set_native_upper_simd(struct gem_wine_thread *thread,
                                       const struct gem_u128 vectors[16]);
 GEM_WINE_API enum gem_wine_status
 gem_wine_thread_get_native_upper_simd(struct gem_wine_thread *thread, struct gem_u128 vectors[16]);
+/* Async-signal-safe for a live thread object: requests a bounded engine stop
+ * without acquiring the bridge, runtime, or guest-memory locks. */
+GEM_WINE_API void gem_wine_thread_request_async_stop(struct gem_wine_thread *thread);
 /* The input is copied before execution. Callback responses are proposals that
  * are validated in full before replacing GEM's canonical context. `out_context`
  * and `result` are published only after the run reaches a bounded stop. */

@@ -188,6 +188,13 @@ configure=("$source_dir/configure" "--host=aarch64-apple-darwin"
 )
 cmake --install "$gem_build" --prefix "$prefix" --component metalsharp-gem-wine
 runtime_dir="$prefix/lib/wine/aarch64-unix"
+acceptance_exe="$prefix/lib/wine/aarch64-windows/metalsharp-gem-acceptance.exe"
+"$llvm_mingw/bin/aarch64-w64-mingw32-clang" -O2 -Wall -Wextra -Werror \
+    -Wl,--no-insert-timestamp -Wl,--subsystem,console \
+    "$root/tests/fixtures/wine_arm64_gem_acceptance.c" -o "$acceptance_exe"
+file "$acceptance_exe" | grep -Eq 'PE32\+ executable.*Aarch64' || {
+    echo "native ARM64 GEM acceptance executable has the wrong architecture" >&2; exit 1;
+}
 install -m 755 "$deps_root/vulkan/libvulkan.dylib" "$runtime_dir/libvulkan.1.dylib"
 ln -sfn libvulkan.1.dylib "$runtime_dir/libvulkan.dylib"
 install -m 755 "$deps_root/moltenvk/libMoltenVK.dylib" "$runtime_dir/libMoltenVK.dylib"
@@ -364,6 +371,9 @@ def run(name, argv, timeout):
 
 try:
     wineboot_log = run("wineboot", [str(prefix / "bin/wineboot"), "--init"], 1800)
+    gem_acceptance_log = run(
+        "gem-acceptance",
+        [str(prefix / "bin/wine"), "metalsharp-gem-acceptance.exe"], 120)
     cmd_log = run("cmd", [str(prefix / "bin/wine"), "cmd.exe", "/c", "exit"], 600)
 finally:
     subprocess.run([str(prefix / "bin/wineserver"), "-k"], env=env,
@@ -373,16 +383,24 @@ finally:
 if audit_failure:
     raise SystemExit("translated or non-ARM64 process detected:\n" + "\n".join(audit_failure))
 combined = wineboot_log.read_text(encoding="utf-8", errors="replace") + \
+           gem_acceptance_log.read_text(encoding="utf-8", errors="replace") + \
            cmd_log.read_text(encoding="utf-8", errors="replace")
 resolved_prefix = prefix.resolve(strict=True)
 required = ("gem_signal_run enter pc=", "boundary syscall", "boundary unix-call",
             "callback enter", "callback return",
+            "metalsharp-gem-acceptance: access-violation=continued",
+            "metalsharp-gem-acceptance: guard=consumed",
+            "metalsharp-gem-acceptance: thread=create,suspend,resume,exit",
+            "metalsharp-gem-acceptance: passed",
             f"wine: native ARM64 GEM launch image={resolved_prefix}/lib/wine/aarch64-windows/wineboot.exe",
+            f"wine: native ARM64 GEM launch image={resolved_prefix}/lib/wine/aarch64-windows/metalsharp-gem-acceptance.exe",
             f"wine: native ARM64 GEM launch image={resolved_prefix}/lib/wine/aarch64-windows/cmd.exe")
 missing = [marker for marker in required if marker not in combined]
 forbidden = ("Unhandled EXC_BAD_ACCESS", "GEM execution failed", "boot event wait timed out",
              "could not load", "status=c0000135", "start.exe",
-             "native ARM64 builtin launch ABI not found", "returned unexpectedly")
+             "native ARM64 builtin launch ABI not found", "returned unexpectedly",
+             "GEM thread destroy failed", "Interpret should never be emitted",
+             "assertion failed")
 found = [marker for marker in forbidden if marker in combined]
 if missing or found:
     raise SystemExit(f"runtime evidence rejected: missing={missing}, forbidden={found}")
@@ -442,6 +460,7 @@ value = {"schema": 1, "kind": "wine-foundation", "repositoryCommit": repository_
          "acceptance": {"lifecycleProbe": "passed before guest entry",
                         "nativeLaunchContract": "version 1; exact staged builtin PE selected in-process",
                         "winebootInit": "passed with a fresh prefix within 1800 seconds",
+                        "nativeArm64RuntimeProbe": "continued access violation; consumed guard; created, suspended, resumed, and cleanly terminated a guest thread",
                         "nativeArm64CmdExit": "passed within 600 seconds",
                         "processAudit": "all observed Mach-O executables are ARM64-only",
                         "evidence": evidence_files,

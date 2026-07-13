@@ -62,6 +62,13 @@
       "sha256": "30d32f26812833a48bd868ffce7a0840e1565102be1d5c95ed1621f675268e31",
       "authoringCommit": "71897e20586f69ae8951bfcdb608d4193b34a393",
       "purpose": "Launch staged Darwin ARM64 builtins through a versioned in-process GEM contract, restore x18 at Wine syscall return, and make immediate process-exit teardown safe."
+    },
+    {
+      "order": 9,
+      "path": "third_party/patches/wine/0009-ntdll-complete-gem-fault-suspend-boundaries.patch",
+      "sha256": "876ce98daf1ce1b7b69764c3a66f014de2b72084b75f56106449d583ed1a3b8f",
+      "authoringCommit": "29a7e2aa64cbf5570e64fdf487f073e97d1e1060",
+      "purpose": "Synchronize post-fault protections per committed 4 KiB guest page and route native GEM thread suspension through a lock-free cooperative engine boundary."
     }
   ],
   "researchEvidence": {

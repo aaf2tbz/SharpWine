@@ -65,6 +65,10 @@
         {
           "path": "third_party/patches/wine/0008-darwin-arm64-add-native-gem-launch-contract.patch",
           "sha256": "30d32f26812833a48bd868ffce7a0840e1565102be1d5c95ed1621f675268e31"
+        },
+        {
+          "path": "third_party/patches/wine/0009-ntdll-complete-gem-fault-suspend-boundaries.patch",
+          "sha256": "876ce98daf1ce1b7b69764c3a66f014de2b72084b75f56106449d583ed1a3b8f"
         }
       ]
     },

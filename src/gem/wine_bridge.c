@@ -93,6 +93,11 @@ static void copy_stop_info(struct gem_wine_stop_info *destination,
     destination->fault_address = source->fault_address;
 }
 
+static void unlock_run_lock(void *opaque) {
+    struct gem_wine_thread *thread = (struct gem_wine_thread *)opaque;
+    (void)pthread_mutex_unlock(&thread->run_lock);
+}
+
 uint32_t gem_wine_bridge_abi_version(void) {
     return GEM_WINE_BRIDGE_ABI_VERSION;
 }
@@ -348,6 +353,11 @@ enum gem_wine_status gem_wine_thread_get_native_upper_simd(struct gem_wine_threa
     return accepted ? GEM_WINE_OK : GEM_WINE_CONFLICT;
 }
 
+void gem_wine_thread_request_async_stop(struct gem_wine_thread *thread) {
+    if (thread != NULL)
+        gem_arm64ec_runtime_request_async_stop(thread->runtime);
+}
+
 static enum gem_wine_boundary_event classify_event(const struct gem_wine_process *process,
                                                    enum gem_stop_reason reason,
                                                    const struct gem_thread_context *context,
@@ -393,6 +403,7 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
     process = thread->process;
     if (pthread_mutex_trylock(&thread->run_lock) != 0)
         return GEM_WINE_CONFLICT;
+    pthread_cleanup_push(unlock_run_lock, thread);
     context = *input;
     initialize_result(&run_result);
 
@@ -516,6 +527,6 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
 
     *out_context = context;
     *result = run_result;
-    (void)pthread_mutex_unlock(&thread->run_lock);
+    pthread_cleanup_pop(1);
     return status;
 }

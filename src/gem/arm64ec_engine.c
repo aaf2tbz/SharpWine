@@ -158,6 +158,11 @@ enum gem_stop_reason gem_arm64ec_runtime_run(struct gem_arm64ec_runtime *runtime
     return finish_stop(runtime, context, reason);
 }
 
+void gem_arm64ec_runtime_request_async_stop(struct gem_arm64ec_runtime *runtime) {
+    if (runtime != NULL)
+        gem_arm64ec_dynarmic_request_async_stop(runtime);
+}
+
 bool gem_arm64ec_runtime_last_stop_info(const struct gem_arm64ec_runtime *runtime,
                                         struct gem_arm64ec_stop_info *out_info) {
     if (runtime == NULL || out_info == NULL)

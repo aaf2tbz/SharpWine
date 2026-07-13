@@ -1,0 +1,114 @@
+From 29a7e2aa64cbf5570e64fdf487f073e97d1e1060 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@users.noreply.github.com>
+Date: Sun, 12 Jul 2026 22:58:18 -0600
+Subject: [PATCH 9/9] ntdll: complete GEM fault and suspend boundaries
+
+---
+ dlls/ntdll/unix/signal_arm64.c | 23 +++++++++++++++++++++--
+ dlls/ntdll/unix/virtual.c      | 33 +++++++++++++++++++++++----------
+ 2 files changed, 44 insertions(+), 12 deletions(-)
+
+diff --git a/dlls/ntdll/unix/signal_arm64.c b/dlls/ntdll/unix/signal_arm64.c
+index dee3a2b..2563fb1 100644
+--- a/dlls/ntdll/unix/signal_arm64.c
++++ b/dlls/ntdll/unix/signal_arm64.c
+@@ -427,6 +427,12 @@ enum gem_wine_status gem_signal_boundary(
+         response->action = GEM_WINE_BOUNDARY_FAIL;
+         return GEM_WINE_OK;
+     }
++    if (arm64_thread_data( data )->suspend_pending)
++    {
++        CONTEXT context = { CONTEXT_FULL };
++        NtGetContextThread( GetCurrentThread(), &context );
++        if (signal_set_full_context( &context )) return GEM_WINE_CALLBACK_ERROR;
++    }
+     gem_frame_get_upper_simd( data, frame );
+     gem_context_from_frame( &response->context, frame, data->teb );
+     return GEM_WINE_OK;
+@@ -645,11 +651,12 @@ NTSTATUS signal_set_full_context( CONTEXT *context )
+     CHPE_V2_CPU_AREA_INFO *cpu_area = data->teb->ChpeV2CpuAreaInfo;
+     NTSTATUS status;
+ 
+-    if (arm64_data->suspend_pending && !cpu_area->InSyscallCallback && !cpu_area->InSimulation)
++    if (arm64_data->suspend_pending &&
++        (!cpu_area || (!cpu_area->InSyscallCallback && !cpu_area->InSimulation)))
+     {
+         sigset_t old_set;
+         pthread_sigmask( SIG_BLOCK, &server_block_set, &old_set );
+-        *cpu_area->SuspendDoorbell = 0;
++        if (cpu_area && cpu_area->SuspendDoorbell) *cpu_area->SuspendDoorbell = 0;
+         arm64_data->suspend_pending = FALSE;
+         wait_suspend( context );
+         status = NtSetContextThread( GetCurrentThread(), context );
+@@ -1740,6 +1747,18 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *_sigcontext )
+         {
+             *chpe->SuspendDoorbell = -1;
+             arm64_thread_data( data )->suspend_pending = TRUE;
++            if (data->gem_thread) gem_wine_thread_request_async_stop( data->gem_thread );
++        }
++    }
++    else if (data->gem_thread)
++    {
++        NTSTATUS status = server_select( NULL, 0,
++                                         SELECT_INTERRUPTIBLE | SELECT_COOPERATIVE_SUSPEND,
++                                         0, NULL, NULL );
++        if (status == STATUS_THREAD_WAS_SUSPENDED)
++        {
++            arm64_thread_data( data )->suspend_pending = TRUE;
++            gem_wine_thread_request_async_stop( data->gem_thread );
+         }
+     }
+     else if (is_inside_syscall( data, SP_sig(sigcontext) ))
+diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
+index b688af3..55e2d1e 100644
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -4742,6 +4742,7 @@ NTSTATUS virtual_handle_fault( struct thread_data *data, EXCEPTION_RECORD *rec,
+     char *page = ROUND_ADDR( addr, host_page_mask );
+     BYTE vprot;
+ #ifdef __APPLE__
++    char *guest_page;
+     struct file_view *view;
+ #endif
+ 
+@@ -4792,18 +4793,30 @@ NTSTATUS virtual_handle_fault( struct thread_data *data, EXCEPTION_RECORD *rec,
+         }
+     }
+ #ifdef __APPLE__
+-    if (vprot != get_host_page_vprot( page ) &&
+-        (view = find_view_range( page, host_page_size )))
++    if (vprot != get_host_page_vprot( page ))
+     {
+-        NTSTATUS gem_status = gem_virtual_protect(
+-            page, host_page_size,
+-            get_win32_prot( get_host_page_vprot( page ), view->protect ), NULL );
+-        if (gem_status)
++        for (guest_page = page; guest_page < page + host_page_size; guest_page += page_size)
+         {
+-            ERR( "GEM fault-protection synchronization failed for %p: %08x\n", page,
+-                 gem_status );
+-            mutex_unlock( &virtual_mutex );
+-            exit(1);
++            BYTE guest_vprot = get_page_vprot( guest_page );
++            NTSTATUS gem_status;
++
++            if (!(guest_vprot & VPROT_COMMITTED)) continue;
++            if (!(view = find_view_range( guest_page, page_size )))
++            {
++                ERR( "no view for committed guest page %p during GEM fault synchronization\n",
++                     guest_page );
++                mutex_unlock( &virtual_mutex );
++                exit(1);
++            }
++            gem_status = gem_virtual_protect(
++                guest_page, page_size, get_win32_prot( guest_vprot, view->protect ), NULL );
++            if (gem_status)
++            {
++                ERR( "GEM fault-protection synchronization failed for %p: %08x\n",
++                     guest_page, gem_status );
++                mutex_unlock( &virtual_mutex );
++                exit(1);
++            }
+         }
+     }
+ #endif

@@ -107,6 +107,10 @@ bool gem_arm64ec_runtime_attach_arm64x(struct gem_arm64ec_runtime *runtime,
 enum gem_stop_reason gem_arm64ec_runtime_run(struct gem_arm64ec_runtime *runtime,
                                              struct gem_thread_context *context, uint64_t budget);
 
+/* Requests a bounded GEM_STOP_ASYNC_REQUEST from another thread or a signal
+ * handler.  The request does not acquire GEM memory or runtime locks. */
+void gem_arm64ec_runtime_request_async_stop(struct gem_arm64ec_runtime *runtime);
+
 bool gem_arm64ec_runtime_last_stop_info(const struct gem_arm64ec_runtime *runtime,
                                         struct gem_arm64ec_stop_info *out_info);
 

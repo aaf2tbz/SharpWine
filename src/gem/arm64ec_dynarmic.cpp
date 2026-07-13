@@ -8,6 +8,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <thread>
 
 #include "dynarmic/interface/A64/a64.h"
 #include "dynarmic/interface/A64/config.h"
@@ -42,6 +43,10 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
 
     void Attach(Dynarmic::A64::Jit *jit_) {
         jit = jit_;
+    }
+
+    void SetDeferredGuard(bool deferred) {
+        deferred_guard = deferred;
     }
 
     void ResetRun() {
@@ -148,7 +153,9 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
         StoreUnsigned(bytes.data(), value[0], sizeof(value[0]));
         StoreUnsigned(bytes.data() + sizeof(value[0]), value[1], sizeof(value[1]));
         const gem_memory_error error =
-            gem_memory_write(runtime->memory, vaddr, bytes.data(), bytes.size());
+            deferred_guard ? gem_memory_write_deferred_guard(runtime->memory, vaddr, bytes.data(),
+                                                             bytes.size())
+                           : gem_memory_write(runtime->memory, vaddr, bytes.data(), bytes.size());
         if (error != GEM_MEMORY_OK) {
             SetFault(vaddr, GEM_ARM64EC_ACCESS_WRITE, error);
             return;
@@ -215,6 +222,12 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
         case Dynarmic::A64::Exception::Breakpoint:
             SetStop(GEM_STOP_WINDOWS_EXCEPTION, pc, status);
             break;
+        case Dynarmic::A64::Exception::Yield:
+            /* YIELD is an architectural hint, not a guest exception.  Give
+             * Wine's scheduler a host scheduling point and resume at pc + 4,
+             * which Dynarmic established before invoking this callback. */
+            std::this_thread::yield();
+            break;
         case Dynarmic::A64::Exception::UnallocatedEncoding:
         case Dynarmic::A64::Exception::ReservedValue:
         case Dynarmic::A64::Exception::UnpredictableInstruction:
@@ -222,7 +235,6 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
         case Dynarmic::A64::Exception::WaitForEvent:
         case Dynarmic::A64::Exception::SendEvent:
         case Dynarmic::A64::Exception::SendEventLocal:
-        case Dynarmic::A64::Exception::Yield:
             SetStop(GEM_STOP_UNSUPPORTED_INSTRUCTION, pc, status);
             break;
         default:
@@ -236,7 +248,10 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
         if (operation == Dynarmic::A64::DataCacheOperation::ZeroByVA) {
             std::array<std::uint8_t, kDczvaBytes> zeroes{};
             const gem_memory_error error =
-                gem_memory_write(runtime->memory, value, zeroes.data(), zeroes.size());
+                deferred_guard
+                    ? gem_memory_write_deferred_guard(runtime->memory, value, zeroes.data(),
+                                                      zeroes.size())
+                    : gem_memory_write(runtime->memory, value, zeroes.data(), zeroes.size());
             if (error != GEM_MEMORY_OK) {
                 SetFault(value, GEM_ARM64EC_ACCESS_WRITE, error);
                 return;
@@ -300,7 +315,9 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
     Dynarmic::A64::Vector ReadVector(Dynarmic::A64::VAddr vaddr, bool record_read) {
         std::array<std::uint8_t, kVectorBytes> bytes{};
         const gem_memory_error error =
-            gem_memory_read(runtime->memory, vaddr, bytes.data(), bytes.size());
+            deferred_guard
+                ? gem_memory_read_deferred_guard(runtime->memory, vaddr, bytes.data(), bytes.size())
+                : gem_memory_read(runtime->memory, vaddr, bytes.data(), bytes.size());
         if (error != GEM_MEMORY_OK) {
             SetFault(vaddr, GEM_ARM64EC_ACCESS_READ, error);
             return Dynarmic::A64::Vector{};
@@ -312,7 +329,9 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
     template <typename T> T ReadScalar(Dynarmic::A64::VAddr vaddr, bool record_read = true) {
         std::array<std::uint8_t, sizeof(T)> bytes{};
         const gem_memory_error error =
-            gem_memory_read(runtime->memory, vaddr, bytes.data(), bytes.size());
+            deferred_guard
+                ? gem_memory_read_deferred_guard(runtime->memory, vaddr, bytes.data(), bytes.size())
+                : gem_memory_read(runtime->memory, vaddr, bytes.data(), bytes.size());
         if (error != GEM_MEMORY_OK) {
             SetFault(vaddr, GEM_ARM64EC_ACCESS_READ, error);
             return 0;
@@ -325,7 +344,9 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
         std::array<std::uint8_t, sizeof(T)> bytes{};
         StoreUnsigned(bytes.data(), static_cast<std::uint64_t>(value), bytes.size());
         const gem_memory_error error =
-            gem_memory_write(runtime->memory, vaddr, bytes.data(), bytes.size());
+            deferred_guard ? gem_memory_write_deferred_guard(runtime->memory, vaddr, bytes.data(),
+                                                             bytes.size())
+                           : gem_memory_write(runtime->memory, vaddr, bytes.data(), bytes.size());
         if (error != GEM_MEMORY_OK) {
             SetFault(vaddr, GEM_ARM64EC_ACCESS_WRITE, error);
             return;
@@ -374,6 +395,7 @@ class Environment final : public Dynarmic::A64::UserCallbacks {
 
     gem_arm64ec_runtime *runtime;
     Dynarmic::A64::Jit *jit = nullptr;
+    bool deferred_guard = false;
     std::uint64_t ticks_left = 1;
 };
 
@@ -550,6 +572,7 @@ void ClearTransientHalts(Dynarmic::A64::Jit &jit) {
     jit.ClearHalt(Dynarmic::HaltReason::MemoryAbort);
     jit.ClearHalt(Dynarmic::HaltReason::UserDefined1);
     jit.ClearHalt(Dynarmic::HaltReason::UserDefined2);
+    jit.ClearHalt(Dynarmic::HaltReason::UserDefined3);
 }
 
 } // namespace
@@ -599,8 +622,10 @@ extern "C" enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runt
     if (runtime->config.execution_profile == GEM_ARM64EC_PROFILE_NATIVE_ARM64 &&
         runtime->target_map == nullptr && runtime->boundary_broker == nullptr) {
         const CpuSnapshot before = TakeSnapshot(jit);
+        backend.env.SetDeferredGuard(true);
         backend.env.SetTickBudget(budget);
         const Dynarmic::HaltReason halt = jit.Run();
+        backend.env.SetDeferredGuard(false);
         std::uint64_t native_retired = budget - backend.env.TicksRemaining();
 
         if (backend.env.cache_dirty || HasHalt(halt, Dynarmic::HaltReason::CacheInvalidation))
@@ -618,7 +643,9 @@ extern "C" enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runt
         } else if (backend.env.pending_reason != GEM_STOP_NONE) {
             const bool fetch_boundary = backend.env.pending_reason == GEM_STOP_HOST_RETURN ||
                                         backend.env.pending_reason == GEM_STOP_ARCH_TRANSITION;
-            if (!fetch_boundary && jit.GetPC() >= sizeof(std::uint32_t))
+            if (fetch_boundary)
+                jit.SetPC(backend.env.pending_fault_address);
+            else if (jit.GetPC() >= sizeof(std::uint32_t))
                 jit.SetPC(jit.GetPC() - sizeof(std::uint32_t));
             ExportContext(jit, *runtime, *context);
             if (context->x[18] != context->teb) {
@@ -644,6 +671,12 @@ extern "C" enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runt
                         static_cast<std::uint32_t>(Dynarmic::HaltReason::MemoryAbort));
             ClearTransientHalts(jit);
             return GEM_STOP_INVARIANT_VIOLATION;
+        } else if (HasHalt(halt, Dynarmic::HaltReason::UserDefined3)) {
+            ExportContext(jit, *runtime, *context);
+            SetStopInfo(*runtime, GEM_STOP_ASYNC_REQUEST, native_retired, 0U,
+                        GEM_ARM64EC_ACCESS_NONE, GEM_MEMORY_OK, 0U);
+            ClearTransientHalts(jit);
+            return GEM_STOP_ASYNC_REQUEST;
         }
 
         ExportContext(jit, *runtime, *context);
@@ -835,6 +868,14 @@ extern "C" enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runt
             return GEM_STOP_INVARIANT_VIOLATION;
         }
 
+        if (HasHalt(halt, Dynarmic::HaltReason::UserDefined3)) {
+            ExportContext(jit, *runtime, *context);
+            SetStopInfo(*runtime, GEM_STOP_ASYNC_REQUEST, retired, 0U, GEM_ARM64EC_ACCESS_NONE,
+                        GEM_MEMORY_OK, 0U);
+            ClearTransientHalts(jit);
+            return GEM_STOP_ASYNC_REQUEST;
+        }
+
         ++retired;
         backend.env.cntpct = retired;
         if (jit.GetRegister(18) != context->teb) {
@@ -879,6 +920,13 @@ extern "C" void gem_arm64ec_dynarmic_invalidate_code(struct gem_arm64ec_runtime 
     backend.RecreateJit();
     (void)address;
     (void)size;
+}
+
+extern "C" void gem_arm64ec_dynarmic_request_async_stop(struct gem_arm64ec_runtime *runtime) {
+    if (runtime == nullptr || runtime->backend == nullptr)
+        return;
+    Backend &backend = *static_cast<Backend *>(runtime->backend);
+    backend.jit->HaltExecution(Dynarmic::HaltReason::UserDefined3);
 }
 
 extern "C" const char *gem_arm64ec_dynarmic_engine_name(void) {

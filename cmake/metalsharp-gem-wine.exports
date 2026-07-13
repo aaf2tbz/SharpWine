@@ -15,4 +15,5 @@ _gem_wine_thread_create
 _gem_wine_thread_destroy
 _gem_wine_thread_set_native_upper_simd
 _gem_wine_thread_get_native_upper_simd
+_gem_wine_thread_request_async_stop
 _gem_wine_thread_run

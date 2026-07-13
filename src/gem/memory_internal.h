@@ -10,6 +10,12 @@ extern "C" {
 
 enum gem_memory_error gem_memory_peek(struct gem_memory *memory, uint64_t address, void *buffer,
                                       size_t size);
+/* Native translated blocks defer PAGE_GUARD consumption until precise replay
+ * has validated the exact faulting instruction and context. */
+enum gem_memory_error gem_memory_read_deferred_guard(struct gem_memory *memory, uint64_t address,
+                                                     void *buffer, size_t size);
+enum gem_memory_error gem_memory_write_deferred_guard(struct gem_memory *memory, uint64_t address,
+                                                      const void *buffer, size_t size);
 
 struct gem_memory_transaction;
 struct gem_memory_page_write {
