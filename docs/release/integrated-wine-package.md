@@ -80,6 +80,8 @@ The local publication command compares both independently staged archives before
 
 The release is created as a draft by the native ARM64 release operator. CI redownloads every uploaded asset into a new directory, reconstructs the release-notes input from the draft body, validates all digests and archive members, unpacks the downloaded archive, and repeats fresh-prefix native ARM64 and authentic ARM64EC/x64 smoke tests. Only that successful redownloaded package can be made public.
 
+For macOS 15 compatibility, staging lowers host Mach-O deployment metadata and rewrites the SDK 27-only `pipe2` and `dup3` imports to the layout-preserving ARM64 legacy entry points `pipe` and `dup2`. The audit rejects either SDK 27-only import if it survives staging; packaged tests cover fresh-prefix startup, GEM execution, hybrid execution, and teardown.
+
 ## Reproduce the candidate locally
 
 From a clean checkout at the commit being tested, with the locked LLVM-MinGW tree, runtime dependency directory, and exact-commit ARM64X CI bundle available, the complete two-build gate is one command:
