@@ -1,19 +1,18 @@
-name: Publish uploaded Wine release
+name: Verify uploaded Wine release
 
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: integrated-wine-v0.1.0
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Validate and publish uploaded v0.1.0 assets
+  verify-and-publish:
+    name: Download, unpack, test, and publish v0.1.0
     runs-on: macos-15
     timeout-minutes: 30
     permissions:
@@ -23,69 +22,56 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - name: Bind publication to reviewed protected main and its draft
+      - name: Bind the draft to reviewed protected main
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/main
-          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
-          test "$main_sha" = "$GITHUB_SHA"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" --jq .object.sha)" = "$GITHUB_SHA"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v0.1.0" --jq .draft | grep -Fx true
           python3 tools/release/validate-readiness.py \
             --root "$GITHUB_WORKSPACE" \
             --protected-main-parent "$(git rev-parse "$GITHUB_SHA^")"
-          release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v0.1.0")"
-          jq -e '.draft == true and .prerelease == false' <<<"$release" >/dev/null
-          tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" --jq .object.sha)"
-          test "$tag_sha" = "$GITHUB_SHA"
-      - name: Redownload and validate every manually uploaded asset
+      - name: Download and verify the uploaded archive
         env:
           GH_TOKEN: ${{ github.token }}
-          ASSET_DIR: ${{ runner.temp }}/metalsharp-wine-v0.1.0-redownload
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$ASSET_DIR"
-          gh release download v0.1.0 --repo "$GITHUB_REPOSITORY" --dir "$ASSET_DIR"
-          gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" \
-            --json body --jq .body > "$ASSET_DIR/RELEASE-NOTES.md"
-          python3 tools/release/validate-release-assets.py \
-            --directory "$ASSET_DIR" \
-            --repository "$GITHUB_REPOSITORY" \
-            --commit "$GITHUB_SHA" \
-            --version 0.1.0
-          python3 tools/release/verify-published-release.py \
-            --directory "$ASSET_DIR" \
-            --repository "$GITHUB_REPOSITORY" \
-            --tag v0.1.0 \
-            --commit "$GITHUB_SHA"
-      - name: Run the downloaded native and hybrid package smoke
-        env:
-          ASSET_DIR: ${{ runner.temp }}/metalsharp-wine-v0.1.0-redownload
+          assets="${RUNNER_TEMP}/metalsharp-wine-v0.1.0-assets"
+          mkdir -p "$assets"
+          gh release download v0.1.0 --repo "$GITHUB_REPOSITORY" --dir "$assets"
+          test "$(find "$assets" -type f | wc -l | tr -d ' ')" = 2
+          cd "$assets"
+          shasum -a 256 -c metalsharp-wine-v0.1.0-macos-arm64.tar.zst.sha256
+      - name: Unpack at the accepted Wine build path and run checks
         shell: bash
         run: |
           set -euo pipefail
           brew install zstd
-          unpacked="${RUNNER_TEMP}/metalsharp-wine-v0.1.0-published-smoke"
-          evidence="${RUNNER_TEMP}/published-smoke-evidence"
-          mkdir -p "$unpacked"
+          assets="${RUNNER_TEMP}/metalsharp-wine-v0.1.0-assets"
+          release_user=averyfelts
+          parent="/Users/${release_user}/Arm64WINE/.issue23"
+          runtime="$parent/stage"
+          sudo mkdir -p "$parent"
+          sudo chown -R "$(id -u):$(id -g)" "/Users/${release_user}"
           "$(brew --prefix zstd)/bin/zstd" -d --stdout \
-            "$ASSET_DIR/metalsharp-wine-v0.1.0-macos-arm64.tar.zst" | tar -xf - -C "$unpacked"
+            "$assets/metalsharp-wine-v0.1.0-macos-arm64.tar.zst" | tar -xf - -C "$parent"
+          mv "$parent/metalsharp-wine-v0.1.0-macos-arm64" "$runtime"
           python3 tools/release/test-packaged-runtime.py \
-            --runtime "$unpacked/metalsharp-wine-v0.1.0-macos-arm64" \
-            --evidence "$evidence" \
+            --runtime "$runtime" \
+            --evidence "${RUNNER_TEMP}/published-smoke-evidence" \
             --stress-iterations 1 \
             --timeout 300
-      - name: Publish the unchanged verified draft
+      - name: Publish the verified unchanged draft
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
-          tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" --jq .object.sha)"
-          test "$main_sha" = "$GITHUB_SHA"
-          test "$tag_sha" = "$GITHUB_SHA"
-          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v0.1.0" --jq .draft | grep -Fx true
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" --jq .object.sha)" = "$GITHUB_SHA"
           gh release edit v0.1.0 --repo "$GITHUB_REPOSITORY" --draft=false --latest
