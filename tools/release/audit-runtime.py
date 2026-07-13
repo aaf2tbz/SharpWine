@@ -165,8 +165,10 @@ def audit(root: Path, forbidden: list[str]) -> list[dict[str, object]]:
             fail(f"unsupported macOS deployment target in {macho.relative_to(root)}: {target}")
         undefined = {line.split()[-1] for line in command("nm", "-u", str(macho)).splitlines()
                      if line.split()}
-        if "_pipe2" in undefined:
-            fail(f"macOS 27-only pipe2 import in {macho.relative_to(root)}")
+        unsupported = undefined & {"_pipe2", "_dup3"}
+        if unsupported:
+            fail(f"macOS 27-only FD imports in {macho.relative_to(root)}: "
+                 f"{sorted(unsupported)}")
         for value in rpaths(macho):
             if value.startswith("/"):
                 fail(f"absolute rpath in {macho.relative_to(root)}: {value}")

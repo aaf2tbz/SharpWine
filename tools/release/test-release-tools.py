@@ -193,6 +193,15 @@ class ReleaseToolTests(unittest.TestCase):
         self.assertIn(b"lib", scrubbed)
         self.assertIn(b"/usr/share", scrubbed)
 
+    def test_rewrites_macos27_fd_imports_without_resizing(self) -> None:
+        original = b"symbols\0_pipe2\0middle\0_dup3\0end"
+        compatible = STAGER.replace_macos27_fd_imports(original)
+        self.assertEqual(len(compatible), len(original))
+        self.assertNotIn(b"_pipe2\0", compatible)
+        self.assertNotIn(b"_dup3\0", compatible)
+        self.assertIn(b"_pipe\0\0", compatible)
+        self.assertIn(b"_dup2\0", compatible)
+
     def test_verifies_published_asset_digests(self) -> None:
         fake_bin = self.directory / "fake-bin"
         fake_bin.mkdir()

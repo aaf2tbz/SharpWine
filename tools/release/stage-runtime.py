@@ -328,13 +328,18 @@ def scrub_embedded_prefixes(package: Path) -> None:
                 run("codesign", "--force", "--sign", "-", "--timestamp=none", str(path))
 
 
+def replace_macos27_fd_imports(data: bytes) -> bytes:
+    """Map SDK 27 descriptor helpers to layout-preserving legacy imports."""
+    return data.replace(b"_pipe2\0", b"_pipe\0\0").replace(b"_dup3\0", b"_dup2\0")
+
+
 def normalize_macos15_compatibility(package: Path) -> None:
-    """Lower host deployment metadata and avoid the macOS 27-only pipe2 import.
+    """Lower host deployment metadata and remove macOS 27-only FD imports.
 
     The macOS 27 SDK exposes pipe2 even when Wine's configure probe is building
-    a runtime intended for older hosts. ARM64 passes the unused second argument
-    harmlessly to pipe(2); the packaged acceptance test verifies that Wine's
-    CLOEXEC users still tear down without leaked processes or prefixes.
+    a runtime intended for older hosts. SDK 27 also exposes dup3. ARM64 passes
+    the unused trailing arguments harmlessly to the legacy pipe(2) and dup2(2)
+    entry points. The packaged acceptance test covers startup and teardown.
     """
     for path in sorted(p for p in package.rglob("*") if is_macho(p)):
         changed = False
@@ -350,15 +355,19 @@ def normalize_macos15_compatibility(package: Path) -> None:
             os.replace(temporary, path)
             changed = True
         data = path.read_bytes()
-        if b"_pipe2\0" in data:
-            data = data.replace(b"_pipe2\0", b"_pipe\0\0")
+        compatible = replace_macos27_fd_imports(data)
+        if compatible != data:
+            data = compatible
             path.write_bytes(data)
             changed = True
         if changed:
             run("codesign", "--force", "--sign", "-", "--timestamp=none", str(path))
-        if any(line.split()[-1:] == ["_pipe2"]
-               for line in run("nm", "-u", str(path), check=False).splitlines()):
-            fail(f"macOS 27-only pipe2 import survived normalization: {path}")
+        undefined = {line.split()[-1] for line in run("nm", "-u", str(path), check=False).splitlines()
+                     if line.split()}
+        unsupported = undefined & {"_pipe2", "_dup3"}
+        if unsupported:
+            fail(f"macOS 27-only FD imports survived normalization in {path}: "
+                 f"{sorted(unsupported)}")
 
 
 def install_selftest(package: Path, foundation: Path, fixture: Path, host: Path,
