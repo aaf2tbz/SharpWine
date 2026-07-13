@@ -10,11 +10,11 @@
     "relocatable-arm64-only-macho-closure": true,
     "two-clean-build-byte-reproducibility": true
   },
-  "expectedProtectedMainParent": "b972965b16575c4363df47c63d9349768534aaaf",
+  "expectedProtectedMainParent": "c2f3df469a7478cc8db2fb42b7d490946bb53656",
   "readmeSha256": "fffdc3968579d4adf5e9ce51166dced39394a35f56824ad1215a5346bfc1e0d3",
   "schema": 1,
   "scripts": {
-    ".github/workflows/release.yml": "3a80d512a09d383121ef763342074592c6cbc50b05ef79d659d337787b2c4e65",
+    ".github/workflows/release.yml": "9ba902400c129e03278d9a17770a94d63d2444d3b9a954ef9d087ee0bf1e7ac1",
     "tools/release/audit-runtime.py": "e61fc6c2cd7092ba345b39d9208244df6f341c4d5c24f0f3d6d69ab3d4211c26",
     "tools/release/build-integrated-wine.sh": "8f207c5f84a08e55ed83d717548f7c654992c3b17468ccef31b3db5fb1a1987a",
     "tools/release/build-release-candidate.sh": "57677b2fbe6feb8c24cbcfc26de0a86813fba4507b2eda536c7e1dd9e2abcddf",
