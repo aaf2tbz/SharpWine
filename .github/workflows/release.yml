@@ -31,7 +31,7 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
           test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" --jq .object.sha)" = "$GITHUB_SHA"
-          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v0.1.0" --jq .draft | grep -Fx true
+          gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft | grep -Fx true
           python3 tools/release/validate-readiness.py \
             --root "$GITHUB_WORKSPACE" \
             --protected-main-parent "$(git rev-parse "$GITHUB_SHA^")"
