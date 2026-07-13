@@ -171,12 +171,15 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 export WINELOADER="$root/bin/.wine-real"
 export WINESERVER="$root/bin/.wineserver-real"
+export WINEDLLPATH="$root/lib/wine/aarch64-unix:$root/lib/wine/aarch64-windows"
+export WINEDATADIR="$root/share/wine"
 export VK_ICD_FILENAMES="$root/share/vulkan/icd.d/MoltenVK_icd.json"
 export XDG_CONFIG_DIRS="$root/share"
 export XDG_DATA_DIRS="$root/share"
 export DRIRC_CONFIGDIR="$root/share/drirc.d"
 export XLOCALEDIR="$root/share/X11/locale"
 export XERRORDB="$root/share/X11/XErrorDB"
+cd "$root"
 exec -a "$0" "$root/bin/.wine-real" "$@"
 """, encoding="utf-8")
     os.chmod(launcher, 0o755)
@@ -299,6 +302,10 @@ def scrub_embedded_prefixes(package: Path) -> None:
             for match in reversed(list(pattern.finditer(data))):
                 original = match.group()
                 replacement = b"/dev/null"
+                for suffix in (b"/share/wine", b"/lib/wine", b"/bin", b"/lib"):
+                    if original.endswith(suffix):
+                        replacement = suffix.removeprefix(b"/")
+                        break
                 if original.startswith(b"/opt/homebrew"):
                     if b"xdg" in original.lower():
                         replacement = b"/etc/xdg"
