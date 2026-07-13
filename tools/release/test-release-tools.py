@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -20,6 +21,13 @@ REPOSITORY = "owner/project"
 COMMIT = "1" * 40
 VERSION = "0.1.0"
 ARCHIVE = "metalsharp-wine-v0.1.0-macos-arm64.tar.zst"
+
+STAGER_SPEC = importlib.util.spec_from_file_location(
+    "stage_runtime", ROOT / "tools/release/stage-runtime.py")
+if STAGER_SPEC is None or STAGER_SPEC.loader is None:
+    raise RuntimeError("could not load runtime stager")
+STAGER = importlib.util.module_from_spec(STAGER_SPEC)
+STAGER_SPEC.loader.exec_module(STAGER)
 
 
 def digest(path: Path) -> str:
@@ -166,6 +174,21 @@ class ReleaseToolTests(unittest.TestCase):
         result = self.validate()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("asset names", result.stderr)
+
+    def test_scrubs_embedded_build_prefixes_without_resizing(self) -> None:
+        payload = self.directory / "compiled-defaults.bin"
+        original = (b"prefix\0/Users/builder/wine/stage/share/wine\0"
+                    b"/private/var/folders/aa/build/lib\0"
+                    b"/opt/homebrew/opt/mesa/share:/usr/share\0suffix")
+        payload.write_bytes(original)
+        STAGER.scrub_embedded_prefixes(self.directory)
+        scrubbed = payload.read_bytes()
+        self.assertEqual(len(scrubbed), len(original))
+        self.assertNotIn(b"/Users/", scrubbed)
+        self.assertNotIn(b"/private/var/folders/", scrubbed)
+        self.assertNotIn(b"/opt/homebrew", scrubbed)
+        self.assertIn(b"/dev/null", scrubbed)
+        self.assertIn(b"/usr/share", scrubbed)
 
     def test_verifies_published_asset_digests(self) -> None:
         fake_bin = self.directory / "fake-bin"

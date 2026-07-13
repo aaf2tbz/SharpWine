@@ -58,9 +58,9 @@ Two clean builds from the same source and declared toolchain must produce identi
 
 ## Workflow activation
 
-`.github/workflows/release.yml` is intentionally inert on `main` until the final #25 release PR adds `release/v0.1.0-ready.json`. No earlier pull request may add that record; it remains forbidden until `tools/release/build-integrated-wine.sh` exists and all #21–#25 integration, packaging, reproducibility, evidence, and policy gates pass. The readiness record will bind its own schema, version, expected protected-main parent, release script hashes, and accepted evidence criteria; release CI must validate it before using it.
+`.github/workflows/release.yml` is manually dispatched only after the final #25 release PR adds `release/v0.1.0-ready.json` and the accepted local Wine build has been packaged twice. The readiness record binds its schema, version, expected protected-main parent, release script hashes, and accepted evidence criteria; publication CI validates it before using the uploaded draft.
 
-A premature manual dispatch fails. A normal `main` push without the record succeeds without building or publishing. Once the reviewed record is present, the workflow waits for the exact protected-main CI run and validates its service-bound Microsoft ARM64X producer handoff. It performs both clean Wine/GEM builds itself with read-only repository permission, hands the candidate to the publication job through a one-day same-run artifact with an Actions service digest, revalidates it, reconfirms the exact current `main` head, and only then uses a separate `contents: write` job to create the release.
+A premature manual dispatch fails. The workflow never compiles Wine: the multi-hour clean build is retained and packaged on the native ARM64 release host. The operator creates an immutable `v0.1.0` draft targeted at the exact protected-main commit and uploads the locally validated assets. The workflow redownloads every draft asset, validates its binding and digest, reruns the packaged native and hybrid smoke test, reconfirms both `main` and the tag, and only then makes the unchanged draft public with narrowly scoped `contents: write` permission.
 
 The readiness record must also bind the final README status block. Before the record is admitted, README's current architecture-foundation notice is replaced with the accepted v0.1.0 status, supported scope, predictable `v0.1.0` release URL, known-limitations asset URL, and evidence asset URL. Release validation rejects either the old notice or claims beyond the tested support matrix. This README change lands through the same protected final #25 merge; release automation never pushes an unreviewed documentation commit to `main`.
 
@@ -76,9 +76,9 @@ The GitHub `v0.1.0` release receives:
 - `evidence-index.json`;
 - `KNOWN-LIMITATIONS.md`.
 
-Release CI compares each uploaded asset's local hash and size to the publication manifest after upload. Any pre-existing `v0.1.0` tag or release fails publication and is never reused or replaced.
+The local publication command compares both independently staged archives before upload. Release CI then compares every redownloaded asset's hash and size to the publication manifest. The one draft created for `v0.1.0` is never replaced after verification begins.
 
-The release is created as a draft. CI redownloads every uploaded asset into a new directory, reconstructs the release-notes input from the draft body, validates all digests and archive members, unpacks the downloaded archive, and repeats fresh-prefix native ARM64 and authentic ARM64EC/x64 smoke tests. Only that successful redownloaded package can be made public.
+The release is created as a draft by the native ARM64 release operator. CI redownloads every uploaded asset into a new directory, reconstructs the release-notes input from the draft body, validates all digests and archive members, unpacks the downloaded archive, and repeats fresh-prefix native ARM64 and authentic ARM64EC/x64 smoke tests. Only that successful redownloaded package can be made public.
 
 ## Reproduce the candidate locally
 

@@ -1,8 +1,6 @@
-name: Integrated Wine release
+name: Publish uploaded Wine release
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,204 +12,80 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  candidate:
-    name: Build integrated Wine release candidate
+  publish:
+    name: Validate and publish uploaded v0.1.0 assets
     runs-on: macos-15
-    timeout-minutes: 360
-    outputs:
-      ready: ${{ steps.readiness.outputs.ready }}
-      artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
+    timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 2
           persist-credentials: false
-      - name: Detect the reviewed release-readiness record
-        id: readiness
+      - name: Bind publication to reviewed protected main and its draft
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if [[ -f release/v0.1.0-ready.json ]]; then
-            echo 'ready=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'ready=false' >> "$GITHUB_OUTPUT"
-          fi
-      - name: Reject a premature manual publication request
-        if: github.event_name == 'workflow_dispatch' && steps.readiness.outputs.ready != 'true'
-        run: |
-          echo 'release/v0.1.0-ready.json is absent; Issue #15 release gates are incomplete' >&2
-          exit 1
-      - name: Build, test, and package integrated Wine
-        if: steps.readiness.outputs.ready == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HOMEBREW_NO_AUTO_UPDATE: '1'
-        run: |
           set -euo pipefail
-          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
-          python3 tools/release/validate-readiness.py \
-            --root "$GITHUB_WORKSPACE" \
-            --protected-main-parent "$(git rev-parse "$GITHUB_SHA^")"
-          brew install bison boost freetype make mesa molten-vk sdl2-compat sdl3 \
-            vulkan-headers vulkan-loader zstd
-          llvm_archive="${RUNNER_TEMP}/llvm-mingw-20260616-ucrt-macos-universal.tar.xz"
-          curl --fail --location --retry 5 \
-            'https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/llvm-mingw-20260616-ucrt-macos-universal.tar.xz' \
-            --output "$llvm_archive"
-          echo '2cab02a2e964bd4aae981150a45985d07c657cfa8d244959eb9e2dcc5eedd7b1  '"$llvm_archive" | shasum -a 256 -c -
-          tar -xf "$llvm_archive" -C "$RUNNER_TEMP"
-          llvm_root="${RUNNER_TEMP}/llvm-mingw-20260616-ucrt-macos-universal"
-          deps="${RUNNER_TEMP}/runtime-deps"
-          mkdir -p "$deps/vulkan" "$deps/moltenvk"
-          cp "$(brew --prefix vulkan-loader)/lib/libvulkan.dylib" "$deps/vulkan/libvulkan.dylib"
-          cp "$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" "$deps/moltenvk/libMoltenVK.dylib"
-
-          ci_run=
-          for attempt in $(seq 1 180); do
-            runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
-              --commit "$GITHUB_SHA" --event push --limit 10 \
-              --json databaseId,status,conclusion)
-            ci_run=$(jq -r '[.[] | select(.status == "completed" and .conclusion == "success")][0].databaseId // empty' <<<"$runs")
-            [[ -n "$ci_run" ]] && break
-            failed=$(jq -r '[.[] | select(.status == "completed" and .conclusion != "success")] | length' <<<"$runs")
-            if [[ "$failed" != 0 ]]; then
-              echo "exact-commit CI completed unsuccessfully" >&2
-              exit 1
-            fi
-            sleep 20
-          done
-          [[ -n "$ci_run" ]] || { echo 'timed out waiting for exact-commit CI' >&2; exit 1; }
-          fixture="${RUNNER_TEMP}/arm64x-issue14-bundle"
-          gh run download "$ci_run" --repo "$GITHUB_REPOSITORY" \
-            --name "arm64x-issue14-${ci_run}" --dir "$fixture"
-          python3 tools/ci/validate-arm64x-issue14-artifact.py "$fixture" \
-            --git-commit "$GITHUB_SHA" --source-root "$GITHUB_WORKSPACE"
-          tools/release/build-release-candidate.sh \
-            --commit "$GITHUB_SHA" \
-            --output "${RUNNER_TEMP}/metalsharp-wine-v0.1.0-release" \
-            --arm64x-bundle "$fixture" \
-            --llvm-mingw "$llvm_root" \
-            --deps "$deps"
-      - name: Validate release assets before handoff
-        if: steps.readiness.outputs.ready == 'true'
-        run: |
-          python3 tools/release/validate-release-assets.py \
-            --directory "${RUNNER_TEMP}/metalsharp-wine-v0.1.0-release" \
-            --repository "$GITHUB_REPOSITORY" \
-            --commit "$GITHUB_SHA" \
-            --version 0.1.0
-      - name: Upload the same-run release candidate
-        if: steps.readiness.outputs.ready == 'true'
-        id: upload
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: integrated-wine-v0.1.0-${{ github.run_id }}
-          path: ${{ runner.temp }}/metalsharp-wine-v0.1.0-release/*
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
-
-  publish:
-    name: Publish immutable v0.1.0 assets
-    needs: candidate
-    if: needs.candidate.outputs.ready == 'true'
-    runs-on: macos-15
-    permissions:
-      actions: read
-      contents: write
-    steps:
-      - name: Reject publication code not loaded from the exact main head
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
           test "$GITHUB_REF" = refs/heads/main
           main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
           test "$main_sha" = "$GITHUB_SHA"
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: integrated-wine-v0.1.0-${{ github.run_id }}
-          path: ${{ runner.temp }}/metalsharp-wine-v0.1.0-release
-      - name: Verify the Actions service artifact digest
+          python3 tools/release/validate-readiness.py \
+            --root "$GITHUB_WORKSPACE" \
+            --protected-main-parent "$(git rev-parse "$GITHUB_SHA^")"
+          release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v0.1.0")"
+          jq -e '.draft == true and .prerelease == false' <<<"$release" >/dev/null
+          tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" --jq .object.sha)"
+          test "$tag_sha" = "$GITHUB_SHA"
+      - name: Redownload and validate every manually uploaded asset
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_DIGEST: ${{ needs.candidate.outputs.artifact-digest }}
-        run: |
-          actual="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
-            --jq '[.artifacts[] | select(.name == "integrated-wine-v0.1.0-${{ github.run_id }}") | .digest] | if length == 1 then .[0] else error("artifact count") end')"
-          test "$actual" = "$EXPECTED_DIGEST"
-      - name: Revalidate downloaded release assets
-        run: |
-          python3 tools/release/validate-release-assets.py \
-            --directory "${RUNNER_TEMP}/metalsharp-wine-v0.1.0-release" \
-            --repository "$GITHUB_REPOSITORY" \
-            --commit "$GITHUB_SHA" \
-            --version 0.1.0
-      - name: Reconfirm the exact protected-main head and unused release tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
-          test "$main_sha" = "$GITHUB_SHA"
-          if gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'v0.1.0 already exists; release assets are never replaced' >&2
-            exit 1
-          fi
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" >/dev/null 2>&1; then
-            echo 'v0.1.0 tag already exists; release tags are never reused' >&2
-            exit 1
-          fi
-      - name: Create, verify, and publish the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ASSET_DIR: ${{ runner.temp }}/metalsharp-wine-v0.1.0-release
+          ASSET_DIR: ${{ runner.temp }}/metalsharp-wine-v0.1.0-redownload
         shell: bash
         run: |
           set -euo pipefail
-          gh release create v0.1.0 \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title 'MetalSharp Wine v0.1.0' \
-            --notes-file "$ASSET_DIR/RELEASE-NOTES.md" \
-            --draft \
-            "$ASSET_DIR/metalsharp-wine-v0.1.0-macos-arm64.tar.zst" \
-            "$ASSET_DIR/metalsharp-wine-v0.1.0-macos-arm64.tar.zst.sha256" \
-            "$ASSET_DIR/release-manifest.json" \
-            "$ASSET_DIR/wine-integration-evidence.json" \
-            "$ASSET_DIR/sbom.spdx.json" \
-            "$ASSET_DIR/evidence-index.json" \
-            "$ASSET_DIR/KNOWN-LIMITATIONS.md"
-          release_target="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" --jq .object.sha)"
-          test "$release_target" = "$GITHUB_SHA"
+          mkdir -p "$ASSET_DIR"
+          gh release download v0.1.0 --repo "$GITHUB_REPOSITORY" --dir "$ASSET_DIR"
+          gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" \
+            --json body --jq .body > "$ASSET_DIR/RELEASE-NOTES.md"
+          python3 tools/release/validate-release-assets.py \
+            --directory "$ASSET_DIR" \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA" \
+            --version 0.1.0
           python3 tools/release/verify-published-release.py \
             --directory "$ASSET_DIR" \
             --repository "$GITHUB_REPOSITORY" \
             --tag v0.1.0 \
             --commit "$GITHUB_SHA"
-          redownload="${RUNNER_TEMP}/metalsharp-wine-v0.1.0-redownload"
-          mkdir -p "$redownload"
-          gh release download v0.1.0 --repo "$GITHUB_REPOSITORY" --dir "$redownload"
-          gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$redownload/RELEASE-NOTES.md"
-          for asset in \
-            metalsharp-wine-v0.1.0-macos-arm64.tar.zst \
-            metalsharp-wine-v0.1.0-macos-arm64.tar.zst.sha256 \
-            release-manifest.json wine-integration-evidence.json sbom.spdx.json \
-            evidence-index.json KNOWN-LIMITATIONS.md; do
-            cmp "$ASSET_DIR/$asset" "$redownload/$asset"
-          done
-          python3 tools/release/validate-release-assets.py \
-            --directory "$redownload" \
-            --repository "$GITHUB_REPOSITORY" \
-            --commit "$GITHUB_SHA" \
-            --version 0.1.0
+      - name: Run the downloaded native and hybrid package smoke
+        env:
+          ASSET_DIR: ${{ runner.temp }}/metalsharp-wine-v0.1.0-redownload
+        shell: bash
+        run: |
+          set -euo pipefail
           brew install zstd
           unpacked="${RUNNER_TEMP}/metalsharp-wine-v0.1.0-published-smoke"
+          evidence="${RUNNER_TEMP}/published-smoke-evidence"
           mkdir -p "$unpacked"
           "$(brew --prefix zstd)/bin/zstd" -d --stdout \
-            "$redownload/metalsharp-wine-v0.1.0-macos-arm64.tar.zst" | tar -xf - -C "$unpacked"
+            "$ASSET_DIR/metalsharp-wine-v0.1.0-macos-arm64.tar.zst" | tar -xf - -C "$unpacked"
           python3 tools/release/test-packaged-runtime.py \
             --runtime "$unpacked/metalsharp-wine-v0.1.0-macos-arm64" \
-            --evidence "${RUNNER_TEMP}/published-smoke-evidence" \
-            --stress-iterations 1 --timeout 300
+            --evidence "$evidence" \
+            --stress-iterations 1 \
+            --timeout 300
+      - name: Publish the unchanged verified draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+          tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.1.0" --jq .object.sha)"
+          test "$main_sha" = "$GITHUB_SHA"
+          test "$tag_sha" = "$GITHUB_SHA"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v0.1.0" --jq .draft | grep -Fx true
           gh release edit v0.1.0 --repo "$GITHUB_REPOSITORY" --draft=false --latest
