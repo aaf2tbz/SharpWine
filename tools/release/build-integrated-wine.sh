@@ -374,10 +374,11 @@ if audit_failure:
     raise SystemExit("translated or non-ARM64 process detected:\n" + "\n".join(audit_failure))
 combined = wineboot_log.read_text(encoding="utf-8", errors="replace") + \
            cmd_log.read_text(encoding="utf-8", errors="replace")
+resolved_prefix = prefix.resolve(strict=True)
 required = ("gem_signal_run enter pc=", "boundary syscall", "boundary unix-call",
             "callback enter", "callback return",
-            f"wine: native ARM64 GEM launch image={prefix}/lib/wine/aarch64-windows/wineboot.exe",
-            f"wine: native ARM64 GEM launch image={prefix}/lib/wine/aarch64-windows/cmd.exe")
+            f"wine: native ARM64 GEM launch image={resolved_prefix}/lib/wine/aarch64-windows/wineboot.exe",
+            f"wine: native ARM64 GEM launch image={resolved_prefix}/lib/wine/aarch64-windows/cmd.exe")
 missing = [marker for marker in required if marker not in combined]
 forbidden = ("Unhandled EXC_BAD_ACCESS", "GEM execution failed", "boot event wait timed out",
              "could not load", "status=c0000135", "start.exe",
