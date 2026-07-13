@@ -179,6 +179,7 @@ class ReleaseToolTests(unittest.TestCase):
         payload = self.directory / "compiled-defaults.bin"
         original = (b"prefix\0/Users/builder/wine/stage/share/wine\0"
                     b"/private/var/folders/aa/build/lib\0"
+                    b"/Users/builder/opaque/object\0"
                     b"/opt/homebrew/opt/mesa/share:/usr/share\0suffix")
         payload.write_bytes(original)
         STAGER.scrub_embedded_prefixes(self.directory)
@@ -188,6 +189,8 @@ class ReleaseToolTests(unittest.TestCase):
         self.assertNotIn(b"/private/var/folders/", scrubbed)
         self.assertNotIn(b"/opt/homebrew", scrubbed)
         self.assertIn(b"/dev/null", scrubbed)
+        self.assertIn(b"share/wine", scrubbed)
+        self.assertIn(b"lib", scrubbed)
         self.assertIn(b"/usr/share", scrubbed)
 
     def test_verifies_published_asset_digests(self) -> None:

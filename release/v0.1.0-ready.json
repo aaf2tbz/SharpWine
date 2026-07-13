@@ -10,7 +10,7 @@
     "relocatable-arm64-only-macho-closure": true,
     "two-clean-build-byte-reproducibility": true
   },
-  "expectedProtectedMainParent": "d807fff86cdb61da76e80d4b14efe2f09d7d2297",
+  "expectedProtectedMainParent": "0ccb4b7ac18f3b1c0b4ba9711966a5e7528a9f33",
   "readmeSha256": "fffdc3968579d4adf5e9ce51166dced39394a35f56824ad1215a5346bfc1e0d3",
   "schema": 1,
   "scripts": {
@@ -19,7 +19,7 @@
     "tools/release/build-integrated-wine.sh": "8f207c5f84a08e55ed83d717548f7c654992c3b17468ccef31b3db5fb1a1987a",
     "tools/release/build-release-candidate.sh": "57677b2fbe6feb8c24cbcfc26de0a86813fba4507b2eda536c7e1dd9e2abcddf",
     "tools/release/create-release-assets.py": "4816e7b40f7ff16f587bb7574bbb24c0ec9ddc1ed497c2f5513cf9e75a7658bb",
-    "tools/release/stage-runtime.py": "596f9843978f561ed16a75e04a78804bef6faad254785d33ac4fe04eb75ccd3c",
+    "tools/release/stage-runtime.py": "c79924a4b48354e96a11cb1a14d77a654ef8d065a0fef66be6d41dfefe2886bd",
     "tools/release/test-packaged-runtime.py": "a908c46a00db56275023a286e90c715f0063e4b13be5b6ee16f10aa29968bb69",
     "tools/release/validate-release-assets.py": "0aae90f604ce9e73f94e24d020f990a9ef792e25be5cdc14d8e456c1f0e36e6d",
     "tools/release/verify-published-release.py": "16415ec3c49ab81947b54b1b06b1058b330ac72dc9fa7b5f20a346e7f53c492f"
