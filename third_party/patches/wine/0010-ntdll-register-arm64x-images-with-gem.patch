@@ -567,12 +567,13 @@ index 2563fb1..3e7d150 100644
          status = virtual_handle_fault( data, &rec, (void *)(uintptr_t)request->context.sp );
          if (status && status != STATUS_SUCCESS)
          {
-@@ -457,11 +467,14 @@ void DECLSPEC_NORETURN gem_signal_run(void)
+@@ -457,11 +467,15 @@ void DECLSPEC_NORETURN gem_signal_run(void)
          if (cpu_area) cpu_area->InSimulation = TRUE;
          status = gem_wine_thread_run( data->gem_thread, &context, &output, &result );
          if (cpu_area) cpu_area->InSimulation = FALSE;
 -        TRACE_(gem)("stop status=%s reason=%u event=%u retired=%llu callbacks=%llu pc=%p\n",
-+        TRACE_(gem)("stop status=%s reason=%u event=%u retired=%llu callbacks=%llu pc=%p "
++        if (status != GEM_WINE_BUDGET_EXPIRED || result.last_event || result.boundary_callbacks)
++            TRACE_(gem)("stop status=%s reason=%u event=%u retired=%llu callbacks=%llu pc=%p "
 +                    "access=%u memory=%u engine=%#x fault=%p stop-retired=%llu\n",
                      gem_wine_status_name(status), result.stop_reason, result.last_event,
                      (unsigned long long)result.instructions_retired,
@@ -584,7 +585,7 @@ index 2563fb1..3e7d150 100644
          context = output;
          if (status == GEM_WINE_BUDGET_EXPIRED)
          {
-@@ -488,9 +501,17 @@ void DECLSPEC_NORETURN gem_signal_run(void)
+@@ -488,9 +502,17 @@ void DECLSPEC_NORETURN gem_signal_run(void)
              continue;
          }
          if (status == GEM_WINE_TERMINATED) abort_thread( result.exit_status );

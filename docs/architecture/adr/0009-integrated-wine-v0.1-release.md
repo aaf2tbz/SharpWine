@@ -1,6 +1,6 @@
 # ADR 0009: Publish v0.1 only as an integrated native Wine release
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-12
 - Issue: [#15](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/issues/15)
 - Supersedes: the standalone-only v0.1 boundary in `ROADMAP.md`
@@ -41,4 +41,4 @@ Pull-request CI validates scripts, manifests, patch application, clean Wine buil
 - Issue #15 is a multi-PR epic, but the first official archive has an honest product meaning.
 - The local experimental Wine trees remain excluded from source and provenance.
 - DXMT, Winemetal, accelerated ARM64EC execution, and i386 execution remain post-v0.1 unless separately accepted.
-- ADR 0009 remains Proposed until the integrated protected-main release run and published assets satisfy every gate above.
+- ADR 0009 is accepted by the completed #21–#25 implementation chain. The protected-main workflow remains the final enforcement point: it publishes only after rebuilding twice, comparing byte-identical archives, redownloading every draft asset, and rerunning the packaged native/hybrid smoke test. A failure leaves the release unpublished.

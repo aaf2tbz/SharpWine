@@ -10,6 +10,7 @@ from pathlib import Path
 
 PAYLOADS = {
     "arm64x_fixture.dll": "arm64ec/Release/arm64x_fixture.dll",
+    "arm64x_fixture_host.exe": "arm64ec/Release/arm64x_fixture_host.exe",
     "arm64ec-entry-map.txt": "arm64ec-entry-map.txt",
     "build-manifest.json": "arm64x-fixture-build.manifest.json",
     "inspection.json": "arm64x-fixture-inspection.json",

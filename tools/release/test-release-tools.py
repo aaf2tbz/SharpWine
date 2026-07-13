@@ -6,7 +6,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,7 +31,30 @@ def write_json(path: Path, value: object) -> None:
 
 
 def make_candidate(directory: Path) -> None:
-    (directory / ARCHIVE).write_bytes(b"deterministic-zstd-candidate")
+    package = directory / "package-tree"
+    (package / "bin").mkdir(parents=True)
+    (package / "bin/wine").write_bytes(b"test launcher\n")
+    (package / "bin/wine").chmod(0o755)
+    tar_path = directory / "candidate.tar"
+    top = "metalsharp-wine-v0.1.0-macos-arm64"
+    with tarfile.open(tar_path, "w", format=tarfile.PAX_FORMAT) as value:
+        for path, name in ((package, top), (package / "bin", f"{top}/bin"),
+                           (package / "bin/wine", f"{top}/bin/wine")):
+            info = value.gettarinfo(str(path), arcname=name)
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            info.mtime = 1
+            info.pax_headers = {}
+            if path.is_file():
+                with path.open("rb") as source:
+                    value.addfile(info, source)
+            else:
+                value.addfile(info)
+    zstd = shutil.which("zstd") or "/opt/homebrew/opt/zstd/bin/zstd"
+    subprocess.run([zstd, "-1", "--threads=1", "--force", str(tar_path),
+                    "-o", str(directory / ARCHIVE)], check=True, stdout=subprocess.DEVNULL)
+    shutil.rmtree(package)
+    tar_path.unlink()
     archive_hash = digest(directory / ARCHIVE)
     (directory / f"{ARCHIVE}.sha256").write_text(
         f"{archive_hash}  {ARCHIVE}\n", encoding="ascii")
@@ -82,11 +107,19 @@ def make_candidate(directory: Path) -> None:
         },
         "winePatches": [{"path": "third_party/patches/wine/0001.patch", "sha256": "d" * 64,
                          "license": "LGPL-2.1-or-later"}],
+        "bridge": {"abiVersion": 1, "installName": "@rpath/libmetalsharp-gem-wine.0.dylib",
+                   "currentVersion": "0.1.0", "compatibilityVersion": "0.0.0",
+                   "directWineBinding": "lib/wine/aarch64-unix/ntdll.so",
+                   "exports": ["gem_wine_bridge_abi_version"]},
         "toolchain": {"host": "aarch64-apple-darwin",
                       "peArchitectures": ["i386", "x86_64", "aarch64", "arm64ec"]},
         "package": {"name": ARCHIVE, "sha256": archive_hash,
                     "size": (directory / ARCHIVE).stat().st_size,
-                    "sourceDateEpoch": 1, "files": [{"path": "bin/wine", "sha256": "e" * 64}]},
+                    "sourceDateEpoch": 1, "files": [
+                        {"path": "bin", "type": "directory", "mode": 0o755},
+                        {"path": "bin/wine", "type": "file", "mode": 0o755,
+                         "size": 14, "sha256": hashlib.sha256(b"test launcher\n").hexdigest()},
+                    ]},
         "evidence": {
             key: {"path": name, "sha256": digest(directory / name)} for key, name in evidence.items()
         },

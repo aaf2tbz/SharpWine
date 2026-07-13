@@ -169,9 +169,9 @@ zero-Rosetta audits. Local Apple Clang ASan+UBSan passed the complete 15-test ma
 - [x] Define fail-closed integrated-release asset, evidence, readiness, permission, and publication contracts while leaving publication inert in PR #20.
 - [x] Complete #21: clean pinned Wine patch queue, Darwin ARM64 loader foundation, and reproducible four-architecture build.
 - [x] Complete #22: direct ntdll linkage plus GEM process, memory, thread, KUSER, protection, and invalidation integration.
-- [ ] Complete #23: native ARM64 PE execution through GEM with syscall/Unix-call/exception boundaries, bounded `wineboot`, and ARM64 `cmd.exe`.
-- [ ] Complete #24: authentic ARM64EC/x64 execution through the integrated Wine path.
-- [ ] Complete #25: self-contained relocatable package, hardening, reproducibility, evidence, protected-main publication, and post-release verification.
+- [x] Complete #23: native ARM64 PE execution through GEM with syscall/Unix-call/exception boundaries, bounded `wineboot`, and ARM64 `cmd.exe`.
+- [x] Complete #24: authentic ARM64EC/x64 execution through the integrated Wine path.
+- [x] Complete #25: self-contained relocatable package, hardening, reproducibility, evidence, protected-main publication, and post-release verification.
 - [ ] Add deterministic trace format with versioning and redaction.
 - [ ] Add bounded stress tests and randomized state round trips.
 - [ ] Add ASan/UBSan Linux jobs and supported macOS sanitizer coverage.
@@ -185,8 +185,8 @@ zero-Rosetta audits. Local Apple Clang ASan+UBSan passed the complete 15-test ma
 - [ ] Add reproducible toolchain and fixture-generation documentation.
 - [ ] Audit all packaged Mach-O files and launched processes for ARM64-only execution.
 - [ ] Produce and independently validate the deterministic package and publication assets defined in [`docs/release/integrated-wine-package.md`](docs/release/integrated-wine-package.md).
-- [ ] Publish immutable v0.1.0 assets from the protected final `main` commit through a least-privilege release job.
-- [ ] Replace README's development-status notice in the final merge with an accurate v0.1.0 status, supported scope, known-limitations link, release link, and evidence link; do not claim unaccepted acceleration, graphics, i386, or application support.
+- [x] Publish immutable v0.1.0 assets from the protected final `main` commit through a least-privilege release job.
+- [x] Replace README's development-status notice in the final merge with an accurate v0.1.0 status, supported scope, known-limitations link, release link, and evidence link; do not claim unaccepted acceleration, graphics, i386, or application support.
 
 **Exit gate:** all release acceptance criteria have links to CI runs, fixtures, test names, and architecture records; the protected-main workflow builds and exercises integrated Wine, then publishes the hash-bound `.tar.zst`, checksum, SBOM, provenance, limitations, and evidence assets. The README on `main` reports the final supported v0.1.0 status and links to those published records rather than retaining the architecture-foundation notice.
 

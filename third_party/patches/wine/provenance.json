@@ -73,9 +73,9 @@
     {
       "order": 10,
       "path": "third_party/patches/wine/0010-ntdll-register-arm64x-images-with-gem.patch",
-      "sha256": "1f691704db9c2b5a987ab503036eb8fa724afb6f4488a66f5393c3842e4e34a5",
+      "sha256": "5d4e49b4ed81f0d8553452d568385ed2dfdb73c42b619b5e26cc0e0e9985d704",
       "authoringCommit": "bc43cd00ae0f63c9f3cc6f6f087e6cc3ec8621fe",
-      "purpose": "Register validated mapped ARM64X images process-wide, route metadata redirections and helper SVC boundaries through GEM, and preserve Wine syscall, callback, suspension, and return contracts."
+      "purpose": "Register validated mapped ARM64X images process-wide, route metadata redirections and helper SVC boundaries through GEM, preserve Wine syscall, callback, suspension, and return contracts, and suppress routine budget-slice trace spam."
     }
   ],
   "researchEvidence": {

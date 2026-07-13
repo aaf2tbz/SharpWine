@@ -10,6 +10,7 @@
 #include <unistd.h>
 #endif
 #define GEM_MEMORY_MAX_PAGES UINT64_C(1048576)
+#define GEM_MEMORY_HASH_BUCKETS UINT64_C(65536)
 struct backing {
     uint8_t *data;
     size_t refs;
@@ -20,6 +21,7 @@ struct page {
     struct backing *backing;
     uint32_t protection;
     struct page *next;
+    struct page *hash_next;
 };
 
 /*
@@ -67,6 +69,7 @@ static void gem_lock_release(gem_lock *l) {
 
 struct gem_memory {
     struct page *pages;
+    struct page **page_buckets;
     gem_lock lock;
 };
 struct gem_memory_transaction {
@@ -95,12 +98,35 @@ static bool prot_ok(uint32_t p) {
         return false;
     }
 }
+static size_t page_bucket(uint64_t address) {
+    uint64_t key = address >> 12U;
+    key ^= key >> 33U;
+    key *= UINT64_C(0xff51afd7ed558ccd);
+    key ^= key >> 33U;
+    key *= UINT64_C(0xc4ceb9fe1a85ec53);
+    key ^= key >> 33U;
+    return (size_t)(key & (GEM_MEMORY_HASH_BUCKETS - 1U));
+}
 static struct page *at(struct gem_memory *m, uint64_t a) {
     struct page *p;
-    for (p = m->pages; p; p = p->next)
+    for (p = m->page_buckets[page_bucket(a)]; p; p = p->hash_next)
         if (p->address == a)
             return p;
     return NULL;
+}
+static void index_page(struct gem_memory *m, struct page *p) {
+    const size_t bucket = page_bucket(p->address);
+    p->hash_next = m->page_buckets[bucket];
+    m->page_buckets[bucket] = p;
+}
+static void unindex_page(struct gem_memory *m, struct page *p) {
+    struct page **link = &m->page_buckets[page_bucket(p->address)];
+    while (*link != NULL && *link != p)
+        link = &(*link)->hash_next;
+    if (*link == NULL)
+        abort();
+    *link = p->hash_next;
+    p->hash_next = NULL;
 }
 static void drop(struct backing *b) {
     if (b && --b->refs == 0) {
@@ -141,6 +167,7 @@ static void remove_pages(struct gem_memory *m, uint64_t a, uint64_t n) {
         struct page *p = *l;
         if (p->address >= a && p->address < a + n) {
             *l = p->next;
+            unindex_page(m, p);
             drop(p->backing);
             free(p);
         } else
@@ -183,6 +210,7 @@ static enum gem_memory_error reserve_locked(struct gem_memory *m, uint64_t *a, u
         struct page *p = head->next;
         head->next = m->pages;
         m->pages = head;
+        index_page(m, head);
         head = p;
     }
     *a = b;
@@ -321,6 +349,7 @@ static enum gem_memory_error alias_locked(struct gem_memory *m, uint64_t a, uint
         struct page *p = head->next;
         head->next = m->pages;
         m->pages = head;
+        index_page(m, head);
         head = p;
     }
     return GEM_MEMORY_OK;
@@ -462,7 +491,7 @@ static enum gem_memory_error access_memory_locked(struct gem_memory *m, uint64_t
                 free(ps);
                 return GEM_MEMORY_GUARD_PAGE;
             }
-    if (w) {
+    if (w && !query) {
         copies = calloc(pages, sizeof(*copies));
         if (!copies) {
             free(ps);
@@ -700,7 +729,13 @@ struct gem_memory *gem_memory_create(void) {
     bool ok;
     if (memory == NULL)
         return NULL;
+    memory->page_buckets = calloc((size_t)GEM_MEMORY_HASH_BUCKETS, sizeof(*memory->page_buckets));
+    if (memory->page_buckets == NULL) {
+        free(memory);
+        return NULL;
+    }
     if (!gem_lock_init(&memory->lock)) {
+        free(memory->page_buckets);
         free(memory);
         return NULL;
     }
@@ -715,6 +750,7 @@ struct gem_memory *gem_memory_create(void) {
     gem_lock_release(&memory->lock);
     if (!ok) {
         gem_lock_destroy(&memory->lock);
+        free(memory->page_buckets);
         free(memory);
         return NULL;
     }
@@ -726,6 +762,7 @@ void gem_memory_destroy(struct gem_memory *m) {
         remove_pages(m, 0, UINT64_MAX);
         gem_lock_release(&m->lock);
         gem_lock_destroy(&m->lock);
+        free(m->page_buckets);
         free(m);
     }
 }

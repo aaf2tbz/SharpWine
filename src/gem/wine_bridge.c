@@ -777,9 +777,14 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
             break;
         }
         if (reason == GEM_STOP_BUDGET_EXPIRED) {
-            run_result.outcome = GEM_WINE_RUN_BUDGET_EXPIRED;
-            status = GEM_WINE_BUDGET_EXPIRED;
-            break;
+            /*
+             * The engine budget is a scheduling slice, not the public Wine
+             * run budget.  Keep executing inside the bridge until the total
+             * budget is exhausted so routine JIT slices do not bounce through
+             * ntdll and rebuild the Wine/GEM thread context each time.
+             */
+            context.stop_reason = GEM_STOP_NONE;
+            continue;
         }
         run_result.last_event = (uint32_t)classify_event(process, reason, &context, &stop);
         if (run_result.last_event == GEM_WINE_EVENT_INVARIANT_VIOLATION) {

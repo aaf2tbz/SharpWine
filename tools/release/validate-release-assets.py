@@ -6,8 +6,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import shutil
 import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +81,7 @@ def binding(value: dict[str, Any], repository: str, commit: str, version: str, w
 def validate_manifest(path: Path, repository: str, commit: str, version: str,
                       archive_hash: str, archive_size: int) -> None:
     value = load_json(path)
-    exact_keys(value, {"schema", "release", "components", "winePatches", "toolchain",
+    exact_keys(value, {"schema", "release", "components", "winePatches", "bridge", "toolchain",
                        "package", "evidence"}, path.name)
     if value["schema"] != 1:
         fail("unsupported release manifest schema")
@@ -111,6 +117,13 @@ def validate_manifest(path: Path, repository: str, commit: str, version: str,
         if patch["license"] != "LGPL-2.1-or-later":
             fail(f"Wine patch {index} has the wrong license")
 
+    bridge = value["bridge"]
+    if not isinstance(bridge, dict) or bridge.get("abiVersion") != 1 or \
+            bridge.get("installName") != "@rpath/libmetalsharp-gem-wine.0.dylib" or \
+            bridge.get("directWineBinding") != "lib/wine/aarch64-unix/ntdll.so" or \
+            not isinstance(bridge.get("exports"), list) or not bridge["exports"]:
+        fail("manifest bridge ABI binding is incomplete")
+
     toolchain = value["toolchain"]
     if not isinstance(toolchain, dict) or toolchain.get("host") != "aarch64-apple-darwin":
         fail("manifest does not bind the native ARM64 host")
@@ -141,6 +154,77 @@ def validate_manifest(path: Path, repository: str, commit: str, version: str,
             fail(f"manifest evidence binding {name} has an unsafe path")
         if record["sha256"] != sha256(asset):
             fail(f"manifest evidence binding {name} hash mismatch")
+
+
+def validate_archive(directory: Path, manifest: dict[str, Any]) -> None:
+    archive = directory / ARCHIVE
+    zstd = shutil.which("zstd")
+    if not zstd and sys.platform == "darwin":
+        candidate = Path("/opt/homebrew/opt/zstd/bin/zstd")
+        if candidate.is_file():
+            zstd = str(candidate)
+    if not zstd:
+        fail("zstd is unavailable for archive validation")
+    with tempfile.TemporaryDirectory(prefix="mswr-release-validate-") as temporary:
+        tar_path = Path(temporary) / "runtime.tar"
+        with tar_path.open("wb") as output:
+            result = subprocess.run([zstd, "-d", "--stdout", str(archive)], stdout=output,
+                                    stderr=subprocess.PIPE, check=False)
+        if result.returncode:
+            fail(f"archive is not valid Zstandard: {result.stderr.decode(errors='replace').strip()}")
+        expected_top = "metalsharp-wine-v0.1.0-macos-arm64"
+        records = manifest["package"]["files"]
+        by_path = {record.get("path"): record for record in records if isinstance(record, dict)}
+        if len(by_path) != len(records) or None in by_path:
+            fail("manifest package inventory contains duplicate or invalid paths")
+        with tarfile.open(tar_path, "r:") as value:
+            members = value.getmembers()
+            names = [member.name for member in members]
+            if not members or names[0] != expected_top or not members[0].isdir():
+                fail("archive has the wrong top-level directory")
+            if names[1:] != sorted(names[1:]) or len(names) != len(set(names)):
+                fail("archive member order is not unique lexical order")
+            seen: set[str] = set()
+            epoch = manifest["package"]["sourceDateEpoch"]
+            for member in members:
+                if member.uid != 0 or member.gid != 0 or member.uname or member.gname or member.mtime != epoch:
+                    fail(f"archive metadata is not normalized: {member.name}")
+                if any(key.lower().startswith(("schily.xattr", "libarchive.xattr"))
+                       for key in member.pax_headers):
+                    fail(f"archive contains extended attributes: {member.name}")
+                if member.islnk() or member.isdev() or member.isfifo():
+                    fail(f"archive contains a forbidden object: {member.name}")
+                if member.name == expected_top:
+                    continue
+                prefix = expected_top + "/"
+                if not member.name.startswith(prefix):
+                    fail(f"archive member escapes the top-level directory: {member.name}")
+                relative = member.name[len(prefix):]
+                record = by_path.get(relative)
+                if record is None:
+                    fail(f"archive member is absent from manifest: {relative}")
+                if member.mode != record.get("mode"):
+                    fail(f"archive mode mismatch: {relative}")
+                if member.isdir():
+                    if record.get("type") != "directory":
+                        fail(f"archive directory type mismatch: {relative}")
+                elif member.issym():
+                    if record.get("type") != "symlink" or member.linkname != record.get("target") or \
+                            os.path.isabs(member.linkname) or ".." in Path(member.linkname).parts:
+                        fail(f"archive symlink mismatch or traversal: {relative}")
+                elif member.isfile():
+                    extracted = value.extractfile(member)
+                    if extracted is None:
+                        fail(f"archive file is unreadable: {relative}")
+                    data = extracted.read()
+                    if (record.get("type") != "file" or len(data) != record.get("size") or
+                            hashlib.sha256(data).hexdigest() != record.get("sha256")):
+                        fail(f"archive file hash/size mismatch: {relative}")
+                else:
+                    fail(f"archive member type is unsupported: {relative}")
+                seen.add(relative)
+            if seen != set(by_path):
+                fail("manifest package inventory has members absent from archive")
 
 
 def validate_integration(path: Path, repository: str, commit: str, version: str) -> None:
@@ -234,12 +318,18 @@ def main() -> None:
         mode = entry.lstat().st_mode
         if not stat.S_ISREG(mode) or entry.is_symlink():
             fail(f"asset {entry.name} is not a regular file")
+        if entry.name != ARCHIVE:
+            data = entry.read_bytes()
+            for forbidden in (b"/Users/", b"/home/runner/", b"/private/var/", b"/opt/homebrew/"):
+                if forbidden in data:
+                    fail(f"asset {entry.name} leaks a private or build path")
 
     archive = directory / ARCHIVE
     archive_hash = sha256(archive)
     checksum = (directory / f"{ARCHIVE}.sha256").read_text(encoding="ascii")
     if checksum != f"{archive_hash}  {ARCHIVE}\n":
         fail("archive checksum file is not exact")
+    manifest = load_json(directory / "release-manifest.json")
     validate_integration(directory / "wine-integration-evidence.json", args.repository,
                          args.commit, args.version)
     validate_sbom(directory / "sbom.spdx.json")
@@ -248,6 +338,7 @@ def main() -> None:
     validate_text(directory / "RELEASE-NOTES.md")
     validate_manifest(directory / "release-manifest.json", args.repository, args.commit,
                       args.version, archive_hash, archive.stat().st_size)
+    validate_archive(directory, manifest)
     print("integrated Wine release asset validation passed")
 
 

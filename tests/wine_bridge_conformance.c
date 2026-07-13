@@ -365,7 +365,7 @@ int main(void) {
     initialize_context(&input, code);
     assert(gem_wine_thread_run(thread, &input, &output, &result) == GEM_WINE_BUDGET_EXPIRED);
     assert(result.outcome == GEM_WINE_RUN_BUDGET_EXPIRED);
-    assert(result.instructions_retired == process_config.segment_instruction_budget);
+    assert(result.instructions_retired == process_config.total_instruction_budget);
     assert(result.stop.reason == GEM_STOP_BUDGET_EXPIRED);
 
     store_word(mapping, CODE_OFFSET, SVC_0X123);

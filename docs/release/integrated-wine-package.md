@@ -10,20 +10,22 @@ metalsharp-wine-v0.1.0-macos-arm64.tar.zst
     ├── share/
     ├── LICENSES/
     └── share/metalsharp/
-        ├── release-manifest.json
+        ├── runtime-manifest.json
         ├── wine-integration-evidence.json
         ├── sbom.spdx.json
         ├── evidence-index.json
         └── KNOWN-LIMITATIONS.md
 ```
 
-The exact install inventory will be frozen only after the clean Wine integration build exists. Until then, this document specifies constraints rather than an allowlist that guesses Wine output.
+The allowlist is implemented by `tools/release/stage-runtime.py`: installed runtime launchers, the complete four-architecture `lib/wine` and `share/wine` trees, the versioned GEM bridge, bound native and authentic-hybrid self-tests, vendored runtime data, and redistributable licenses. Static/import archives, headers, CMake/pkg-config metadata, developer tools, debug products, prefixes, and undeclared optional Wine modules are removed before the manifest is created.
+
+The non-system host closure includes the pinned Vulkan loader and MoltenVK, Mesa EGL/Gallium, FreeType/libpng, SDL2/SDL3, required X11 client libraries and data used by EGL, LLVM/Z3/SPIR-V dependencies used by Mesa, and Zstandard support. `audit-runtime.py` recursively follows every Mach-O load command; an undeclared absolute dependency or unresolved `@rpath` fails the release.
 
 The runtime `lib/` inventory must include `libmetalsharp-gem-wine.0.1.0.dylib` and relative `.0`/unversioned symlinks. Wine's selected native ARM64 Unix-side module must carry a direct Mach-O load command for `@rpath/libmetalsharp-gem-wine.0.dylib`; a delayed load or unused adjacent dylib fails validation. Bridge staging uses the `metalsharp-gem-wine` CMake install component so fetched Dynarmic headers, static archives, and CMake metadata cannot leak into the runtime package.
 
 ## Required bindings
 
-`release-manifest.json` is canonical JSON and binds:
+The external `release-manifest.json` is canonical JSON and binds:
 
 - schema and release version;
 - Git repository and exact protected-main commit;
@@ -34,7 +36,9 @@ The runtime `lib/` inventory must include `libmetalsharp-gem-wine.0.1.0.dylib` a
 - host, PE architecture set, compilers, SDK, deployment target, and configure options;
 - every packaged regular file and symlink, including type, mode, size, and SHA-256 where applicable;
 - hashes of the SBOM, integration evidence, evidence index, and known-limitations document;
-- release archive SHA-256 and deterministic packaging parameters in the external publication manifest.
+- release archive SHA-256 and deterministic packaging parameters.
+
+The archive's `runtime-manifest.json` binds release and component identities without attempting a cryptographic self-reference. The external publication manifest is authoritative for the archive digest and the complete in-archive inventory, including the internal manifest itself.
 
 No absolute path, home-directory name, runner-temporary path, token, Wine prefix, crash report, generated debug file, source checkout, or unlisted file may appear in the package. The unpacked runtime must operate from an arbitrary clean location while the repository and build trees are unavailable. Every redistributable non-system runtime dependency must be contained in the archive with a relocatable binding; Homebrew paths, adjacent developer checkouts, and temporary install trees are forbidden runtime dependencies.
 
@@ -48,7 +52,7 @@ Windows PE payloads may contain i386, x86_64, AArch64, and ARM64EC machine code 
 
 ## Determinism
 
-The package creator uses a fixed lexical path order, numeric owner/group zero, empty owner/group names, normalized modes, a fixed timestamp derived from `SOURCE_DATE_EPOCH`, and deterministic Zstandard options. Symlinks must be relative, normalized, non-traversing, and resolve within the package root. Hard links, devices, sockets, FIFOs, extended attributes, resource forks, and Finder metadata are rejected.
+The package creator uses a fixed lexical path order, numeric owner/group zero, empty owner/group names, normalized modes, a fixed timestamp derived from `SOURCE_DATE_EPOCH`, and Zstandard level 19 with one thread. Symlinks must be relative, normalized, non-traversing, and resolve within the package root. Hard links, devices, sockets, FIFOs, PAX extended attributes, resource forks, and Finder metadata are rejected.
 
 Two clean builds from the same source and declared toolchain must produce identical install manifests. Archive byte identity is required when the pinned macOS toolchain produces reproducible Wine outputs; otherwise every differing field must be identified and eliminated before v0.1 publication. A nondeterminism waiver is not a release path.
 
@@ -56,7 +60,7 @@ Two clean builds from the same source and declared toolchain must produce identi
 
 `.github/workflows/release.yml` is intentionally inert on `main` until the final #25 release PR adds `release/v0.1.0-ready.json`. No earlier pull request may add that record; it remains forbidden until `tools/release/build-integrated-wine.sh` exists and all #21–#25 integration, packaging, reproducibility, evidence, and policy gates pass. The readiness record will bind its own schema, version, expected protected-main parent, release script hashes, and accepted evidence criteria; release CI must validate it before using it.
 
-A premature manual dispatch fails. A normal `main` push without the record succeeds without building or publishing. Once the reviewed record is present, the same workflow run builds the candidate with read-only repository permission, hands it to the publication job through a one-day same-run artifact with an Actions service digest, revalidates it, reconfirms the exact current `main` head, and only then uses a separate `contents: write` job to create the release.
+A premature manual dispatch fails. A normal `main` push without the record succeeds without building or publishing. Once the reviewed record is present, the workflow waits for the exact protected-main CI run and validates its service-bound Microsoft ARM64X producer handoff. It performs both clean Wine/GEM builds itself with read-only repository permission, hands the candidate to the publication job through a one-day same-run artifact with an Actions service digest, revalidates it, reconfirms the exact current `main` head, and only then uses a separate `contents: write` job to create the release.
 
 The readiness record must also bind the final README status block. Before the record is admitted, README's current architecture-foundation notice is replaced with the accepted v0.1.0 status, supported scope, predictable `v0.1.0` release URL, known-limitations asset URL, and evidence asset URL. Release validation rejects either the old notice or claims beyond the tested support matrix. This README change lands through the same protected final #25 merge; release automation never pushes an unreviewed documentation commit to `main`.
 
@@ -73,3 +77,21 @@ The GitHub `v0.1.0` release receives:
 - `KNOWN-LIMITATIONS.md`.
 
 Release CI compares each uploaded asset's local hash and size to the publication manifest after upload. Any pre-existing `v0.1.0` tag or release fails publication and is never reused or replaced.
+
+The release is created as a draft. CI redownloads every uploaded asset into a new directory, reconstructs the release-notes input from the draft body, validates all digests and archive members, unpacks the downloaded archive, and repeats fresh-prefix native ARM64 and authentic ARM64EC/x64 smoke tests. Only that successful redownloaded package can be made public.
+
+## Reproduce the candidate locally
+
+From a clean checkout at the commit being tested, with the locked LLVM-MinGW tree, runtime dependency directory, and exact-commit ARM64X CI bundle available, the complete two-build gate is one command:
+
+```sh
+SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD) \
+tools/release/build-release-candidate.sh \
+  --commit "$(git rev-parse HEAD)" \
+  --output /tmp/metalsharp-wine-v0.1.0-release \
+  --arm64x-bundle /path/to/arm64x-issue14-bundle \
+  --llvm-mingw /path/to/llvm-mingw-20260616-ucrt-macos-universal \
+  --deps /path/to/runtime-deps
+```
+
+The command performs ASan/UBSan tests, two absent-directory Wine 11.12 builds, staging and recursive relocation audits, fresh-prefix native/hybrid tests, Apple `leaks`, stress and teardown, archive byte comparison, source/build-denied extraction smoke, and final asset validation.

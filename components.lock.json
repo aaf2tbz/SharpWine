@@ -11,12 +11,23 @@
     "homebrew": {
       "formulas": {
         "bison": "3.8.2",
+        "boost": "1.90.0_1",
         "freetype": "2.14.3",
+        "libpng": "1.6.58",
+        "libx11": "1.8.13",
+        "libxau": "1.0.12",
+        "libxcb": "1.17.0",
+        "libxdmcp": "1.1.5",
+        "llvm": "22.1.8",
         "mesa": "26.1.4",
+        "molten-vk": "1.4.1",
         "sdl2-compat": "2.32.70",
         "sdl3": "3.4.12",
+        "spirv-tools": "1.4.350.1",
         "vulkan-headers": "1.4.350.1",
-        "vulkan-loader": "1.4.350.1"
+        "vulkan-loader": "1.4.350.1",
+        "z3": "4.16.0",
+        "zstd": "1.5.7_1"
       },
       "system": ["flex", "OpenGL.framework"]
     },
@@ -72,7 +83,7 @@
         },
         {
           "path": "third_party/patches/wine/0010-ntdll-register-arm64x-images-with-gem.patch",
-          "sha256": "1f691704db9c2b5a987ab503036eb8fa724afb6f4488a66f5393c3842e4e34a5"
+          "sha256": "5d4e49b4ed81f0d8553452d568385ed2dfdb73c42b619b5e26cc0e0e9985d704"
         }
       ]
     },

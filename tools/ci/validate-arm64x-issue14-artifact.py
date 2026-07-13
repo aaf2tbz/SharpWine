@@ -22,6 +22,7 @@ SOURCES = {
 }
 PAYLOAD_NAMES = {
     "arm64x_fixture.dll",
+    "arm64x_fixture_host.exe",
     "arm64ec-entry-map.txt",
     "build-manifest.json",
     "inspection.json",
@@ -129,6 +130,8 @@ def validate_set(root, label, expected_git, source_root):
     dll_hash = digest(dll)
     producer_lock, sources, host_hash = validate_build(
         directory / "build-manifest.json", expected_git, dll_hash, source_root)
+    if digest(directory / "arm64x_fixture_host.exe") != host_hash:
+        fail("packaged validation host does not match its build manifest")
     validate_entry_map(directory / "arm64ec-entry-map.txt")
     native = read_json(directory / "native-evidence.json")
     exact(native, ["schemaVersion", "nativeMachine", "roundtripInput", "roundtripResult",

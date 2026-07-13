@@ -17,6 +17,7 @@ jobs:
   candidate:
     name: Build integrated Wine release candidate
     runs-on: macos-15
+    timeout-minutes: 360
     outputs:
       ready: ${{ steps.readiness.outputs.ready }}
       artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
@@ -40,11 +41,55 @@ jobs:
           exit 1
       - name: Build, test, and package integrated Wine
         if: steps.readiness.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOMEBREW_NO_AUTO_UPDATE: '1'
         run: |
+          set -euo pipefail
           export SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
-          tools/release/build-integrated-wine.sh \
+          python3 tools/release/validate-readiness.py \
+            --root "$GITHUB_WORKSPACE" \
+            --protected-main-parent "$(git rev-parse "$GITHUB_SHA^")"
+          brew install bison boost freetype mesa molten-vk sdl2-compat sdl3 \
+            vulkan-headers vulkan-loader zstd
+          llvm_archive="${RUNNER_TEMP}/llvm-mingw-20260616-ucrt-macos-universal.tar.xz"
+          curl --fail --location --retry 5 \
+            'https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/llvm-mingw-20260616-ucrt-macos-universal.tar.xz' \
+            --output "$llvm_archive"
+          echo '2cab02a2e964bd4aae981150a45985d07c657cfa8d244959eb9e2dcc5eedd7b1  '"$llvm_archive" | shasum -a 256 -c -
+          tar -xf "$llvm_archive" -C "$RUNNER_TEMP"
+          llvm_root="${RUNNER_TEMP}/llvm-mingw-20260616-ucrt-macos-universal"
+          deps="${RUNNER_TEMP}/runtime-deps"
+          mkdir -p "$deps/vulkan" "$deps/moltenvk"
+          cp "$(brew --prefix vulkan-loader)/lib/libvulkan.dylib" "$deps/vulkan/libvulkan.dylib"
+          cp "$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" "$deps/moltenvk/libMoltenVK.dylib"
+
+          ci_run=
+          for attempt in $(seq 1 180); do
+            runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+              --commit "$GITHUB_SHA" --event push --limit 10 \
+              --json databaseId,status,conclusion)
+            ci_run=$(jq -r '[.[] | select(.status == "completed" and .conclusion == "success")][0].databaseId // empty' <<<"$runs")
+            [[ -n "$ci_run" ]] && break
+            failed=$(jq -r '[.[] | select(.status == "completed" and .conclusion != "success")] | length' <<<"$runs")
+            if [[ "$failed" != 0 ]]; then
+              echo "exact-commit CI completed unsuccessfully" >&2
+              exit 1
+            fi
+            sleep 20
+          done
+          [[ -n "$ci_run" ]] || { echo 'timed out waiting for exact-commit CI' >&2; exit 1; }
+          fixture="${RUNNER_TEMP}/arm64x-issue14-bundle"
+          gh run download "$ci_run" --repo "$GITHUB_REPOSITORY" \
+            --name "arm64x-issue14-${ci_run}" --dir "$fixture"
+          python3 tools/ci/validate-arm64x-issue14-artifact.py "$fixture" \
+            --git-commit "$GITHUB_SHA" --source-root "$GITHUB_WORKSPACE"
+          tools/release/build-release-candidate.sh \
             --commit "$GITHUB_SHA" \
-            --output "${RUNNER_TEMP}/metalsharp-wine-v0.1.0-release"
+            --output "${RUNNER_TEMP}/metalsharp-wine-v0.1.0-release" \
+            --arm64x-bundle "$fixture" \
+            --llvm-mingw "$llvm_root" \
+            --deps "$deps"
       - name: Validate release assets before handoff
         if: steps.readiness.outputs.ready == 'true'
         run: |
@@ -143,4 +188,29 @@ jobs:
             --repository "$GITHUB_REPOSITORY" \
             --tag v0.1.0 \
             --commit "$GITHUB_SHA"
+          redownload="${RUNNER_TEMP}/metalsharp-wine-v0.1.0-redownload"
+          mkdir -p "$redownload"
+          gh release download v0.1.0 --repo "$GITHUB_REPOSITORY" --dir "$redownload"
+          gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$redownload/RELEASE-NOTES.md"
+          for asset in \
+            metalsharp-wine-v0.1.0-macos-arm64.tar.zst \
+            metalsharp-wine-v0.1.0-macos-arm64.tar.zst.sha256 \
+            release-manifest.json wine-integration-evidence.json sbom.spdx.json \
+            evidence-index.json KNOWN-LIMITATIONS.md; do
+            cmp "$ASSET_DIR/$asset" "$redownload/$asset"
+          done
+          python3 tools/release/validate-release-assets.py \
+            --directory "$redownload" \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA" \
+            --version 0.1.0
+          brew install zstd
+          unpacked="${RUNNER_TEMP}/metalsharp-wine-v0.1.0-published-smoke"
+          mkdir -p "$unpacked"
+          "$(brew --prefix zstd)/bin/zstd" -d --stdout \
+            "$redownload/metalsharp-wine-v0.1.0-macos-arm64.tar.zst" | tar -xf - -C "$unpacked"
+          python3 tools/release/test-packaged-runtime.py \
+            --runtime "$unpacked/metalsharp-wine-v0.1.0-macos-arm64" \
+            --evidence "${RUNNER_TEMP}/published-smoke-evidence" \
+            --stress-iterations 1 --timeout 300
           gh release edit v0.1.0 --repo "$GITHUB_REPOSITORY" --draft=false --latest

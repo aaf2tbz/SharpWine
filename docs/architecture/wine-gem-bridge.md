@@ -62,6 +62,12 @@ multiple guest pages share a 16 KiB Darwin host page. Bridge mutations validate
 the complete range before publication; a Wine-side synchronization failure
 terminates the process instead of continuing with divergent state.
 
+The sparse address space retains its ordered ownership list for teardown and
+range mutation, plus a 65,536-bucket address index protected by the same memory
+lock. Every translated fetch, load, and store therefore resolves a guest page
+without scanning all Wine mappings; access checks, PAGE_GUARD consumption,
+WRITECOPY, and precise fault replay remain on the checked-memory path.
+
 Destroying a process with registered threads returns `GEM_WINE_CONFLICT`.
 Destroying or re-entering a running thread returns `GEM_WINE_CONFLICT`. As with
 other opaque C handles, callers must prevent a new operation from starting once
@@ -137,8 +143,8 @@ frame; `NtCallbackReturn` restores the saved guest continuation before GEM
 resumes. Callback state is per thread and supports nested Windows callbacks.
 
 The clean integration command validates this contract with one fresh Wine
-prefix. `wineboot --init` is bounded to 1800 seconds and native ARM64
-`cmd.exe /c exit` to 600 seconds. Both runs capture sampled process trees and
+prefix. `wineboot --init` and native ARM64 `cmd.exe /c exit` are each bounded
+to 60 seconds. Both runs capture sampled process trees and
 resolved executable paths; any observed Mach-O executable that is not
 ARM64-only fails the build. Logs and process evidence are copied beside the
 stage and SHA-256 bound into the build manifest.
@@ -151,9 +157,12 @@ the bounded run returns. The result records the last engine stop, total retired
 instructions, callback count, last boundary event, outcome, and termination
 status.
 
-A segment-budget expiration is a bounded stop and does not invoke Wine. The
-total budget additionally bounds execution across resumed boundary segments.
-Exhausting the callback count also fails closed as a budget expiration.
+A segment-budget expiration is an internal engine scheduling slice and does not
+invoke Wine. The bridge clears that transient stop and continues until an event,
+completion, or the public total budget is reached, avoiding a Wine/bridge
+context round-trip for every JIT slice. The total budget still bounds the
+complete run across resumed boundary segments. Exhausting the callback count
+also fails closed as a budget expiration.
 
 ## Required evidence before Wine integration
 

@@ -6,7 +6,7 @@ MetalSharp Wine Runtime is a zero-Rosetta Wine research and implementation proje
 
 The central rule is simple: **Windows CPU state belongs to the guest runtime, not the Darwin ABI.** Canonical Windows `x18 == NtCurrentTeb()` is held in an explicit per-thread guest context. It is never made dependent on macOS preserving host x18 across page faults, signals, code-page transitions, or framework calls.
 
-> **Project status:** architecture and conformance foundation. GEM context code and strict CI are present; Wine startup through the virtual CPU is not yet implemented.
+> **Project status:** v0.1.0 integrated native Apple-silicon Wine release. The packaged Wine 11.12 environment starts a fresh prefix through GEM, executes native ARM64 builtins, and completes the accepted authentic ARM64EC/x64 fixture with an ARM64-only host process closure. [Download v0.1.0](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/tag/v0.1.0), read the [known limitations](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/download/v0.1.0/KNOWN-LIMITATIONS.md), or inspect the [evidence index](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/download/v0.1.0/evidence-index.json).
 
 ## Why this project exists
 
@@ -36,8 +36,8 @@ macOS ARM64 process
     ├── canonical per-thread guest CPU context
     ├── Windows virtual-memory and protection model
     ├── ARM64/ARM64EC correctness engine
-    ├── Blink x86_64 engine
-    │    └─ decoder-owned retired-handler trace + last decode attempt (diagnostic only)
+    ├── pinned Blink x86_64 interpreter (JIT disabled for v0.1 correctness)
+    │    └─ decoder-owned retired-handler trace + last decode attempt
     ├── future i386 translated address space
     └── evidence-driven ARM64EC transition broker
 ```
@@ -114,7 +114,7 @@ This repository intentionally excludes Wine prefixes, SDKs, toolchain archives, 
 - `clang-format` 18 for deterministic formatting
 - Git and CTest
 
-### Planned runtime toolchain
+### v0.1 runtime toolchain
 
 - LLVM/Clang and LLD with ARM64EC/ARM64X support
 - LLVM MinGW for Wine’s embedded x86_64 ARM64EC slices
@@ -122,9 +122,24 @@ This repository intentionally excludes Wine prefixes, SDKs, toolchain archives, 
 - pinned Blink for x86_64 Windows execution, subject to the x86-TSO contract in
   [`ADR 0006`](docs/architecture/adr/0006-x86-tso-correctness-contract.md)
 - Frida Gum Stalker or QBDI only as validated fast-engine candidates
-- native ARM64 DXMT, Winemetal, and supporting media/audio libraries after runtime gates pass
+- packaged MoltenVK/Vulkan, Mesa EGL, OpenGL, FreeType, SDL2, and SDL3 runtime closure
+- native ARM64 DXMT and Winemetal remain future work
 
 Third-party engines are not accepted until instruction coverage, register fidelity, fault behavior, macOS ARM64 support, deterministic fallback, and distribution licensing have been reviewed. The selected Milestone 3 engine decision is recorded in [`docs/architecture/adr/0004-aarch64-correctness-engine.md`](docs/architecture/adr/0004-aarch64-correctness-engine.md).
+
+## Use the v0.1.0 package
+
+Download the archive and checksum from the immutable [v0.1.0 release](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/tag/v0.1.0), verify the checksum, and unpack it anywhere writable:
+
+```sh
+shasum -a 256 -c metalsharp-wine-v0.1.0-macos-arm64.tar.zst.sha256
+zstd -d --stdout metalsharp-wine-v0.1.0-macos-arm64.tar.zst | tar -xf -
+export WINEPREFIX="$PWD/metalsharp-prefix"
+./metalsharp-wine-v0.1.0-macos-arm64/bin/wineboot --init
+./metalsharp-wine-v0.1.0-macos-arm64/bin/wine cmd.exe /c exit
+```
+
+The archive contains i386, x86_64, AArch64, and ARM64EC guest files because Wine is built with all four PE architectures. v0.1.0 claims native AArch64 builtins and the bound authentic ARM64EC/x64 fixture only; it does not claim general i386 or x86_64 application compatibility. The host itself never uses Rosetta.
 
 ## Build and test
 
