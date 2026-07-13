@@ -1,4 +1,4 @@
-From 13de9ec0c89e809e73f56bffc2604c2e686e9fb3 Mon Sep 17 00:00:00 2001
+From 71897e20586f69ae8951bfcdb608d4193b34a393 Mon Sep 17 00:00:00 2001
 From: Avery Felts <averyfelts@users.noreply.github.com>
 Date: Sun, 12 Jul 2026 20:38:35 -0600
 Subject: [PATCH 8/8] darwin: add native ARM64 GEM launch contract
@@ -7,10 +7,9 @@ Subject: [PATCH 8/8] darwin: add native ARM64 GEM launch contract
  dlls/ntdll/unix/gem.c          | 29 +++++++++++-
  dlls/ntdll/unix/loader.c       | 26 ++++++++++-
  dlls/ntdll/unix/signal_arm64.c |  7 +++
- include/wine/gem_loader.h      | 29 ++++++++++++
+ include/wine/unixlib.h         | 23 ++++++++++
  tools/wine/wine.c              | 82 +++++++++++++++++++++++++++++++++-
- 5 files changed, 169 insertions(+), 4 deletions(-)
- create mode 100644 include/wine/gem_loader.h
+ 5 files changed, 163 insertions(+), 4 deletions(-)
 
 diff --git a/dlls/ntdll/unix/gem.c b/dlls/ntdll/unix/gem.c
 index abf82d9..92966e4 100644
@@ -54,14 +53,14 @@ index abf82d9..92966e4 100644
      gem_process = NULL;
      TRACE("process destroyed\n");
 diff --git a/dlls/ntdll/unix/loader.c b/dlls/ntdll/unix/loader.c
-index 02225e4..f644603 100644
+index 02225e4..d11cd18 100644
 --- a/dlls/ntdll/unix/loader.c
 +++ b/dlls/ntdll/unix/loader.c
 @@ -86,6 +86,7 @@
  #include "winioctl.h"
  #include "winternl.h"
  #include "unix_private.h"
-+#include "wine/gem_loader.h"
++#include "wine/unixlib.h"
  #include "wine/list.h"
  #include "wine/debug.h"
  
@@ -128,24 +127,19 @@ index 8594b94..dee3a2b 100644
  
  
  /***********************************************************************
-diff --git a/include/wine/gem_loader.h b/include/wine/gem_loader.h
-new file mode 100644
-index 0000000..b0106f7
---- /dev/null
-+++ b/include/wine/gem_loader.h
-@@ -0,0 +1,29 @@
-+/*
-+ * Private Darwin ARM64 launch contract for the installed Wine wrapper.
-+ *
-+ * This is an in-process ABI between tools/wine and Unix ntdll. It is not a
-+ * Windows ABI and is intentionally versioned independently.
-+ */
-+
-+#ifndef __WINE_GEM_LOADER_H
-+#define __WINE_GEM_LOADER_H
+diff --git a/include/wine/unixlib.h b/include/wine/unixlib.h
+index a4b9d36..8aa868e 100644
+--- a/include/wine/unixlib.h
++++ b/include/wine/unixlib.h
+@@ -27,6 +27,29 @@
+ 
+ #include <winternl.h>
+ 
++#if defined(__APPLE__) && defined(__aarch64__)
 +
 +#include <stdint.h>
 +
++/* Private in-process ABI between the Darwin ARM64 wrapper and Unix ntdll. */
 +#define WINE_GEM_LAUNCH_VERSION 1
 +
 +#define WINE_GEM_LAUNCH_IN_PROCESS    0x00000001u
@@ -162,16 +156,20 @@ index 0000000..b0106f7
 +    const char *resolved_image;
 +};
 +
-+#endif /* __WINE_GEM_LOADER_H */
++#endif
++
+ typedef UINT64 unixlib_handle_t;
+ typedef UINT64 unixlib_module_t;
+ 
 diff --git a/tools/wine/wine.c b/tools/wine/wine.c
-index 01bac26..3074f1f 100644
+index 01bac26..d3911f3 100644
 --- a/tools/wine/wine.c
 +++ b/tools/wine/wine.c
 @@ -21,6 +21,7 @@
  #include "config.h"
  
  #include "../tools.h"
-+#include "wine/gem_loader.h"
++#include "wine/unixlib.h"
  
  #include <dlfcn.h>
  

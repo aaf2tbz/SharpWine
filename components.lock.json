@@ -64,7 +64,7 @@
         },
         {
           "path": "third_party/patches/wine/0008-darwin-arm64-add-native-gem-launch-contract.patch",
-          "sha256": "203dd8a1b2a896240260f3374ecaea45ef5b735cb62b90d54467090c624a12de"
+          "sha256": "30d32f26812833a48bd868ffce7a0840e1565102be1d5c95ed1621f675268e31"
         }
       ]
     },

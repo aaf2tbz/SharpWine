@@ -59,8 +59,8 @@
     {
       "order": 8,
       "path": "third_party/patches/wine/0008-darwin-arm64-add-native-gem-launch-contract.patch",
-      "sha256": "203dd8a1b2a896240260f3374ecaea45ef5b735cb62b90d54467090c624a12de",
-      "authoringCommit": "13de9ec0c89e809e73f56bffc2604c2e686e9fb3",
+      "sha256": "30d32f26812833a48bd868ffce7a0840e1565102be1d5c95ed1621f675268e31",
+      "authoringCommit": "71897e20586f69ae8951bfcdb608d4193b34a393",
       "purpose": "Launch staged Darwin ARM64 builtins through a versioned in-process GEM contract, restore x18 at Wine syscall return, and make immediate process-exit teardown safe."
     }
   ],
