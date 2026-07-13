@@ -328,6 +328,39 @@ def scrub_embedded_prefixes(package: Path) -> None:
                 run("codesign", "--force", "--sign", "-", "--timestamp=none", str(path))
 
 
+def normalize_macos15_compatibility(package: Path) -> None:
+    """Lower host deployment metadata and avoid the macOS 27-only pipe2 import.
+
+    The macOS 27 SDK exposes pipe2 even when Wine's configure probe is building
+    a runtime intended for older hosts. ARM64 passes the unused second argument
+    harmlessly to pipe(2); the packaged acceptance test verifies that Wine's
+    CLOEXEC users still tear down without leaked processes or prefixes.
+    """
+    for path in sorted(p for p in package.rglob("*") if is_macho(p)):
+        changed = False
+        build = run("vtool", "-show-build", str(path))
+        minos = re.search(r"^\s*minos\s+(\S+)\s*$", build, re.MULTILINE)
+        sdk = re.search(r"^\s*sdk\s+(\S+)\s*$", build, re.MULTILINE)
+        version = tuple(map(int, minos.group(1).split("."))) if minos else ()
+        if minos and sdk and (version + (0, 0))[:2] > (15, 0):
+            temporary = path.with_name(path.name + ".deployment-target-tmp")
+            run("vtool", "-set-build-version", "macos", "15.0", sdk.group(1),
+                "-replace", "-output", str(temporary), str(path))
+            os.chmod(temporary, stat.S_IMODE(path.stat().st_mode))
+            os.replace(temporary, path)
+            changed = True
+        data = path.read_bytes()
+        if b"_pipe2\0" in data:
+            data = data.replace(b"_pipe2\0", b"_pipe\0\0")
+            path.write_bytes(data)
+            changed = True
+        if changed:
+            run("codesign", "--force", "--sign", "-", "--timestamp=none", str(path))
+        if any(line.split()[-1:] == ["_pipe2"]
+               for line in run("nm", "-u", str(path), check=False).splitlines()):
+            fail(f"macOS 27-only pipe2 import survived normalization: {path}")
+
+
 def install_selftest(package: Path, foundation: Path, fixture: Path, host: Path,
                      fixture_commit: str) -> None:
     acceptance = package / "lib/wine/aarch64-windows/metalsharp-gem-acceptance.exe"
@@ -413,6 +446,7 @@ def main() -> None:
     install_selftest(args.output, args.foundation.resolve(), fixture, host.resolve(), fixture_commit)
     vendor_closure(args.output)
     scrub_embedded_prefixes(args.output)
+    normalize_macos15_compatibility(args.output)
     install_metadata(args.output, args.foundation.resolve(), args.brew_prefix.resolve(),
                      args.source_date_epoch)
     print(f"staged relocatable runtime: {args.output}")

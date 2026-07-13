@@ -72,6 +72,12 @@ def dependencies(path: Path) -> list[str]:
             for line in command("otool", "-L", str(path)).splitlines()[1:] if line.strip()]
 
 
+def deployment_target(path: Path) -> tuple[int, ...] | None:
+    output = command("vtool", "-show-build", str(path))
+    match = re.search(r"^\s*minos\s+(\S+)\s*$", output, re.MULTILINE)
+    return tuple(map(int, match.group(1).split("."))) if match else None
+
+
 def resolve_dependency(root: Path, origin: Path, name: str) -> Path | None:
     if name.startswith(SYSTEM_PREFIXES):
         return None
@@ -154,6 +160,13 @@ def audit(root: Path, forbidden: list[str]) -> list[dict[str, object]]:
             fail(f"unsupported filesystem object: {relative}")
         records.append(record)
     for macho in machos:
+        target = deployment_target(macho)
+        if target is None or (target + (0, 0))[:2] > (15, 0):
+            fail(f"unsupported macOS deployment target in {macho.relative_to(root)}: {target}")
+        undefined = {line.split()[-1] for line in command("nm", "-u", str(macho)).splitlines()
+                     if line.split()}
+        if "_pipe2" in undefined:
+            fail(f"macOS 27-only pipe2 import in {macho.relative_to(root)}")
         for value in rpaths(macho):
             if value.startswith("/"):
                 fail(f"absolute rpath in {macho.relative_to(root)}: {value}")
