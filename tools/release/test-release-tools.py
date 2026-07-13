@@ -239,9 +239,9 @@ class ReleaseToolTests(unittest.TestCase):
         uploaded = [name for name in sorted(p.name for p in self.directory.iterdir() if p.is_file())
                     if name != "RELEASE-NOTES.md" and name != "release.json"]
         write_json(response, {
-            "draft": True,
-            "tag_name": "v0.1.0",
-            "target_commitish": COMMIT,
+            "isDraft": True,
+            "tagName": "v0.1.0",
+            "targetCommitish": COMMIT,
             "assets": [{"name": name, "size": (self.directory / name).stat().st_size,
                         "digest": f"sha256:{digest(self.directory / name)}"} for name in uploaded],
         })

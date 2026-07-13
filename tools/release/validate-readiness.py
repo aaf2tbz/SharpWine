@@ -20,6 +20,7 @@ SCRIPTS = {
     "tools/release/validate-release-assets.py",
     "tools/release/verify-published-release.py",
     ".github/workflows/release.yml",
+    ".github/workflows/release-verify.yml",
 }
 CRITERIA = {
     "issues-21-through-24-integrated",

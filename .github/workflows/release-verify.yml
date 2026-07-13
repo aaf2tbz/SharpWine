@@ -1,0 +1,59 @@
+name: Verify published Wine release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to verify
+        required: true
+        default: v0.1.0
+
+permissions:
+  contents: read
+
+jobs:
+  verify-published-release:
+    name: Download and smoke-test published Wine runtime
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Download and validate the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="${RUNNER_TEMP}/metalsharp-wine-assets"
+          mkdir -p "$assets"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$assets"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
+            > "$assets/RELEASE-NOTES.md"
+          commit="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq .targetCommitish)"
+          shasum -a 256 -c "$assets/metalsharp-wine-v0.1.0-macos-arm64.tar.zst.sha256"
+          python3 tools/release/validate-release-assets.py --directory "$assets" \
+            --repository "$GITHUB_REPOSITORY" --commit "$commit" --version 0.1.0
+          python3 tools/release/verify-published-release.py --directory "$assets" \
+            --repository "$GITHUB_REPOSITORY" --tag "$TAG" --commit "$commit" \
+            --no-expect-draft
+      - name: Unpack and run bounded fresh-prefix smoke tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install zstd
+          assets="${RUNNER_TEMP}/metalsharp-wine-assets"
+          root="${RUNNER_TEMP}/metalsharp-wine-runtime"
+          mkdir -p "$root"
+          "$(brew --prefix zstd)/bin/zstd" -d --stdout \
+            "$assets/metalsharp-wine-v0.1.0-macos-arm64.tar.zst" | tar -xf - -C "$root"
+          runtime="$root/metalsharp-wine-v0.1.0-macos-arm64"
+          python3 tools/release/audit-runtime.py --root "$runtime"
+          python3 tools/release/test-packaged-runtime.py --runtime "$runtime" \
+            --evidence "${RUNNER_TEMP}/published-release-evidence" \
+            --stress-iterations 1 --timeout 300

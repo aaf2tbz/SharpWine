@@ -34,9 +34,11 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def gh_json(endpoint: str) -> dict[str, Any]:
+def gh_release(repository: str, tag: str) -> dict[str, Any]:
     try:
-        output = subprocess.check_output(["gh", "api", endpoint], text=True)
+        output = subprocess.check_output(
+            ["gh", "release", "view", tag, "--repo", repository,
+             "--json", "isDraft,tagName,targetCommitish,assets"], text=True)
         value = json.loads(output)
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
         fail(f"GitHub API request failed: {error}")
@@ -51,13 +53,14 @@ def main() -> None:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--commit", required=True)
+    parser.add_argument("--expect-draft", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
     if not os.environ.get("GH_TOKEN"):
         fail("GH_TOKEN is missing")
-    release = gh_json(f"repos/{args.repository}/releases/tags/{args.tag}")
-    if release.get("draft") is not True or release.get("tag_name") != args.tag:
-        fail("release is not the expected draft")
-    if release.get("target_commitish") != args.commit:
+    release = gh_release(args.repository, args.tag)
+    if release.get("isDraft") is not args.expect_draft or release.get("tagName") != args.tag:
+        fail("release draft state or tag differs from expectation")
+    if release.get("targetCommitish") != args.commit:
         fail("release target is not the tested commit")
     assets = release.get("assets")
     if not isinstance(assets, list):
