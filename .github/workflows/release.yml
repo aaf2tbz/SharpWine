@@ -51,7 +51,7 @@ jobs:
           python3 tools/release/validate-readiness.py \
             --root "$GITHUB_WORKSPACE" \
             --protected-main-parent "$(git rev-parse "$GITHUB_SHA^")"
-          brew install bison boost freetype mesa molten-vk sdl2-compat sdl3 \
+          brew install bison boost freetype make mesa molten-vk sdl2-compat sdl3 \
             vulkan-headers vulkan-loader zstd
           llvm_archive="${RUNNER_TEMP}/llvm-mingw-20260616-ucrt-macos-universal.tar.xz"
           curl --fail --location --retry 5 \
