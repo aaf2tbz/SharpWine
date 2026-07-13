@@ -240,6 +240,146 @@ if result.returncode or missing:
     raise SystemExit(f"staged GEM lifecycle probe failed: rc={result.returncode}, missing={missing}")
 PY
 
+acceptance_prefix="$work/acceptance-prefix"
+acceptance_dir="$work/acceptance-evidence"
+mkdir -p "$acceptance_dir"
+python3 - "$prefix" "$acceptance_prefix" "$acceptance_dir" <<'PY'
+import ctypes
+import datetime
+import os
+import pathlib
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+prefix, wineprefix, evidence = map(pathlib.Path, sys.argv[1:])
+wineprefix.mkdir()
+env = os.environ.copy()
+env.update({"WINEDEBUG": "+gem,-all", "WINEPREFIX": str(wineprefix)})
+libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
+libproc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+libproc.proc_pidpath.restype = ctypes.c_int
+descriptions = {}
+audit_failure = []
+
+def executable(pid):
+    buffer = ctypes.create_string_buffer(4096)
+    length = libproc.proc_pidpath(pid, buffer, len(buffer))
+    return pathlib.Path(os.fsdecode(buffer.value)) if length > 0 else None
+
+def process_rows():
+    output = subprocess.check_output(
+        ["ps", "-axo", "pid=,ppid=,state=,etime=,command="], text=True,
+        errors="replace")
+    rows = []
+    for line in output.splitlines():
+        fields = line.strip().split(None, 4)
+        if len(fields) == 5 and fields[0].isdigit() and fields[1].isdigit():
+            rows.append((int(fields[0]), int(fields[1]), fields[2], fields[3], fields[4]))
+    return rows
+
+def sample(stop, root_pid, destination):
+    with destination.open("w", encoding="utf-8") as stream:
+        while not stop.is_set():
+            rows = process_rows()
+            selected = {root_pid}
+            candidates = {
+                pid for pid, _ppid, _state, _elapsed, command in rows
+                if pid == root_pid or command.startswith(str(prefix)) or command.startswith("C:\\")
+            }
+            paths = {pid: executable(pid) for pid in candidates}
+            for pid, path in tuple(paths.items()):
+                if path:
+                    try:
+                        path.relative_to(prefix)
+                    except ValueError:
+                        pass
+                    else:
+                        selected.add(pid)
+            changed = True
+            while changed:
+                changed = False
+                for pid, ppid, _state, _elapsed, _command in rows:
+                    if ppid in selected:
+                        if pid not in selected:
+                            selected.add(pid)
+                            changed = True
+            for pid in selected:
+                paths.setdefault(pid, executable(pid))
+            stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            for pid, ppid, state, elapsed, command in rows:
+                if pid not in selected:
+                    continue
+                path = paths[pid]
+                description = "unresolved"
+                if path and path.exists():
+                    key = str(path)
+                    if key not in descriptions:
+                        descriptions[key] = subprocess.check_output(
+                            ["file", "-b", key], text=True, errors="replace").strip()
+                    description = descriptions[key]
+                    if "Mach-O" in description and (
+                            "arm64" not in description or "x86_64" in description):
+                        audit_failure.append(f"pid={pid} path={path} file={description}")
+                stream.write(
+                    f"{stamp} pid={pid} ppid={ppid} state={state} elapsed={elapsed} "
+                    f"path={path or 'unresolved'} file={description} command={command}\n")
+            stream.flush()
+            stop.wait(0.25)
+
+def run(name, argv, timeout):
+    log = evidence / f"{name}.log"
+    tree = evidence / f"{name}-process-tree.log"
+    with log.open("w", encoding="utf-8") as output:
+        process = subprocess.Popen(argv, env=env, stdout=output, stderr=subprocess.STDOUT,
+                                   start_new_session=True, text=True)
+        stop = threading.Event()
+        sampler = threading.Thread(target=sample, args=(stop, process.pid, tree), daemon=True)
+        sampler.start()
+        try:
+            returncode = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+            raise SystemExit(f"{name} timed out after {timeout} seconds")
+        finally:
+            stop.set()
+            sampler.join(timeout=5)
+    if returncode:
+        raise SystemExit(f"{name} failed with rc={returncode}; see {log}")
+    return log
+
+try:
+    wineboot_log = run("wineboot", [str(prefix / "bin/wineboot"), "--init"], 1800)
+    cmd_log = run("cmd", [str(prefix / "bin/wine"), "cmd.exe", "/c", "exit"], 600)
+finally:
+    subprocess.run([str(prefix / "bin/wineserver"), "-k"], env=env,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+                   timeout=30)
+
+if audit_failure:
+    raise SystemExit("translated or non-ARM64 process detected:\n" + "\n".join(audit_failure))
+combined = wineboot_log.read_text(encoding="utf-8", errors="replace") + \
+           cmd_log.read_text(encoding="utf-8", errors="replace")
+required = ("gem_signal_run enter pc=", "boundary syscall", "boundary unix-call",
+            "callback enter", "callback return")
+missing = [marker for marker in required if marker not in combined]
+forbidden = ("Unhandled EXC_BAD_ACCESS", "GEM execution failed", "boot event wait timed out",
+             "could not load", "status=c0000135")
+found = [marker for marker in forbidden if marker in combined]
+if missing or found:
+    raise SystemExit(f"runtime evidence rejected: missing={missing}, forbidden={found}")
+(evidence / "process-executables.txt").write_text(
+    "".join(f"{path}\t{description}\n" for path, description in sorted(descriptions.items())),
+    encoding="utf-8")
+PY
+
 find "$stage" \( -type f -o -type l \) | sort > "$work/install-files.txt"
 find "$stage" -type f -print0 | xargs -0 file > "$work/macho-files.txt"
 while IFS= read -r installed; do
@@ -252,6 +392,7 @@ while IFS= read -r installed; do
 done < <(find "$stage" -type f | sort)
 "$root/tools/ci/audit-zero-rosetta.sh" "$stage" | tee "$work/zero-rosetta-audit.txt"
 cp -R "$prefix" "$output/wine"
+cp -R "$acceptance_dir" "$output/evidence"
 clang --version > "$work/clang-version.txt"
 make --version > "$work/make-version.txt"
 xcrun --show-sdk-version > "$work/sdk-version.txt"
@@ -273,14 +414,25 @@ for path in sorted(p for p in stage.rglob("*") if p.is_file() or p.is_symlink())
     if path.is_symlink(): record["target"] = os.readlink(path)
     else: record.update({"size": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
     files.append(record)
+evidence = pathlib.Path(work) / "acceptance-evidence"
+evidence_files = {}
+for path in sorted(p for p in evidence.rglob("*") if p.is_file()):
+    evidence_files[path.relative_to(evidence).as_posix()] = {
+        "size": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
 value = {"schema": 1, "kind": "wine-foundation", "repositoryCommit": repository_commit,
          "source": {"repository": wine["repository"], "revision": wine["revision"],
                      "patchedHead": subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()},
          "wine": {"version": wine["version"], "configure": ["--host=aarch64-apple-darwin", "--enable-archs=i386,x86_64,aarch64,arm64ec", "--with-mingw=xllvm-mingw", "--with-x", "--with-opengl", "--with-vulkan", "--with-sdl", "--with-metalsharp-gem=<external-prefix>"]},
          "bridge": {"abi": 1, "dependency": "@rpath/libmetalsharp-gem-wine.0.dylib", "rpath": "@loader_path/../..", "linkage": "direct"},
-         "dependencies": {"llvmMingw": str(llvm), "homebrewPrefix": str(brew), "externalRuntime": str(deps), "bison": "required", "vulkan": "headers+loader+MoltenVK", "opengl": "macOS framework", "egl": "pkg-config/mesa", "sdl2": "required", "sdl3": "recorded; Wine 11.12 consumes SDL2"},
+         "dependencies": {"llvmMingw": str(llvm), "homebrewPrefix": str(brew), "externalRuntime": str(deps), "bison": "required", "freetype": "required+staged", "vulkan": "headers+loader+MoltenVK staged", "opengl": "macOS framework", "egl": "pkg-config/mesa+staged", "sdl2": "required+staged", "sdl3": "staged; Wine 11.12 consumes SDL2"},
          "toolchain": {"host": "aarch64-apple-darwin", "uname": text("uname.txt"), "clang": text("clang-version.txt"), "make": text("make-version.txt"), "sdk": text("sdk-version.txt")},
          "acceptance": {"lifecycleProbe": "passed before guest entry",
+                        "winebootInit": "passed with a fresh prefix within 1800 seconds",
+                        "nativeArm64CmdExit": "passed within 600 seconds",
+                        "processAudit": "all observed Mach-O executables are ARM64-only",
+                        "evidence": evidence_files,
                         "lifecycleLog": text("gem-lifecycle-probe.log"),
                         "hostMachOClosure": text("zero-rosetta-audit.txt")},
          "build": {"jobs": int(jobs), "installRoot": "<external-stage>/wine", "files": files, "fileAudit": text("macho-files.txt")}}

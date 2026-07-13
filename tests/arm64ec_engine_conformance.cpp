@@ -791,6 +791,50 @@ void TestNativeArm64Profile() {
     EXPECT(context.x[0] == context.x[13]);
     EXPECT(context.x[18] == kTebA);
 
+    /* Native ARM64 retains the checked-memory contract: a failed guest read
+     * leaves the faulting instruction unconsumed and preserves its target. */
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
+           GEM_MEMORY_OK);
+    WriteWords(memory, kCode, {NOP, LDR_W0_X1, RET});
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READ, nullptr) ==
+           GEM_MEMORY_OK);
+    gem_arm64ec_runtime_invalidate_code(runtime, kCode, GEM_GUEST_PAGE_SIZE);
+    InitContext(context);
+    context.x[0] = 0xfeedfaceULL;
+    context.x[1] = kData;
+    EXPECT(gem_arm64ec_runtime_run(runtime, &context, 8U) == GEM_STOP_MEMORY_FAULT);
+    EXPECT(context.pc == kCode + 4U);
+    EXPECT(context.x[0] == 0xfeedfaceULL);
+    gem_arm64ec_stop_info info{};
+    EXPECT(gem_arm64ec_runtime_last_stop_info(runtime, &info));
+    EXPECT(info.instructions_retired == 1U);
+    EXPECT(info.access == GEM_ARM64EC_ACCESS_READ);
+    EXPECT(info.fault_address == kData);
+
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
+           GEM_MEMORY_OK);
+    WriteWords(memory, kCode, {NOP, SVC_0x123, RET});
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READ, nullptr) ==
+           GEM_MEMORY_OK);
+    gem_arm64ec_runtime_invalidate_code(runtime, kCode, GEM_GUEST_PAGE_SIZE);
+    InitContext(context);
+    EXPECT(gem_arm64ec_runtime_run(runtime, &context, 8U) == GEM_STOP_SYSCALL);
+    EXPECT(context.pc == kCode + 4U);
+    EXPECT(gem_arm64ec_runtime_last_stop_info(runtime, &info));
+    EXPECT(info.instructions_retired == 1U);
+
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
+           GEM_MEMORY_OK);
+    WriteWords(memory, kCode, {NOP, NOP, NOP, RET});
+    EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READ, nullptr) ==
+           GEM_MEMORY_OK);
+    gem_arm64ec_runtime_invalidate_code(runtime, kCode, GEM_GUEST_PAGE_SIZE);
+    InitContext(context);
+    EXPECT(gem_arm64ec_runtime_run(runtime, &context, 2U) == GEM_STOP_BUDGET_EXPIRED);
+    EXPECT(context.pc == kCode + 8U);
+    EXPECT(gem_arm64ec_runtime_last_stop_info(runtime, &info));
+    EXPECT(info.instructions_retired == 2U);
+
     EXPECT(gem_memory_protect(memory, kCode, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE, nullptr) ==
            GEM_MEMORY_OK);
     WriteWords(memory, kCode, {MOV_X18_X0, RET});

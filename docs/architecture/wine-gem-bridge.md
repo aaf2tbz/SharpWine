@@ -113,6 +113,13 @@ It publishes a checked callback PC and stack into the current Wine syscall
 frame; `NtCallbackReturn` restores the saved guest continuation before GEM
 resumes. Callback state is per thread and supports nested Windows callbacks.
 
+The clean integration command validates this contract with one fresh Wine
+prefix. `wineboot --init` is bounded to 1800 seconds and native ARM64
+`cmd.exe /c exit` to 600 seconds. Both runs capture sampled process trees and
+resolved executable paths; any observed Mach-O executable that is not
+ARM64-only fails the build. Logs and process evidence are copied beside the
+stage and SHA-256 bound into the build manifest.
+
 ## Run publication
 
 `gem_wine_thread_run()` copies its input before execution. It accumulates the

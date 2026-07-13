@@ -69,9 +69,12 @@ allocation, protection, instruction-cache flush, guard, decommit, recommit,
 release, thread teardown, and process teardown paths. Normal Darwin ARM64
 startup then enters PE `LdrInitializeThunk` only through GEM.
 
-Local build trees and prefixes are not release inputs. Release acceptance still
-requires bounded `wineboot`, command, hybrid, sanitizer, reproducibility, and
-zero-Rosetta evidence from the later reviewed integration stages.
+Local build trees and prefixes are not release inputs. The clean build command
+now owns the issue #23 runtime gate: it initializes one fresh prefix with
+bounded `wineboot --init`, runs native ARM64 `cmd.exe /c exit` through that
+prefix, samples both process trees, rejects non-ARM64 Mach-O executables, and
+hashes the resulting logs and process evidence. Hybrid, sanitizer,
+reproducibility, and final release packaging remain later integration stages.
 
 ## Clean build entrypoint
 
@@ -94,8 +97,8 @@ Mesa/EGL, Vulkan headers/loader, SDL2, SDL3, and the macOS OpenGL framework.
 The external dependency directory must provide the locked ARM64 Vulkan loader
 and MoltenVK binaries. The command also builds and stages the exact GEM bridge,
 verifies ntdll's direct versioned dependency and relocatable lookup path, audits
-every staged host Mach-O as ARM64-only, and runs the bounded pre-guest lifecycle
-probe against a fresh prefix. The resulting `wine-build-manifest.json` records
-those results, the configure flags, toolchain, dependency roots, installed
-files, and Mach-O audit output. It is integration evidence, not a release
-package or a claim that guest execution is complete.
+every staged host Mach-O as ARM64-only, runs the bounded pre-guest lifecycle
+probe, and executes the full fresh-prefix `wineboot`/`cmd.exe` gate. The
+resulting `wine-build-manifest.json` records those results, evidence hashes,
+configure flags, toolchain, dependency roots, installed files, and Mach-O audit
+output. It is integration evidence, not a final release package.

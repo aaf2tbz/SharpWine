@@ -110,10 +110,53 @@ elseif (FALSE) # Upstream macOS fastmem path intentionally disabled by MetalShar
 string(FIND "${cmake_contents}" "${macos_old}" macos_offset)
 string(FIND "${cmake_contents}" "${macos_new}" macos_new_offset)
 if(macos_offset EQUAL -1 AND NOT macos_new_offset EQUAL -1)
-    return()
-endif()
-if(macos_offset EQUAL -1 OR NOT macos_new_offset EQUAL -1)
+    set(macos_already_patched TRUE)
+elseif(macos_offset EQUAL -1 OR NOT macos_new_offset EQUAL -1)
     message(FATAL_ERROR "pinned Dynarmic macOS exception-handler selection changed or is partially patched")
 endif()
-string(REPLACE "${macos_old}" "${macos_new}" cmake_contents "${cmake_contents}")
-file(WRITE "${cmake_source}" "${cmake_contents}")
+if(NOT macos_already_patched)
+    string(REPLACE "${macos_old}" "${macos_new}" cmake_contents "${cmake_contents}")
+    file(WRITE "${cmake_source}" "${cmake_contents}")
+endif()
+
+# Do not enter a translated block that exceeds the exact GEM budget.  The
+# engine resumes with Jit::Step() for the remaining bounded tail.
+set(emit_source "${DYNARMIC_SOURCE_DIR}/src/dynarmic/backend/arm64/emit_arm64.cpp")
+file(READ "${emit_source}" emit_contents)
+set(budget_old [=[    ebi.entry_point = code.xptr<CodePtr>();
+
+    if (ctx.block.GetCondition() == IR::Cond::AL) {]=])
+set(budget_new [=[    ebi.entry_point = code.xptr<CodePtr>();
+
+    if (conf.enable_cycle_counting) {
+        oaknut::Label enough_ticks, halt_loop;
+        const size_t max_cycles = block.CycleCount();
+        code.CMP(Xticks, max_cycles);
+        code.B(HS, enough_ticks);
+        code.l(halt_loop);
+        code.LDAXR(Wscratch0, Xhalt);
+        code.ORR(Wscratch0, Wscratch0, static_cast<u32>(HaltReason::UserDefined2));
+        code.STLXR(Wscratch1, Wscratch0, Xhalt);
+        code.CBNZ(Wscratch1, halt_loop);
+        EmitRelocation(code, ctx, LinkTarget::ReturnToDispatcher);
+        code.l(enough_ticks);
+    }
+
+    if (ctx.block.GetCondition() == IR::Cond::AL) {]=])
+string(FIND "${emit_contents}" "#include \"dynarmic/interface/halt_reason.h\"" halt_include_offset)
+if(halt_include_offset EQUAL -1)
+    string(REPLACE [=[#include "dynarmic/ir/basic_block.h"
+]=] [=[#include "dynarmic/interface/halt_reason.h"
+#include "dynarmic/ir/basic_block.h"
+]=] emit_contents "${emit_contents}")
+endif()
+string(FIND "${emit_contents}" "${budget_old}" budget_offset)
+string(FIND "${emit_contents}" "${budget_new}" budget_new_offset)
+if(budget_offset EQUAL -1 AND NOT budget_new_offset EQUAL -1)
+    return()
+endif()
+if(budget_offset EQUAL -1 OR NOT budget_new_offset EQUAL -1)
+    message(FATAL_ERROR "pinned Dynarmic ARM64 budget-guard text changed or is partially patched")
+endif()
+string(REPLACE "${budget_old}" "${budget_new}" emit_contents "${emit_contents}")
+file(WRITE "${emit_source}" "${emit_contents}")
