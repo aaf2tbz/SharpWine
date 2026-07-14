@@ -38,8 +38,8 @@
       "system": ["flex", "OpenGL.framework"]
     },
     "external_runtime": {
-      "vulkan_loader_sha256": "57937dfe4ad621bf043e6e0cda060f6392e42b1dbe7e7e405ee0c321ed691402",
-      "moltenvk_sha256": "0f897d9be9c3307826415d6077e9e46a623d6ef1c017aaa7b28fe08aa057b1ed"
+      "vulkan_loader_sha256": "68aa1589ebcdf1a93b70354835277b5d04822d34deb0ef401b0ef0ba839e800e",
+      "moltenvk_sha256": "5c47d1c0aea022dd9dcd11fa1fa746b93e10282693a3f0ee59768a7df795f582"
     }
   },
   "components": {
