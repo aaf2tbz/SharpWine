@@ -203,7 +203,9 @@ def main() -> None:
                     "boot event wait timed out", "could not load", "status=c0000135",
                     "assertion failed", "Interpret should never be emitted") if marker in text]
         if returncode or missing or forbidden:
-            fail(f"{name}: rc={returncode}, missing={missing}, forbidden={forbidden}; see {log}")
+            tail = text[-16 * 1024:]
+            fail(f"{name}: rc={returncode}, missing={missing}, forbidden={forbidden}; see {log}\n"
+                 f"--- {name} log tail ---\n{tail}\n--- end log tail ---")
         results.append({"name": name, "passed": True, "bounded": True,
                         "durationSeconds": round(time.monotonic() - started, 3),
                         "timeoutSeconds": timeout,

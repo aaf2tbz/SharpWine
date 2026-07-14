@@ -89,15 +89,21 @@ jobs:
                     "previous_tag": "", "policy": policy_path, "patch_set": patch_set_path}
           if previous is not None:
               old_tag = previous.get("tag")
-              if tag != old_tag:
-                  if current.get("previousTag") != old_tag:
-                      raise SystemExit("a version bump must name the immediately previous release tag")
-                  if subprocess.run(["gh", "release", "view", tag, "--repo",
-                                     os.environ["GITHUB_REPOSITORY"]],
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL).returncode == 0:
-                      raise SystemExit(f"refusing to overwrite immutable published release {tag}")
-                  values.update({"publish": "true", "previous_tag": old_tag})
+              release_exists = subprocess.run(
+                  ["gh", "release", "view", tag, "--repo", os.environ["GITHUB_REPOSITORY"]],
+                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+              if tag != old_tag and current.get("previousTag") != old_tag:
+                  raise SystemExit("a version bump must name the immediately previous release tag")
+              if tag != old_tag and release_exists:
+                  raise SystemExit(f"refusing to overwrite immutable published release {tag}")
+              if not release_exists:
+                  previous_tag = current.get("previousTag")
+                  if not previous_tag or subprocess.run(
+                      ["gh", "release", "view", previous_tag, "--repo",
+                       os.environ["GITHUB_REPOSITORY"]], stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL).returncode != 0:
+                      raise SystemExit("unpublished release retry lacks a published foundation tag")
+                  values.update({"publish": "true", "previous_tag": previous_tag})
           with open(output, "a", encoding="utf-8") as stream:
               for key, value in values.items():
                   print(f"{key}={value}", file=stream)
@@ -181,6 +187,16 @@ jobs:
             --output "$OVERLAY/share/metalsharp/x86_64-acceptance-evidence.json"
           python3 tools/release/create-focused-overlay.py --policy "$POLICY" \
             --overlay "$OVERLAY" --output "$OVERLAY_MANIFEST"
+      - name: Upload packaged probe evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packaged-probe-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/probe-evidence
+            ${{ runner.temp }}/probe-overlay-application.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Apply and test the final four-file patch exactly
         env:
           POLICY: ${{ needs.resolve-version-bump.outputs.policy }}
