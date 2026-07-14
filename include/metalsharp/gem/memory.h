@@ -71,6 +71,11 @@ enum gem_memory_error gem_memory_commit(struct gem_memory *memory, uint64_t addr
  * range remains caller-owned and must stay live until decommit or release. */
 enum gem_memory_error gem_memory_commit_identity(struct gem_memory *memory, uint64_t address,
                                                  void *host, uint64_t size, uint32_t protection);
+/* Commits caller-owned storage at a distinct guest address. This is reserved
+ * for narrow guest address spaces (such as i386) whose host mappings cannot
+ * be placed at the same virtual address on modern macOS. */
+enum gem_memory_error gem_memory_commit_external(struct gem_memory *memory, uint64_t address,
+                                                 void *host, uint64_t size, uint32_t protection);
 enum gem_memory_error gem_memory_decommit(struct gem_memory *memory, uint64_t address,
                                           uint64_t size);
 enum gem_memory_error gem_memory_release(struct gem_memory *memory, uint64_t address,

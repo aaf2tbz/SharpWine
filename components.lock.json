@@ -121,8 +121,9 @@
       "adr": "docs/architecture/adr/0008-blink-roundtrip.md",
       "embedding_patch_sha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
       "bounded_jit_patch_sha256": "f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807",
+      "i386_legacy_patch_sha256": "06ee0d41ffe7ca89dbb1579cd58bcad99dd20bd4d5e256cf8b8efda468e046f2",
       "embedding_provenance": "docs/architecture/adr/0008-blink-embedding.provenance.json",
-      "accepting_mode": "bounded one-instruction AArch64 JIT; interpreter is an explicit conformance oracle"
+      "accepting_mode": "bounded one-instruction AArch64 JIT for long and legacy-32 guest modes; interpreter is an explicit conformance oracle"
     }
   }
 }

@@ -1,0 +1,129 @@
+diff --git a/blink/gem_embed.c b/blink/gem_embed.c
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -57,6 +57,7 @@ struct blink_gem_machine {
+   uint32_t trace_overflowed;
+   struct blink_gem_decode_attempt last_decode;
+   enum blink_gem_engine engine;
++  enum blink_gem_guest_mode guest_mode;
+   uint64_t jit_compilations;
+   uint64_t jit_executions;
+   uint64_t jit_failures;
+@@ -77,6 +78,10 @@ static int canonical(uint64_t a) {
+   return (a >> 48) == ((a & (UINT64_C(1) << 47)) ? UINT64_C(0xffff) : 0);
+ }
++static int guest_address(const struct blink_gem_machine* g, uint64_t a) {
++  return g->guest_mode == BLINK_GEM_GUEST_LEGACY_32 ? a <= UINT32_MAX
++                                                     : canonical(a);
++}
+ static int hostprot(uint32_t p) {
+   int r = 0;
+   if (p & 1) r |= PROT_READ;
+   if (p & 2) r |= PROT_WRITE;
+@@ -199,6 +204,12 @@ static void import_state(struct Machine* m, const struct blink_gem_state* s) {
+   memcpy(m->xmm, s->xmm, sizeof(m->xmm));
+   m->mxcsr = s->mxcsr;
+   m->fpu.cw = s->fcw;
++  if (m->mode.omode != XED_MODE_LONG) {
++    m->fpu.sw = s->fsw;
++    m->fpu.tw = s->ftw;
++    memcpy(m->fpu.st, s->x87, sizeof(s->x87));
++  }
++  m->fs.base = s->fs_base;
+   m->gs.base = s->gs_base;
+ }
+ static void export_state(const struct Machine* m,
+@@ -212,6 +224,12 @@ static void export_state(const struct Machine* m,
+   memcpy(out->xmm, m->xmm, sizeof(out->xmm));
+   out->mxcsr = m->mxcsr;
+   out->fcw = (uint16_t)m->fpu.cw;
++  if (m->mode.omode != XED_MODE_LONG) {
++    out->fsw = (uint16_t)m->fpu.sw;
++    out->ftw = (uint16_t)m->fpu.tw;
++    memcpy(out->x87, m->fpu.st, sizeof(out->x87));
++  }
++  out->fs_base = m->fs.base;
+   out->gs_base = m->gs.base;
+ }
+ static enum blink_gem_access fault_access(struct Machine* m, int fetch) {
+@@ -228,9 +241,11 @@ struct blink_gem_machine* blink_gem_machine_create_with_config(
+     const struct blink_gem_callbacks* cb, void* opaque) {
+   struct blink_gem_machine* g;
+   if (!config || config->abi_version != BLINK_GEM_CONFIG_ABI_VERSION ||
+-      config->size != sizeof(*config) || config->reserved ||
++      config->size != sizeof(*config) ||
+       (config->engine != BLINK_GEM_ENGINE_INTERPRETER &&
+-       config->engine != BLINK_GEM_ENGINE_JIT) || !cb ||
++       config->engine != BLINK_GEM_ENGINE_JIT) ||
++      (config->guest_mode != BLINK_GEM_GUEST_LONG &&
++       config->guest_mode != BLINK_GEM_GUEST_LEGACY_32) || !cb ||
+       cb->abi_version != 1 || cb->size != sizeof(*cb) || !cb->snapshot ||
+       !cb->validate || !cb->commit)
+     return 0;
+@@ -243,11 +264,14 @@ struct blink_gem_machine* blink_gem_machine_create_with_config(
+   g->cb = *cb;
+   g->opaque = opaque;
+   g->engine = config->engine;
++  g->guest_mode = config->guest_mode;
+   FLAG_nolinear = true;
+   g->system = NewSystem(XED_MACHINE_MODE_LONG);
+   if (!g->system) goto Fail;
+   g->system->cr3 = AllocatePageTable(g->system);
+   if (!g->system->cr3) goto Fail;
+   g->machine = NewMachine(g->system, 0);
+   if (!g->machine) goto Fail;
++  if (config->guest_mode == BLINK_GEM_GUEST_LEGACY_32)
++    g->machine->mode = XED_MACHINE_MODE_LEGACY_32;
+   g->machine->gemembed = true;
+@@ -268,7 +286,7 @@ struct blink_gem_machine* blink_gem_machine_create(
+     const struct blink_gem_callbacks* cb, void* opaque) {
+   const struct blink_gem_config config = {
+       BLINK_GEM_CONFIG_ABI_VERSION, sizeof(config),
+-      BLINK_GEM_ENGINE_INTERPRETER, 0};
++      BLINK_GEM_ENGINE_INTERPRETER, BLINK_GEM_GUEST_LONG};
+   return blink_gem_machine_create_with_config(&config, cb, opaque);
+ }
+ void blink_gem_machine_destroy(struct blink_gem_machine* g) {
+@@ -290,7 +308,8 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+   volatile int fetching;
+   uint64_t fetch_address = 0, fetch_size = 0, commit_fault = 0;
+   if (!g || !in || !out || in->abi_version != 1 || in->size != sizeof(*in) ||
+-      !canonical(in->rip) || !canonical(in->gpr[4]) || !canonical(in->gs_base))
++      !guest_address(g, in->rip) || !guest_address(g, in->gpr[4]) ||
++      !guest_address(g, in->gs_base) || !guest_address(g, in->fs_base))
+     return result(BLINK_GEM_INVALID);
+   m = g->machine;
+   /* Reset the machine-owned "last decode attempt" record at the start of
+diff --git a/blink/gem_embed.h b/blink/gem_embed.h
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -105,6 +105,10 @@ enum blink_gem_engine {
+   BLINK_GEM_ENGINE_INTERPRETER = 1,
+   BLINK_GEM_ENGINE_JIT = 2
+ };
++enum blink_gem_guest_mode {
++  BLINK_GEM_GUEST_LONG = 1,
++  BLINK_GEM_GUEST_LEGACY_32 = 2
++};
+ enum blink_gem_host_arch {
+   BLINK_GEM_HOST_UNKNOWN = 0,
+   BLINK_GEM_HOST_AARCH64 = 1
+@@ -112,7 +116,7 @@ enum blink_gem_host_arch {
+ struct blink_gem_config {
+   uint32_t abi_version, size;
+   enum blink_gem_engine engine;
+-  uint32_t reserved;
++  enum blink_gem_guest_mode guest_mode;
+ };
+ struct blink_gem_engine_info {
+   uint32_t abi_version, size;
+@@ -129,6 +133,9 @@ struct blink_gem_state {
+   uint16_t fcw, fsw;
+   uint8_t x87[8][16];
+   uint64_t gs_base;
++  uint64_t fs_base;
++  uint16_t ftw;
++  uint16_t reserved[3];
+ };
+ struct blink_gem_result {
+   enum blink_gem_outcome outcome;

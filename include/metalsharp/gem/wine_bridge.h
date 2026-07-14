@@ -3,6 +3,7 @@
 #define METALSHARP_GEM_WINE_BRIDGE_H
 
 #include "metalsharp/gem/context.h"
+#include "metalsharp/gem/i386_context.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -28,11 +29,14 @@ extern "C" {
 #define GEM_WINE_RUN_RESULT_VERSION UINT32_C(1)
 #define GEM_WINE_ARM64X_CONFIG_VERSION UINT32_C(1)
 #define GEM_WINE_X86_64_CONFIG_VERSION UINT32_C(1)
+#define GEM_WINE_I386_CONFIG_VERSION UINT32_C(1)
+#define GEM_WINE_I386_THREAD_CONFIG_VERSION UINT32_C(1)
 #define GEM_WINE_NATIVE_UNIX_CALL_SVC UINT32_C(0x5749)
 #define GEM_WINE_ARM64X_FLAG_SVC_BOUNDARIES UINT64_C(0x0000000000000001)
 #define GEM_WINE_ARM64X_FLAG_DEFER_ROUTING UINT64_C(0x0000000000000002)
 #define GEM_WINE_ARM64X_BOUNDARY_SVC UINT32_C(0x474d)
 #define GEM_WINE_X86_64_FLAG_INTERPRETER_ORACLE UINT64_C(0x0000000000000001)
+#define GEM_WINE_I386_FLAG_INTERPRETER_ORACLE UINT32_C(0x00000001)
 #define GEM_WINE_X86_64_BOUNDARY_WINDOWS_SYSCALL UINT32_C(1)
 #define GEM_WINE_X86_64_BOUNDARY_UNIX_CALL UINT32_C(2)
 #define GEM_WINE_GUEST_PAGE_SIZE UINT64_C(4096)
@@ -145,6 +149,21 @@ struct gem_wine_x86_64_config {
     uint64_t reserved[3];
 };
 
+/* Exact publication for an already-relocated i386 ntdll PE32 image. Every
+ * address is intrinsically 32-bit and is revalidated against the mapped image
+ * before GEM_i386 routing is enabled. */
+struct gem_wine_i386_config {
+    uint32_t version;
+    uint32_t struct_size;
+    uint32_t loaded_base;
+    uint32_t image_size;
+    uint32_t windows_syscall_boundary;
+    uint32_t unix_call_boundary;
+    uint32_t host_return_sentinel;
+    uint32_t flags;
+    uint32_t reserved[4];
+};
+
 /* Bridge-owned copy of engine stop information. Fixed-width fields keep the
  * public dylib ABI independent from the internal engine's enum layout. */
 struct gem_wine_stop_info {
@@ -174,15 +193,46 @@ struct gem_wine_boundary_response {
     struct gem_thread_context context;
 };
 
+struct gem_wine_i386_boundary_request {
+    uint32_t version;
+    uint32_t struct_size;
+    uint32_t event;
+    uint32_t reserved;
+    struct gem_i386_context context;
+    struct gem_wine_stop_info stop;
+};
+
+struct gem_wine_i386_boundary_response {
+    uint32_t version;
+    uint32_t struct_size;
+    enum gem_wine_boundary_action action;
+    uint32_t exit_status;
+    struct gem_i386_context context;
+};
+
 typedef enum gem_wine_status (*gem_wine_boundary_callback)(
     void *opaque, const struct gem_wine_boundary_request *request,
     struct gem_wine_boundary_response *response);
+
+typedef enum gem_wine_status (*gem_wine_i386_boundary_callback)(
+    void *opaque, const struct gem_wine_i386_boundary_request *request,
+    struct gem_wine_i386_boundary_response *response);
 
 struct gem_wine_thread_config {
     uint32_t version;
     uint32_t struct_size;
     uint64_t teb;
     gem_wine_boundary_callback boundary;
+    void *opaque;
+    uint64_t reserved[4];
+};
+
+struct gem_wine_i386_thread_config {
+    uint32_t version;
+    uint32_t struct_size;
+    uint32_t teb;
+    uint32_t reserved0;
+    gem_wine_i386_boundary_callback boundary;
     void *opaque;
     uint64_t reserved[4];
 };
@@ -222,6 +272,8 @@ GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_arm64x_config) == 88U,
                        "gem_wine_arm64x_config ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_x86_64_config) == 72U,
                        "gem_wine_x86_64_config ABI changed");
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_config) == 48U,
+                       "gem_wine_i386_config ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_stop_info) == 40U, "gem_wine_stop_info ABI changed");
 GEM_WINE_STATIC_ASSERT(offsetof(struct gem_wine_stop_info, instructions_retired) == 16U,
                        "gem_wine_stop_info instructions offset changed");
@@ -237,8 +289,14 @@ GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_boundary_response) == 736U,
                        "gem_wine_boundary_response ABI changed");
 GEM_WINE_STATIC_ASSERT(offsetof(struct gem_wine_boundary_response, context) == 16U,
                        "gem_wine_boundary_response context offset changed");
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_request) == 504U,
+                       "gem_wine_i386_boundary_request ABI changed");
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_response) == 464U,
+                       "gem_wine_i386_boundary_response ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_thread_config) == 64U,
                        "gem_wine_thread_config ABI changed");
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_thread_config) == 64U,
+                       "gem_wine_i386_thread_config ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_run_result) == 88U,
                        "gem_wine_run_result ABI changed");
 GEM_WINE_STATIC_ASSERT(offsetof(struct gem_wine_run_result, stop) == 48U,
@@ -263,12 +321,18 @@ gem_wine_process_register_arm64x_mapped(struct gem_wine_process *process,
 GEM_WINE_API enum gem_wine_status
 gem_wine_process_prepare_x86_64(struct gem_wine_process *process,
                                 const struct gem_wine_x86_64_config *config);
+GEM_WINE_API enum gem_wine_status
+gem_wine_process_prepare_i386(struct gem_wine_process *process,
+                              const struct gem_wine_i386_config *config);
 GEM_WINE_API enum gem_wine_status gem_wine_process_reserve(struct gem_wine_process *process,
                                                            uint64_t address, uint64_t size);
 GEM_WINE_API enum gem_wine_status gem_wine_process_commit_identity(struct gem_wine_process *process,
                                                                    uint64_t address, void *host,
                                                                    uint64_t size,
                                                                    uint32_t protection);
+GEM_WINE_API enum gem_wine_status
+gem_wine_process_commit_i386_host(struct gem_wine_process *process, uint32_t address, void *host,
+                                  uint64_t size, uint32_t protection);
 GEM_WINE_API enum gem_wine_status gem_wine_process_decommit(struct gem_wine_process *process,
                                                             uint64_t address, uint64_t size);
 GEM_WINE_API enum gem_wine_status gem_wine_process_release(struct gem_wine_process *process,
@@ -290,6 +354,10 @@ GEM_WINE_API enum gem_wine_status
 gem_wine_thread_create(struct gem_wine_process *process,
                        const struct gem_wine_thread_config *config,
                        struct gem_wine_thread **out_thread);
+GEM_WINE_API enum gem_wine_status
+gem_wine_i386_thread_create(struct gem_wine_process *process,
+                            const struct gem_wine_i386_thread_config *config,
+                            struct gem_wine_thread **out_thread);
 GEM_WINE_API enum gem_wine_status gem_wine_thread_destroy(struct gem_wine_thread *thread);
 GEM_WINE_API enum gem_wine_status
 gem_wine_thread_set_native_upper_simd(struct gem_wine_thread *thread,
@@ -306,6 +374,10 @@ GEM_WINE_API enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *th
                                                       const struct gem_thread_context *input,
                                                       struct gem_thread_context *out_context,
                                                       struct gem_wine_run_result *result);
+GEM_WINE_API enum gem_wine_status gem_wine_i386_thread_run(struct gem_wine_thread *thread,
+                                                           const struct gem_i386_context *input,
+                                                           struct gem_i386_context *out_context,
+                                                           struct gem_wine_run_result *result);
 
 #ifdef __cplusplus
 }

@@ -1,9 +1,10 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
   "archiveSha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
   "patchSha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
   "jitPatchSha256": "f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807",
+  "i386PatchSha256": "06ee0d41ffe7ca89dbb1579cd58bcad99dd20bd4d5e256cf8b8efda468e046f2",
   "license": "ISC",
   "prePatch": {
     "blink/machine.c": "73a32c95fbc191394c116bd2f41ebba464c963718b3785adaca22c5a93e8dc89",
@@ -12,8 +13,8 @@
   },
   "postPatch": {
     "blink/fusion.c": "492f2bf80ba626b63e37de749dcc679b439e44e135d01db718d84f9cb13dd7c7",
-    "blink/gem_embed.c": "36d288c4afb1c2a4e7ea811bf9661be89f751f9c79a56bd5f7cb0b86181b39a2",
-    "blink/gem_embed.h": "c538e7af745c134664686a23b819acb6a2cbc476ef4e9419be8dbf2e1ba8449b",
+    "blink/gem_embed.c": "2a64911807f69f8b7944148a68ff2b2744a852ffaaa3e70126f8b77a2d1ee7b6",
+    "blink/gem_embed.h": "d02a816a071b9bd3f318fc18c2acd0ad106442bbff44fb321cbf30bb46365dad",
     "blink/instruction.c": "643b63a9af36ab8732df8643552bd8b2ccf7c8e692ca58c6a4a209348e60e380",
     "blink/machine.c": "ac9f0e3fc84ab5527097b16c8b9e1650994101a1eebe2808edf6b0866271228c",
     "blink/machine.h": "6aadc5e0151422cdfe108a752ad71f184352a444889a976d1ccb0d7c82a1f1f8",
