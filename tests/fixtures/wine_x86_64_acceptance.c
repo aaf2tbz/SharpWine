@@ -20,7 +20,8 @@ static void progress(const char *stage) {
 static BOOL CALLBACK init_once_callback(PINIT_ONCE once, PVOID parameter, PVOID *context) {
     (void)once;
     (void)parameter;
-    *context = (PVOID)(uintptr_t)0x5aU;
+    /* INIT_ONCE reserves the low two context bits. */
+    *context = (PVOID)(uintptr_t)0x5cU;
     return TRUE;
 }
 
@@ -146,9 +147,10 @@ int main(int argc, char **argv) {
         RegCloseKey(key);
     RegDeleteKeyA(HKEY_CURRENT_USER, "Software\\MetalSharp\\x64Acceptance");
 
-    progress("callback-exception");
+    progress("callback");
     checks[9] = InitOnceExecuteOnce(&once, init_once_callback, NULL, &callback_context) &&
-                (uintptr_t)callback_context == 0x5aU;
+                (uintptr_t)callback_context == 0x5cU;
+    progress("exception");
     checks[10] = check_exception() != 0;
 
     progress("child-process");
