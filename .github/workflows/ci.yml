@@ -499,7 +499,7 @@ jobs:
           path: ${{ runner.temp }}/x86_64-oracle
       - name: Install the locked native build dependencies
         run: >-
-          brew install bison boost freetype libpng libx11 libxau libxcb libxdmcp llvm make mesa
+          brew install bison boost freetype libpng libx11 libxau libxcb libxdmcp llvm mesa
           molten-vk sdl2-compat sdl3 spirv-tools vulkan-headers vulkan-loader z3 zstd
       - name: Fetch and verify the locked universal LLVM-MinGW toolchain
         env:

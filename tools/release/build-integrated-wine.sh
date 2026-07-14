@@ -68,7 +68,7 @@ if [[ -z "$brew_prefix" ]] && command -v brew >/dev/null; then brew_prefix=$(bre
     echo "Homebrew prefix is required for the pinned native dependency set" >&2; exit 1;
 }
 brew_opt="$brew_prefix/opt"
-for required in bison boost freetype libpng libx11 libxau libxcb libxdmcp llvm make mesa molten-vk \
+for required in bison boost freetype libpng libx11 libxau libxcb libxdmcp llvm mesa molten-vk \
     sdl2-compat sdl3 spirv-tools vulkan-headers vulkan-loader z3 zstd; do
     [[ -d "$brew_opt/$required" ]] || { echo "missing Homebrew dependency: $required" >&2; exit 1; }
     expected=$(python3 - "$lock" "$required" <<'PY'
