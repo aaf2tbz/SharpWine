@@ -99,7 +99,7 @@ jobs:
           --wine "$(command -v wine)" --wineserver "$(command -v wineserver)"
           --fixture "${{ runner.temp }}/x86_64-fixture/wine_x86_64_acceptance-a.exe"
           --mode intel-native --output "${{ runner.temp }}/x86_64-fixture/intel-native.json"
-          --timeout 300
+          --timeout 120
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: x86_64-windows-oracle-${{ github.run_id }}
