@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
     progress("callback-exception");
     checks[9] = InitOnceExecuteOnce(&once, init_once_callback, NULL, &callback_context) &&
                 (uintptr_t)callback_context == 0x5aU;
-    checks[10] = check_exception();
+    checks[10] = check_exception() != 0;
 
     progress("child-process");
     _snprintf(child_command, sizeof(child_command), "\"%s\" --child", module);

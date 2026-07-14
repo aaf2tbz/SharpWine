@@ -77,10 +77,12 @@ jobs:
             --source tests/fixtures/wine_x86_64_acceptance.c `
             --output "${{ runner.temp }}\x86_64-fixture" `
             --manifest "${{ runner.temp }}\x86_64-fixture\manifest.json"
+          if ($LASTEXITCODE) { throw 'native x86_64 fixture build failed' }
           python tools/ci/run-x86_64-native-fixture.py `
             --fixture "${{ runner.temp }}\x86_64-fixture\wine_x86_64_acceptance-a.exe" `
             --output "${{ runner.temp }}\x86_64-fixture\windows-native.json" `
             --timeout 30
+          if ($LASTEXITCODE) { throw 'native x86_64 fixture execution failed' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: x86_64-windows-oracle-${{ github.run_id }}
