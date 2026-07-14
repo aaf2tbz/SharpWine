@@ -81,12 +81,12 @@ jobs:
       - name: Install and pin the native Intel reference
         run: |
           brew install --cask wine-stable
-          wine64 --version | grep -F 'wine-11.0'
+          wine --version | grep -F 'wine-11.0'
           test "$(brew info --cask --json=v2 wine-stable | python3 -c 'import json,sys; print(json.load(sys.stdin)["casks"][0]["version"])')" = "11.0_1"
       - name: Run the native Intel semantic oracle
         run: >-
           python3 tools/ci/run-x86_64-wine-fixture.py
-          --wine "$(command -v wine64)" --wineserver "$(command -v wineserver)"
+          --wine "$(command -v wine)" --wineserver "$(command -v wineserver)"
           --fixture "${{ runner.temp }}/x86_64-fixture/wine_x86_64_acceptance-a.exe"
           --mode intel-native --output "${{ runner.temp }}/x86_64-fixture/intel-native.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -246,7 +246,8 @@ jobs:
       - run: cmake --build build-x64 --parallel
       - run: ctest --test-dir build-x64 -R gem.x64_engine_conformance --output-on-failure
       - run: tools/ci/audit-zero-rosetta.sh build-x64
-      - run: grep -Fx '// #define DISABLE_JIT' build-x64/_deps/blink_gem-src/config.h
+      - run: |
+          grep -Fx '// #define DISABLE_JIT' build-x64/_deps/blink_gem-src/config.h
 
   arm64x-toolchain-probe:
     name: ARM64X toolchain probe (native Windows ARM64)
@@ -477,7 +478,8 @@ jobs:
           arch -arm64 ctest --test-dir build-roundtrip --output-on-failure
           -R 'gem.(arm64x_roundtrip|wine_arm64x_conformance|wine_bridge_conformance|arm64ec_engine_conformance|x64_engine_conformance|pe_arm64x_loader_test|context_conversion_test)'
       - run: tools/ci/audit-zero-rosetta.sh build-roundtrip
-      - run: grep -Fx '// #define DISABLE_JIT' build-roundtrip/_deps/blink_gem-src/config.h
+      - run: |
+          grep -Fx '// #define DISABLE_JIT' build-roundtrip/_deps/blink_gem-src/config.h
       - run: test -z "$(git status --porcelain --untracked-files=all)"
 
   x86_64-arm64-wine:
