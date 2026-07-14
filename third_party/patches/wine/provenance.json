@@ -87,16 +87,16 @@
     {
       "order": 12,
       "path": "third_party/patches/wine/0012-ntdll-preserve-hybrid-budget-context.patch",
-      "sha256": "fc0b6209107195ac921a6f06909098fb2b520d42c8533fe92f2a7ec27e2711a9",
+      "sha256": "9ee578a44f5e179a3202627b328f9988b01f44ab8b3324ebda8ccca2b03ef0ff",
       "authoringCommit": "66220c5789ff3448be17c952b9685b16e89023a9",
       "purpose": "Preserve the full in-flight ARM64EC/x64 GEM coordinator state across ordinary budget slices, and defer suspend publication until Wine's ARM64 syscall frame can represent the context without loss."
     },
     {
       "order": 13,
       "path": "third_party/patches/wine/0013-ntdll-route-ordinary-x64-images-through-gem.patch",
-      "sha256": "e016db42357c7029c1bf3cbeb070898c98a27a819dd364152e32c230a3a64003",
-      "authoringCommit": "4003c3236586e61d421dc16749ebd7295ef39c54",
-      "purpose": "Select the bounded AArch64 Blink JIT and register every ordinary mapped PE32+ AMD64 image through the checked GEM x86_64 image boundary before ARM64EC dispatch can target it."
+      "sha256": "35cf3eccfbc900f73b4f8963eda16ac387802578e60019e286e826700dbe0801",
+      "authoringCommit": "066bb5b2cc254ba192c00afc11d05454b0c4641a",
+      "purpose": "Select the bounded AArch64 Blink JIT by default, permit an explicit interpreter oracle mode without fallback, and register every ordinary mapped PE32+ AMD64 image through the checked GEM x86_64 image boundary before ARM64EC dispatch can target it."
     }
   ],
   "researchEvidence": {

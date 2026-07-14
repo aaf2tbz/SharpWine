@@ -98,14 +98,16 @@ def main() -> None:
     wineserver = runtime / "bin/wineserver"
     selftest = runtime / "share/metalsharp/selftest"
     for path in (wine, wineserver, selftest / "arm64x_fixture_host.exe",
-                 selftest / "arm64x_fixture.dll"):
+                 selftest / "arm64x_fixture.dll",
+                 selftest / "wine_x86_64_acceptance.exe",
+                 selftest / "x86_64-fixture.json"):
         if not path.exists():
             fail(f"missing packaged test input: {path.relative_to(runtime)}")
     args.evidence.mkdir(parents=True, exist_ok=True)
     prefix = pathlib.Path(tempfile.mkdtemp(prefix="mswr-v0.1-prefix-"))
     env = os.environ.copy()
     env.update({"WINEPREFIX": str(prefix), "WINE_GEM_LAUNCH_TRACE": "1",
-                "LC_ALL": "C", "LANG": "C"})
+                "MSWR_X64_ENV": "oracle-value", "LC_ALL": "C", "LANG": "C"})
     libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
     libproc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
     libproc.proc_pidpath.restype = ctypes.c_int
@@ -164,12 +166,15 @@ def main() -> None:
     results: list[dict[str, object]] = []
 
     def run_test(name: str, command: list[str], expected: tuple[str, ...] = (),
-                 timeout: int | None = None, trace_gem: bool = False) -> None:
+                 timeout: int | None = None, trace_gem: bool = False,
+                 x64_engine: str | None = None) -> None:
         log = args.evidence / f"{name}.log"
         started = time.monotonic()
         timeout = args.timeout if timeout is None else min(args.timeout, timeout)
         run_env = env.copy()
         run_env["WINEDEBUG"] = "+gem,-all" if trace_gem else "-all"
+        if x64_engine is not None:
+            run_env["METALSHARP_GEM_X64_ENGINE"] = x64_engine
         with log.open("w", encoding="utf-8") as output:
             process = subprocess.Popen(command, cwd=selftest, env=run_env, stdout=output,
                                        stderr=subprocess.STDOUT, start_new_session=True)
@@ -224,6 +229,13 @@ def main() -> None:
         quiesce_wineserver()
         run_test("arm64ec-x64-hybrid", [str(wine), str(selftest / "arm64x_fixture_host.exe")],
                  ("ARM64X linked fixture native execution passed",), timeout=120, trace_gem=True)
+        for mode in ("jit", "interpreter"):
+            quiesce_wineserver()
+            run_test(f"x86_64-{mode}",
+                     [str(wine), str(selftest / "wine_x86_64_acceptance.exe"),
+                      "mswr-argument"],
+                     ("MSWR_X64_V1 {\"passed\":true", f"x64-engine={mode} host=aarch64"),
+                     timeout=180, trace_gem=True, x64_engine=mode)
         for index in range(args.stress_iterations):
             quiesce_wineserver()
             run_test(f"hybrid-stress-{index + 1:03d}",

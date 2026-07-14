@@ -514,6 +514,19 @@ def install_selftest(package: Path, foundation: Path, fixture: Path, host: Path,
     target.mkdir(parents=True)
     copy_file(fixture, target / fixture.name, 0o644)
     copy_file(host, target / "arm64x_fixture_host.exe", 0o644)
+    foundation_wine = foundation / "wine" if (foundation / "wine/bin/wine").is_file() else foundation
+    x64_source = foundation_wine / "share/metalsharp/selftest/wine_x86_64_acceptance.exe"
+    x64_manifest = foundation_wine / "share/metalsharp/selftest/x86_64-fixture.json"
+    if not x64_source.is_file() or not x64_manifest.is_file():
+        fail("source-built ordinary PE32+ acceptance fixture is missing")
+    x64_identity = json.loads(x64_manifest.read_text(encoding="utf-8"))
+    if (x64_identity.get("schema") != 1 or x64_identity.get("peMachine") != "AMD64" or
+            x64_identity.get("peMagic") != "PE32+" or
+            x64_identity.get("binarySha256") != sha256(x64_source) or
+            x64_identity.get("reproducible") is not True):
+        fail("ordinary PE32+ acceptance fixture identity is invalid")
+    copy_file(x64_source, target / x64_source.name, 0o644)
+    copy_file(x64_manifest, target / x64_manifest.name, 0o644)
     (target / "fixture-provenance.json").write_text(json.dumps({
         "schema": 1,
         "producerCommit": fixture_commit,

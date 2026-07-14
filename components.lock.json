@@ -1,6 +1,11 @@
 {
   "schema": 1,
   "build_dependencies": {
+    "intel_oracle": {
+      "provider": "Homebrew cask wine-stable",
+      "version": "11.0_1",
+      "role": "CI-only native x86_64 behavioral oracle; never a runtime input"
+    },
     "llvm_mingw": {
       "repository": "https://github.com/mstorsjo/llvm-mingw/releases",
       "release": "20260616",
@@ -91,7 +96,11 @@
         },
         {
           "path": "third_party/patches/wine/0012-ntdll-preserve-hybrid-budget-context.patch",
-          "sha256": "fc0b6209107195ac921a6f06909098fb2b520d42c8533fe92f2a7ec27e2711a9"
+          "sha256": "9ee578a44f5e179a3202627b328f9988b01f44ab8b3324ebda8ccca2b03ef0ff"
+        },
+        {
+          "path": "third_party/patches/wine/0013-ntdll-route-ordinary-x64-images-through-gem.patch",
+          "sha256": "35cf3eccfbc900f73b4f8963eda16ac387802578e60019e286e826700dbe0801"
         }
       ]
     },

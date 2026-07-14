@@ -1,17 +1,17 @@
-From 4003c3236586e61d421dc16749ebd7295ef39c54 Mon Sep 17 00:00:00 2001
+From 066bb5b2cc254ba192c00afc11d05454b0c4641a Mon Sep 17 00:00:00 2001
 From: MetalSharp Wine Runtime contributors <noreply@metalsharp.local>
 Date: Mon, 13 Jul 2026 18:13:01 -0600
-Subject: [PATCH] ntdll: route ordinary x64 images through GEM
+Subject: [PATCH 13/13] ntdll: route ordinary x64 images through GEM
 
 ---
  dlls/ntdll/loader.c            |  4 ++++
  dlls/ntdll/ntdll_misc.h        |  1 +
  dlls/ntdll/signal_arm64ec.c    | 16 ++++++++++++++++
- dlls/ntdll/unix/gem.c          | 21 +++++++++++++++++++++
+ dlls/ntdll/unix/gem.c          | 34 +++++++++++++++++++++++++++++++++-
  dlls/ntdll/unix/loader.c       |  2 ++
  dlls/ntdll/unix/unix_private.h |  1 +
  dlls/ntdll/unixlib.h           |  7 +++++++
- 7 files changed, 52 insertions(+)
+ 7 files changed, 64 insertions(+), 1 deletion(-)
 
 diff --git a/dlls/ntdll/loader.c b/dlls/ntdll/loader.c
 index a595a539c1..f366500120 100644
@@ -68,18 +68,40 @@ index 3f2792df19..3edbdab134 100644
  /*******************************************************************
   *         syscalls
 diff --git a/dlls/ntdll/unix/gem.c b/dlls/ntdll/unix/gem.c
-index f1d4db4d9f..b09dd486ca 100644
+index f1d4db4d9f..373efe0e94 100644
 --- a/dlls/ntdll/unix/gem.c
 +++ b/dlls/ntdll/unix/gem.c
-@@ -103,6 +103,7 @@ void gem_process_init(void)
+@@ -76,6 +76,16 @@ static void gem_fail(const char *operation, enum gem_wine_status status)
+     exit(1);
+ }
+ 
++static enum gem_wine_x64_engine_mode gem_x64_engine_mode(void)
++{
++    const char *selected = getenv("METALSHARP_GEM_X64_ENGINE");
++
++    if (!selected || !strcmp(selected, "jit")) return GEM_WINE_X64_JIT;
++    if (!strcmp(selected, "interpreter")) return GEM_WINE_X64_INTERPRETER;
++    ERR("invalid METALSHARP_GEM_X64_ENGINE value %s\n", debugstr_a(selected));
++    exit(1);
++}
++
+ static void gem_prepare_arm64ec_once(void)
+ {
+     enum gem_wine_status status = gem_wine_process_prepare_arm64ec(gem_process);
+@@ -103,9 +113,11 @@ void gem_process_init(void)
      config.max_boundary_callbacks = 4096;
      config.host_return_sentinel = UINT64_MAX - 15;
      config.unix_call_dispatcher = (uint64_t)(uintptr_t)__wine_unix_call_dispatcher;
-+    config.x64_engine_mode = GEM_WINE_X64_JIT;
++    config.x64_engine_mode = gem_x64_engine_mode();
      if ((status = gem_wine_process_create(&config, &gem_process)) != GEM_WINE_OK)
          gem_fail("process create", status);
-     TRACE("process created ABI=%u\n", GEM_WINE_BRIDGE_ABI_VERSION);
-@@ -319,6 +320,25 @@ NTSTATUS gem_register_arm64x(void *args)
+-    TRACE("process created ABI=%u\n", GEM_WINE_BRIDGE_ABI_VERSION);
++    TRACE("process created ABI=%u x64-engine=%s host=aarch64\n", GEM_WINE_BRIDGE_ABI_VERSION,
++          config.x64_engine_mode == GEM_WINE_X64_JIT ? "jit" : "interpreter");
+ }
+ 
+ NTSTATUS gem_thread_init(struct thread_data *data)
+@@ -319,6 +331,25 @@ NTSTATUS gem_register_arm64x(void *args)
      return gem_status(status);
  }
  
@@ -105,7 +127,7 @@ index f1d4db4d9f..b09dd486ca 100644
  BOOL gem_lifecycle_probe(void)
  {
      const char *requested = getenv("METALSHARP_GEM_LIFECYCLE_PROBE");
-@@ -385,6 +405,7 @@ NTSTATUS gem_virtual_map_metadata(void *base, SIZE_T size, ULONG protection)
+@@ -385,6 +416,7 @@ NTSTATUS gem_virtual_map_metadata(void *base, SIZE_T size, ULONG protection)
  void gem_virtual_bind_kuser(void *host_page) {}
  NTSTATUS gem_virtual_invalidate(const void *base, SIZE_T size) { return STATUS_SUCCESS; }
  NTSTATUS gem_register_arm64x(void *args) { return STATUS_SUCCESS; }
@@ -172,4 +194,3 @@ index e1ee75af8d..b96e150569 100644
  extern unixlib_handle_t __wine_unixlib_handle;
 -- 
 2.54.0 (Apple Git-157)
-

@@ -41,6 +41,16 @@ Every fixture-related PR must include:
 
 When in doubt, generate artifacts in the build directory during tests and commit only source plus expected metadata.
 
+## Ordinary PE32+ x86_64 acceptance corpus
+
+`tests/fixtures/wine_x86_64_acceptance.c` is the ordinary PE32+ acceptance
+corpus for issue #45. CI builds it twice with the hash-locked LLVM-MinGW
+x86_64 target, rejects non-reproducible bytes, and uploads the generated image
+only as a one-day workflow artifact. The source is Apache-2.0; the generated
+binary is never committed or used as a host executable. Native Intel Wine is a
+semantic oracle only. The exact same PE bytes must independently pass the
+native ARM64 Wine/GEM rebuild in explicit Blink JIT and interpreter modes.
+
 ## Ephemeral Issue #14 CI handoff
 
 Issue #14 may transport freshly generated Microsoft-linked ARM64X DLLs and sanitized evidence from

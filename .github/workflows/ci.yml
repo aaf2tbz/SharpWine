@@ -34,8 +34,11 @@ jobs:
           tools/audit_blink_memory_order.py
           tools/audit_blink_embedding.py
           tools/ci/check-repository.py
+          tools/ci/build-x86_64-windows-fixture.py
+          tools/ci/compare-x86_64-wine-evidence.py
           tools/ci/create-arm64x-issue14-bundle.py
           tools/ci/run-blink-tso-conformance.py
+          tools/ci/run-x86_64-wine-fixture.py
           tools/ci/test-check-repository.py
           tools/ci/validate-arm64x-issue14-artifact.py
           tools/ci/validate-blink-tso-evidence.py
@@ -46,6 +49,56 @@ jobs:
           tools/release/verify-published-release.py
           tools/release/test-release-tools.py
           tools/release/test-wine-patches.py
+
+  x86_64-intel-oracle:
+    name: PE32+ semantic oracle (native macOS Intel)
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - run: test "$(uname -m)" = x86_64
+      - run: test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+      - name: Fetch and verify the locked universal LLVM-MinGW toolchain
+        env:
+          LLVM_MINGW_RELEASE: "20260616"
+          LLVM_MINGW_SHA256: "2cab02a2e964bd4aae981150a45985d07c657cfa8d244959eb9e2dcc5eedd7b1"
+        run: |
+          archive="${{ runner.temp }}/llvm-mingw.tar.xz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_RELEASE}/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal.tar.xz" \
+            --output "$archive"
+          printf '%s  %s\n' "$LLVM_MINGW_SHA256" "$archive" | shasum -a 256 -c -
+          mkdir "${{ runner.temp }}/llvm-mingw"
+          tar -xf "$archive" -C "${{ runner.temp }}/llvm-mingw" --strip-components=1
+      - name: Build the reproducible source fixture
+        run: >-
+          python3 tools/ci/build-x86_64-windows-fixture.py
+          --compiler "${{ runner.temp }}/llvm-mingw/bin/x86_64-w64-mingw32-clang"
+          --source tests/fixtures/wine_x86_64_acceptance.c
+          --output "${{ runner.temp }}/x86_64-fixture"
+          --manifest "${{ runner.temp }}/x86_64-fixture/manifest.json"
+      - name: Install and pin the native Intel reference
+        run: |
+          brew install --cask wine-stable
+          wine64 --version | grep -F 'wine-11.0'
+          test "$(brew info --cask --json=v2 wine-stable | python3 -c 'import json,sys; print(json.load(sys.stdin)["casks"][0]["version"])')" = "11.0_1"
+      - name: Run the native Intel semantic oracle
+        run: >-
+          python3 tools/ci/run-x86_64-wine-fixture.py
+          --wine "$(command -v wine64)" --wineserver "$(command -v wineserver)"
+          --fixture "${{ runner.temp }}/x86_64-fixture/wine_x86_64_acceptance-a.exe"
+          --mode intel-native --output "${{ runner.temp }}/x86_64-fixture/intel-native.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: x86_64-windows-oracle-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/x86_64-fixture/wine_x86_64_acceptance-a.exe
+            ${{ runner.temp }}/x86_64-fixture/manifest.json
+            ${{ runner.temp }}/x86_64-fixture/intel-native.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
 
   formatting:
     name: Formatting
@@ -176,7 +229,7 @@ jobs:
           "${{ runner.temp }}/blink-tso/evidence.json"
 
   blink-x64-engine:
-    name: Real Blink interpreter adapter (native macOS ARM64)
+    name: Bounded Blink JIT and interpreter adapters (native macOS ARM64)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -193,7 +246,7 @@ jobs:
       - run: cmake --build build-x64 --parallel
       - run: ctest --test-dir build-x64 -R gem.x64_engine_conformance --output-on-failure
       - run: tools/ci/audit-zero-rosetta.sh build-x64
-      - run: test -z "$(grep HAVE_JIT build-x64/_deps/blink_gem-src/config.h || true)"
+      - run: grep -E '^#define HAVE_JIT 1$' build-x64/_deps/blink_gem-src/config.h
 
   arm64x-toolchain-probe:
     name: ARM64X toolchain probe (native Windows ARM64)
@@ -424,5 +477,66 @@ jobs:
           arch -arm64 ctest --test-dir build-roundtrip --output-on-failure
           -R 'gem.(arm64x_roundtrip|wine_arm64x_conformance|wine_bridge_conformance|arm64ec_engine_conformance|x64_engine_conformance|pe_arm64x_loader_test|context_conversion_test)'
       - run: tools/ci/audit-zero-rosetta.sh build-roundtrip
-      - run: test -z "$(grep HAVE_JIT build-roundtrip/_deps/blink_gem-src/config.h || true)"
+      - run: grep -E '^#define HAVE_JIT 1$' build-roundtrip/_deps/blink_gem-src/config.h
       - run: test -z "$(git status --porcelain --untracked-files=all)"
+
+  x86_64-arm64-wine:
+    name: Ordinary PE32+ through rebuilt Wine/GEM (native macOS ARM64)
+    needs: x86_64-intel-oracle
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - run: test "$(uname -m)" = arm64
+      - run: test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: x86_64-windows-oracle-${{ github.run_id }}
+          path: ${{ runner.temp }}/x86_64-oracle
+      - name: Install the locked native build dependencies
+        run: >-
+          brew install bison boost freetype libpng libx11 libxau libxcb libxdmcp llvm mesa
+          molten-vk sdl2-compat sdl3 spirv-tools vulkan-headers vulkan-loader z3 zstd
+      - name: Fetch and verify the locked universal LLVM-MinGW toolchain
+        env:
+          LLVM_MINGW_RELEASE: "20260616"
+          LLVM_MINGW_SHA256: "2cab02a2e964bd4aae981150a45985d07c657cfa8d244959eb9e2dcc5eedd7b1"
+        run: |
+          archive="${{ runner.temp }}/llvm-mingw.tar.xz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_RELEASE}/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal.tar.xz" \
+            --output "$archive"
+          printf '%s  %s\n' "$LLVM_MINGW_SHA256" "$archive" | shasum -a 256 -c -
+          mkdir "${{ runner.temp }}/llvm-mingw"
+          tar -xf "$archive" -C "${{ runner.temp }}/llvm-mingw" --strip-components=1
+      - name: Prepare hash-bound runtime dependencies
+        run: |
+          mkdir -p "${{ runner.temp }}/runtime-deps/vulkan" "${{ runner.temp }}/runtime-deps/moltenvk"
+          cp "$(brew --prefix vulkan-loader)/lib/libvulkan.dylib" \
+            "${{ runner.temp }}/runtime-deps/vulkan/libvulkan.dylib"
+          cp "$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" \
+            "${{ runner.temp }}/runtime-deps/moltenvk/libMoltenVK.dylib"
+      - name: Rebuild Wine, GEM, Blink, and both ordinary PE32+ modes
+        run: >-
+          tools/release/build-integrated-wine.sh
+          --commit "${{ github.sha }}" --output "${{ runner.temp }}/x86_64-foundation"
+          --llvm-mingw "${{ runner.temp }}/llvm-mingw"
+          --deps "${{ runner.temp }}/runtime-deps"
+      - name: Require the identical Intel fixture and compare all semantics
+        run: |
+          cmp "${{ runner.temp }}/x86_64-oracle/wine_x86_64_acceptance-a.exe" \
+            "${{ runner.temp }}/x86_64-foundation/wine/share/metalsharp/selftest/wine_x86_64_acceptance.exe"
+          python3 tools/ci/compare-x86_64-wine-evidence.py \
+            "${{ runner.temp }}/x86_64-oracle/intel-native.json" \
+            "${{ runner.temp }}/x86_64-foundation/evidence/x86_64-jit.json" \
+            "${{ runner.temp }}/x86_64-foundation/evidence/x86_64-interpreter.json"
+      - run: tools/ci/audit-zero-rosetta.sh "${{ runner.temp }}/x86_64-foundation/wine"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: x86_64-arm64-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/x86_64-foundation/evidence
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

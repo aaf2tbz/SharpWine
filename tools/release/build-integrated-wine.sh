@@ -201,6 +201,14 @@ acceptance_exe="$prefix/lib/wine/aarch64-windows/metalsharp-gem-acceptance.exe"
 file "$acceptance_exe" | grep -Eq 'PE32\+ executable.*Aarch64' || {
     echo "native ARM64 GEM acceptance executable has the wrong architecture" >&2; exit 1;
 }
+x64_fixture_dir="$prefix/share/metalsharp/selftest"
+mkdir -p "$x64_fixture_dir"
+python3 "$root/tools/ci/build-x86_64-windows-fixture.py" \
+    --compiler "$llvm_mingw/bin/x86_64-w64-mingw32-clang" \
+    --source "$root/tests/fixtures/wine_x86_64_acceptance.c" \
+    --output "$work/x86_64-fixture" --manifest "$x64_fixture_dir/x86_64-fixture.json"
+install -m 755 "$work/x86_64-fixture/wine_x86_64_acceptance-a.exe" \
+    "$x64_fixture_dir/wine_x86_64_acceptance.exe"
 install -m 755 "$deps_root/vulkan/libvulkan.dylib" "$runtime_dir/libvulkan.1.dylib"
 ln -sfn libvulkan.1.dylib "$runtime_dir/libvulkan.dylib"
 install -m 755 "$deps_root/moltenvk/libMoltenVK.dylib" "$runtime_dir/libMoltenVK.dylib"
@@ -418,6 +426,16 @@ if missing or found:
     "".join(f"{path}\t{description}\n" for path, description in sorted(descriptions.items())),
     encoding="utf-8")
 PY
+
+# Ordinary PE32+ must pass through both explicit GEM_x86_64 modes. These are
+# fresh-prefix executions of the rebuilt Wine tree and rebuilt fixture, not an
+# overlay or a copied DXMT/Winemetal artifact.
+python3 "$root/tools/ci/run-x86_64-wine-fixture.py" --wine "$prefix/bin/wine" \
+    --wineserver "$prefix/bin/wineserver" --fixture "$x64_fixture_dir/wine_x86_64_acceptance.exe" \
+    --mode jit --output "$acceptance_dir/x86_64-jit.json" --timeout 180
+python3 "$root/tools/ci/run-x86_64-wine-fixture.py" --wine "$prefix/bin/wine" \
+    --wineserver "$prefix/bin/wineserver" --fixture "$x64_fixture_dir/wine_x86_64_acceptance.exe" \
+    --mode interpreter --output "$acceptance_dir/x86_64-interpreter.json" --timeout 180
 
 find "$stage" \( -type f -o -type l \) | sort > "$work/install-files.txt"
 find "$stage" -type f -print0 | xargs -0 file > "$work/macho-files.txt"
