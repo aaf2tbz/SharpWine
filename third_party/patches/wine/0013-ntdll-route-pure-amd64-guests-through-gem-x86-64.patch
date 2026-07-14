@@ -1,0 +1,660 @@
+From e3fd4b86ac067374116e3e93bf963caa0d1101df Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@users.noreply.github.com>
+Date: Mon, 13 Jul 2026 22:43:58 -0600
+Subject: [PATCH 13/13] ntdll: route pure AMD64 guests through GEM x86_64
+
+---
+ dlls/ntdll/ntdll.spec          |   4 +-
+ dlls/ntdll/signal_x86_64.c     |  11 ++
+ dlls/ntdll/unix/gem.c          |  26 +++
+ dlls/ntdll/unix/loader.c       |  66 ++++++-
+ dlls/ntdll/unix/signal_arm64.c | 326 ++++++++++++++++++++++++++++++++-
+ dlls/ntdll/unix/unix_private.h |  18 +-
+ 6 files changed, 441 insertions(+), 10 deletions(-)
+
+diff --git a/dlls/ntdll/ntdll.spec b/dlls/ntdll/ntdll.spec
+index 32da9b2a28..fb2c5d66b8 100644
+--- a/dlls/ntdll/ntdll.spec
++++ b/dlls/ntdll/ntdll.spec
+@@ -1767,8 +1767,8 @@
+ @ extern -private __wine_syscall_dispatcher
+ @ extern -private __wine_unix_call_dispatcher
+ @ extern -private -arch=arm64ec __wine_unix_call_dispatcher_arm64ec
+-@ cdecl -private -arch=arm64,arm64ec __wine_gem_syscall_dispatcher()
+-@ cdecl -private -arch=arm64,arm64ec __wine_gem_unix_call_dispatcher()
++@ cdecl -private -arch=arm64,arm64ec,x86_64 __wine_gem_syscall_dispatcher()
++@ cdecl -private -arch=arm64,arm64ec,x86_64 __wine_gem_unix_call_dispatcher()
+ @ extern -private __wine_unixlib_handle
+ 
+ # Debugging
+diff --git a/dlls/ntdll/signal_x86_64.c b/dlls/ntdll/signal_x86_64.c
+index 29fadc7224..5ef98a5d9c 100644
+--- a/dlls/ntdll/signal_x86_64.c
++++ b/dlls/ntdll/signal_x86_64.c
+@@ -985,6 +985,17 @@ void __cdecl NTDLL_longjmp( _JUMP_BUFFER *buf, int retval )
+  *           RtlUserThreadStart (NTDLL.@)
+  */
+ #ifdef __WINE_PE_BUILD
++/* Guest-resident, exported boundary addresses for the native ARM64 GEM host.
++ * The dispatcher data slots point here only for pure AMD64 execution. GEM
++ * stops before fetching either instruction, so these fail-closed bodies must
++ * never execute as x86_64 host code. */
++__ASM_GLOBAL_FUNC( __wine_gem_syscall_dispatcher,
++                   "ud2\n\t"
++                   "ret" )
++__ASM_GLOBAL_FUNC( __wine_gem_unix_call_dispatcher,
++                   "ud2\n\t"
++                   "ret" )
++
+ __ASM_GLOBAL_FUNC( RtlUserThreadStart,
+                    "subq $0x28,%rsp\n\t"
+                    ".seh_stackalloc 0x28\n\t"
+diff --git a/dlls/ntdll/unix/gem.c b/dlls/ntdll/unix/gem.c
+index f1d4db4d9f..f43e020217 100644
+--- a/dlls/ntdll/unix/gem.c
++++ b/dlls/ntdll/unix/gem.c
+@@ -89,6 +89,27 @@ void gem_prepare_arm64ec(void)
+         gem_fail("ARM64EC preparation lock", GEM_WINE_ENGINE_ERROR);
+ }
+ 
++NTSTATUS gem_prepare_x86_64(void *module, SIZE_T image_size,
++                            void *syscall_boundary, void *unix_call_boundary)
++{
++    struct gem_wine_x86_64_config config = {0};
++    enum gem_wine_status status;
++
++    if (!is_x86_64_guest() || !gem_process || !module || !image_size ||
++        !syscall_boundary || !unix_call_boundary) return STATUS_INVALID_PARAMETER;
++    config.version = GEM_WINE_X86_64_CONFIG_VERSION;
++    config.struct_size = sizeof(config);
++    config.loaded_base = (uint64_t)(uintptr_t)module;
++    config.image_size = image_size;
++    config.windows_syscall_boundary = (uint64_t)(uintptr_t)syscall_boundary;
++    config.unix_call_boundary = (uint64_t)(uintptr_t)unix_call_boundary;
++    status = gem_wine_process_prepare_x86_64(gem_process, &config);
++    if (status == GEM_WINE_OK)
++        TRACE("pure AMD64 routing enabled module=%p size=%lx syscall=%p unix=%p\n",
++              module, image_size, syscall_boundary, unix_call_boundary);
++    return gem_status(status);
++}
++
+ void gem_process_init(void)
+ {
+     struct gem_wine_process_config config = {0};
+@@ -363,6 +384,11 @@ BOOL gem_lifecycle_probe(void)
+ 
+ void gem_process_init(void) {}
+ void gem_prepare_arm64ec(void) {}
++NTSTATUS gem_prepare_x86_64(void *module, SIZE_T image_size,
++                            void *syscall_boundary, void *unix_call_boundary)
++{
++    return STATUS_NOT_SUPPORTED;
++}
+ NTSTATUS gem_thread_init(struct thread_data *data) { return STATUS_SUCCESS; }
+ void gem_thread_shutdown(struct thread_data *data) {}
+ void gem_process_shutdown(struct thread_data *data) {}
+diff --git a/dlls/ntdll/unix/loader.c b/dlls/ntdll/unix/loader.c
+index 3ead201c6f..fb33b115f5 100644
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -126,6 +126,7 @@ const char **dll_paths = NULL;
+ const char **system_dll_paths = NULL;
+ const char *user_name = NULL;
+ SECTION_IMAGE_INFORMATION main_image_info = { NULL };
++enum main_guest_mode main_guest_mode = MAIN_GUEST_NATIVE;
+ 
+ /* die on a fatal error; use only during initialization */
+ static void fatal_error( const char *err, ... )
+@@ -1274,6 +1275,12 @@ NTSTATUS load_builtin( struct pe_mapping_info *pe_mapping, USHORT machine,
+         loadorder = LO_BUILTIN;  /* builtin with no fallback since mapping a fake dll is not useful */
+     }
+ 
++    /* An ARM64 prefix contains ARM64 placeholder files in system32.  For a
++     * pure AMD64 main image those placeholders are only names; select the
++     * already-shipped AMD64 PE builtin while retaining the native ARM64 Unix
++     * module selected by find_builtin_dll(). */
++    if (is_x86_64_guest()) search_machine = machine = IMAGE_FILE_MACHINE_AMD64;
++
+     if (is_arm64ec() && pe_mapping->image.is_hybrid && search_machine == IMAGE_FILE_MACHINE_AMD64)
+         search_machine = current_machine;
+ 
+@@ -1456,6 +1463,41 @@ static NTSTATUS open_main_image( UNICODE_STRING *nt_name, void **module, SECTION
+ }
+ 
+ 
++static void classify_main_guest( void *module )
++{
++    const IMAGE_DOS_HEADER *dos = module;
++    const IMAGE_NT_HEADERS64 *nt;
++    const IMAGE_DATA_DIRECTORY *dir;
++    const IMAGE_LOAD_CONFIG_DIRECTORY64 *loadcfg;
++    SIZE_T chpe_end = offsetof( IMAGE_LOAD_CONFIG_DIRECTORY64, CHPEMetadataPointer ) +
++                      sizeof(loadcfg->CHPEMetadataPointer);
++
++    main_guest_mode = MAIN_GUEST_NATIVE;
++    if (current_machine != IMAGE_FILE_MACHINE_ARM64 ||
++        main_image_info.Machine != IMAGE_FILE_MACHINE_AMD64) return;
++
++    /* An ordinary PE32+ AMD64 image and an ARM64EC/ARM64X image use the same
++     * COFF machine. Classify from the checked, already-mapped load-config
++     * metadata instead of treating every AMD64 image as hybrid. */
++    if (!module || dos->e_magic != IMAGE_DOS_SIGNATURE)
++        fatal_error( "invalid AMD64 main image header\n" );
++    nt = (const IMAGE_NT_HEADERS64 *)((const char *)module + dos->e_lfanew);
++    if (nt->Signature != IMAGE_NT_SIGNATURE ||
++        nt->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
++        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC)
++        fatal_error( "invalid AMD64 PE32+ main image\n" );
++
++    main_guest_mode = MAIN_GUEST_X86_64;
++    if (nt->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG) return;
++    dir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG];
++    if (!dir->VirtualAddress || dir->Size < chpe_end ||
++        dir->VirtualAddress > nt->OptionalHeader.SizeOfImage ||
++        chpe_end > nt->OptionalHeader.SizeOfImage - dir->VirtualAddress) return;
++    loadcfg = (const IMAGE_LOAD_CONFIG_DIRECTORY64 *)((const char *)module + dir->VirtualAddress);
++    if (loadcfg->Size >= chpe_end && loadcfg->CHPEMetadataPointer)
++        main_guest_mode = MAIN_GUEST_ARM64EC;
++}
++
+ /***********************************************************************
+  *           load_main_exe
+  */
+@@ -1468,12 +1510,17 @@ NTSTATUS load_main_exe( UNICODE_STRING *nt_name, USHORT load_machine, void **mod
+     enum loadorder loadorder = get_load_order( nt_name, is_system_dir, NULL );
+ 
+     status = open_main_image( nt_name, module, &main_image_info, loadorder, load_machine );
+-    if (status != STATUS_DLL_NOT_FOUND) return status;
++    if (status != STATUS_DLL_NOT_FOUND)
++    {
++        if (NT_SUCCESS(status)) classify_main_guest( *module );
++        return status;
++    }
+ 
+     /* if path is in system dir, we can load the builtin even if the file itself doesn't exist */
+     if (loadorder != LO_NATIVE && is_prefix_bootstrap && is_system_dir)
+         status = find_builtin_dll( nt_name, NULL, module, &size, &main_image_info, 0, 0,
+                                    search_machine, load_machine, FALSE, 0 );
++    if (NT_SUCCESS(status)) classify_main_guest( *module );
+     return status;
+ }
+ 
+@@ -1499,6 +1546,7 @@ NTSTATUS load_start_exe( UNICODE_STRING *nt_name, void **module )
+         MESSAGE( "wine: failed to load start.exe: %x\n", status );
+         NtTerminateProcess( GetCurrentProcess(), status );
+     }
++    classify_main_guest( *module );
+     return status;
+ }
+ 
+@@ -1586,6 +1634,10 @@ static void load_ntdll_functions( HMODULE module )
+ #endif
+     unixlib_handle_t *p__wine_unixlib_handle;
+     const IMAGE_EXPORT_DIRECTORY *exports;
++#ifdef __APPLE__
++    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)module;
++    const IMAGE_NT_HEADERS64 *nt = (const IMAGE_NT_HEADERS64 *)((const char *)module + dos->e_lfanew);
++#endif
+ 
+     exports = get_module_data_dir( module, IMAGE_DIRECTORY_ENTRY_EXPORT, NULL );
+     assert( exports );
+@@ -1641,6 +1693,10 @@ static void load_ntdll_functions( HMODULE module )
+         !set_named_export_pointers( module, exports, "__wine_unix_call_dispatcher_arm64ec",
+                                     p__wine_gem_unix_call_dispatcher ))
+         ERR( "__wine_unix_call_dispatcher_arm64ec not found\n" );
++    if (is_x86_64_guest() && gem_prepare_x86_64( module, nt->OptionalHeader.SizeOfImage,
++                                                  p__wine_gem_syscall_dispatcher,
++                                                  p__wine_gem_unix_call_dispatcher ))
++        fatal_error( "failed to prepare GEM_x86_64 ntdll routing\n" );
+ #else
+     *p__wine_syscall_dispatcher = __wine_syscall_dispatcher;
+     if (p__wine_unix_call_dispatcher_arm64ec)
+@@ -1750,7 +1806,8 @@ static void load_ntdll(void)
+ {
+     static WCHAR path[] = {'\\','?','?','\\','C',':','\\','w','i','n','d','o','w','s','\\',
+                            's','y','s','t','e','m','3','2','\\','n','t','d','l','l','.','d','l','l',0};
+-    const char *pe_dir = get_pe_dir( current_machine );
++    const char *pe_dir = get_pe_dir( is_x86_64_guest() ? IMAGE_FILE_MACHINE_AMD64
++                                                        : current_machine );
+     USHORT machine = current_machine;
+     unsigned int status;
+     SECTION_IMAGE_INFORMATION info;
+@@ -1766,7 +1823,7 @@ static void load_ntdll(void)
+     if (build_dir) asprintf( &name, "%s%s/ntdll.dll", ntdll_dir, pe_dir );
+     else asprintf( &name, "%s%s/ntdll.dll", dll_dir, pe_dir );
+ 
+-    if (is_arm64ec()) machine = main_image_info.Machine;
++    if (is_arm64ec() || is_x86_64_guest()) machine = main_image_info.Machine;
+     status = open_builtin_pe_file( name, &attr, &module, &size, &info, 0, 0, machine, FALSE, 0 );
+     if (status == STATUS_DLL_NOT_FOUND)
+     {
+@@ -1790,7 +1847,8 @@ static void load_apiset_dll(void)
+     static WCHAR path[] = {'\\','?','?','\\','C',':','\\','w','i','n','d','o','w','s','\\',
+                            's','y','s','t','e','m','3','2','\\',
+                            'a','p','i','s','e','t','s','c','h','e','m','a','.','d','l','l',0};
+-    const char *pe_dir = get_pe_dir( current_machine );
++    const char *pe_dir = get_pe_dir( is_x86_64_guest() ? IMAGE_FILE_MACHINE_AMD64
++                                                        : current_machine );
+     const IMAGE_NT_HEADERS *nt;
+     const IMAGE_SECTION_HEADER *sec;
+     API_SET_NAMESPACE *map;
+diff --git a/dlls/ntdll/unix/signal_arm64.c b/dlls/ntdll/unix/signal_arm64.c
+index 6eff4e22cd..94aa6e5567 100644
+--- a/dlls/ntdll/unix/signal_arm64.c
++++ b/dlls/ntdll/unix/signal_arm64.c
+@@ -83,6 +83,7 @@ struct arm64_thread_data
+     BOOL gem_logged_unix_call;
+     BOOL gem_logged_callback;
+     struct gem_callback_state *gem_callback;
++    struct gem_thread_context *gem_x64_start_context;
+ #endif
+ };
+ 
+@@ -298,6 +299,273 @@ static NTSTATUS gem_call_syscall( const struct gem_thread_context *context )
+                  args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7] );
+ }
+ 
++struct gem_amd64_machine_frame
++{
++    ULONG64 rip;
++    ULONG64 cs;
++    ULONG64 eflags;
++    ULONG64 rsp;
++    ULONG64 ss;
++};
++
++struct gem_amd64_exception_stack
++{
++    AMD64_CONTEXT context;
++    CONTEXT_EX context_ex;
++    EXCEPTION_RECORD rec;
++    ULONG64 align;
++    struct gem_amd64_machine_frame machine_frame;
++    ULONG64 align2;
++};
++
++C_ASSERT( offsetof(struct gem_amd64_exception_stack, rec) == 0x4f0 );
++C_ASSERT( offsetof(struct gem_amd64_exception_stack, machine_frame) == 0x590 );
++C_ASSERT( sizeof(struct gem_amd64_exception_stack) == 0x5c0 );
++
++static void gem_context_to_amd64( const struct gem_thread_context *source,
++                                  AMD64_CONTEXT *context )
++{
++    memset( context, 0, sizeof(*context) );
++    context->ContextFlags = CONTEXT_AMD64_FULL;
++    context->MxCsr = source->x64_mxcsr;
++    context->EFlags = source->x64_rflags;
++    context->Rax = source->x[8];
++    context->Rcx = source->x[0];
++    context->Rdx = source->x[1];
++    context->Rbx = source->x[27];
++    context->Rsp = source->sp;
++    context->Rbp = source->x[29];
++    context->Rsi = source->x[25];
++    context->Rdi = source->x[26];
++    context->R8 = source->x[2];
++    context->R9 = source->x[3];
++    context->R10 = source->x[4];
++    context->R11 = source->x[5];
++    context->R12 = source->x[19];
++    context->R13 = source->x[20];
++    context->R14 = source->x[21];
++    context->R15 = source->x[22];
++    context->Rip = source->pc;
++    context->FltSave.ControlWord = source->x64_fcw;
++    context->FltSave.StatusWord = source->x64_fsw;
++    context->FltSave.MxCsr = source->x64_mxcsr;
++    memcpy( context->FltSave.XmmRegisters, source->v, sizeof(source->v) );
++    memcpy( context->FltSave.FloatRegisters, source->x87, sizeof(source->x87) );
++}
++
++static void gem_context_from_amd64( struct gem_thread_context *context,
++                                    const AMD64_CONTEXT *source )
++{
++    DWORD flags = source->ContextFlags & ~CONTEXT_AMD64;
++
++    if (flags & CONTEXT_AMD64_INTEGER)
++    {
++        context->x[8] = source->Rax;
++        context->x[0] = source->Rcx;
++        context->x[1] = source->Rdx;
++        context->x[27] = source->Rbx;
++        context->x[25] = source->Rsi;
++        context->x[26] = source->Rdi;
++        context->x[2] = source->R8;
++        context->x[3] = source->R9;
++        context->x[4] = source->R10;
++        context->x[5] = source->R11;
++        context->x[19] = source->R12;
++        context->x[20] = source->R13;
++        context->x[21] = source->R14;
++        context->x[22] = source->R15;
++    }
++    if (flags & CONTEXT_AMD64_CONTROL)
++    {
++        context->sp = source->Rsp;
++        context->x[29] = source->Rbp;
++        context->pc = source->Rip;
++        context->x64_rflags = source->EFlags;
++    }
++    if (flags & CONTEXT_AMD64_FLOATING_POINT)
++    {
++        context->x64_mxcsr = source->MxCsr;
++        context->x64_fcw = source->FltSave.ControlWord;
++        context->x64_fsw = source->FltSave.StatusWord;
++        memcpy( context->v, source->FltSave.XmmRegisters, sizeof(context->v) );
++        memcpy( context->x87, source->FltSave.FloatRegisters, sizeof(context->x87) );
++    }
++    context->x[18] = context->teb;
++    context->stop_reason = GEM_STOP_NONE;
++}
++
++static NTSTATUS gem_dispatch_exception_x86_64( struct gem_thread_context *context,
++                                               const EXCEPTION_RECORD *rec )
++{
++    struct gem_amd64_exception_stack stack = {0};
++    ULONG64 stack_address;
++
++    if (!pKiUserExceptionDispatcher) return STATUS_DLL_INIT_FAILED;
++    gem_context_to_amd64( context, &stack.context );
++    stack.context_ex.Legacy.Length = sizeof(stack.context);
++    stack.context_ex.Legacy.Offset = -(LONG)sizeof(stack.context);
++    stack.context_ex.XState.Length = 25;
++    stack.context_ex.XState.Offset = 0;
++    stack.context_ex.All.Length = sizeof(stack.context) + 24;
++    stack.context_ex.All.Offset = -(LONG)sizeof(stack.context);
++    stack.rec = *rec;
++    stack.machine_frame.rip = stack.context.Rip;
++    stack.machine_frame.rsp = stack.context.Rsp;
++    stack_address = (context->sp - sizeof(stack)) & ~(ULONG64)63;
++    if (virtual_uninterrupted_write_memory( (void *)(uintptr_t)stack_address, &stack,
++                                            sizeof(stack) ))
++        return STATUS_ACCESS_VIOLATION;
++    context->x[29] = stack.context.Rbp;
++    context->sp = stack_address;
++    context->pc = (ULONG64)(uintptr_t)pKiUserExceptionDispatcher;
++    context->stop_reason = GEM_STOP_NONE;
++    return STATUS_SUCCESS;
++}
++
++static NTSTATUS gem_call_syscall_x86_64( struct gem_thread_context *context, BOOL *continued )
++{
++    typedef ULONG_PTR (*syscall_func)(ULONG_PTR, ULONG_PTR, ULONG_PTR, ULONG_PTR,
++                                     ULONG_PTR, ULONG_PTR, ULONG_PTR, ULONG_PTR,
++                                     ULONG_PTR, ULONG_PTR, ULONG_PTR, ULONG_PTR,
++                                     ULONG_PTR, ULONG_PTR, ULONG_PTR, ULONG_PTR);
++    SYSTEM_SERVICE_TABLE *table;
++    const ULONG id = context->x[8];
++    const ULONG table_id = (id >> 12) & 3;
++    const ULONG service_id = id & 0xfff;
++    const ULONG_PTR *stack = (const ULONG_PTR *)(uintptr_t)(context->sp + 0x30);
++    ULONG_PTR args[12] = {0};
++    ULONG stack_bytes;
++    syscall_func func;
++
++    *continued = FALSE;
++
++    table = &KeServiceDescriptorTable[table_id];
++    if (service_id >= table->ServiceLimit) return STATUS_INVALID_SYSTEM_SERVICE;
++    stack_bytes = table->ArgumentTable[service_id];
++    stack_bytes = stack_bytes > 4 * sizeof(ULONG_PTR) ? stack_bytes - 4 * sizeof(ULONG_PTR) : 0;
++    if (stack_bytes > sizeof(args)) return STATUS_INVALID_PARAMETER;
++    if (stack_bytes &&
++        virtual_uninterrupted_read_memory( stack, args, stack_bytes ) != stack_bytes)
++        return STATUS_ACCESS_VIOLATION;
++    func = (syscall_func)(uintptr_t)table->ServiceTable[service_id];
++    if ((void *)(uintptr_t)func == (void *)(uintptr_t)NtContinue)
++    {
++        AMD64_CONTEXT amd64;
++
++        if (context->x[1]) return STATUS_NOT_SUPPORTED;
++        if (virtual_uninterrupted_read_memory( (const void *)(uintptr_t)context->x[0],
++                                               &amd64, sizeof(amd64) ) != sizeof(amd64))
++            return STATUS_ACCESS_VIOLATION;
++        gem_context_from_amd64( context, &amd64 );
++        *continued = TRUE;
++        return STATUS_SUCCESS;
++    }
++    return func( context->x[4], context->x[1], context->x[2], context->x[3],
++                 args[0], args[1], args[2], args[3], args[4], args[5],
++                 args[6], args[7], args[8], args[9], args[10], args[11] );
++}
++
++static enum gem_wine_status gem_signal_boundary_x86_64(
++    struct thread_data *data, const struct gem_wine_boundary_request *request,
++    struct gem_wine_boundary_response *response )
++{
++    struct gem_thread_context *context = &response->context;
++    EXCEPTION_RECORD rec = {0};
++    NTSTATUS status = STATUS_SUCCESS;
++    ULONG64 return_pc;
++    BOOL continued;
++    BYTE opcode[2];
++
++    response->action = GEM_WINE_BOUNDARY_RESUME;
++    *context = request->context;
++    context->stop_reason = GEM_STOP_NONE;
++    switch (request->event)
++    {
++    case GEM_WINE_EVENT_SYSCALL:
++        status = gem_call_syscall_x86_64( context, &continued );
++        if (continued)
++        {
++            TRACE_(gem)("x86_64 NtContinue status=%#x pc=%p sp=%p\n", status,
++                        (void *)(uintptr_t)context->pc, (void *)(uintptr_t)context->sp );
++            break;
++        }
++        if (virtual_uninterrupted_read_memory( (const void *)(uintptr_t)context->pc,
++                                               opcode, sizeof(opcode) ) == sizeof(opcode) &&
++            opcode[0] == 0x0f && opcode[1] == 0x05)
++        {
++            context->x[0] = context->pc + sizeof(opcode); /* syscall saves RIP in RCX */
++            context->x[5] = context->x64_rflags;          /* and RFLAGS in R11 */
++            context->x[8] = status;
++            context->pc += sizeof(opcode);
++            TRACE_(gem)("x86_64 direct syscall id=%#llx status=%#x return=%p\n",
++                        (unsigned long long)request->context.x[8], status,
++                        (void *)(uintptr_t)context->pc );
++            break;
++        }
++        if (virtual_uninterrupted_read_memory( (const void *)(uintptr_t)context->sp,
++                                               &return_pc, sizeof(return_pc) ) != sizeof(return_pc))
++        {
++            response->action = GEM_WINE_BOUNDARY_FAIL;
++            break;
++        }
++        context->x[8] = status;
++        context->pc = return_pc;
++        context->sp += sizeof(return_pc);
++        TRACE_(gem)("x86_64 syscall id=%#llx status=%#x return=%p\n",
++                    (unsigned long long)request->context.x[8], status,
++                    (void *)(uintptr_t)return_pc );
++        break;
++    case GEM_WINE_EVENT_UNIX_CALL:
++    {
++        const unixlib_entry_t *table = (const unixlib_entry_t *)(uintptr_t)context->x[0];
++        const ULONG64 index = context->x[1];
++        context->x[8] = table[index]( (void *)(uintptr_t)context->x[2] );
++        if (virtual_uninterrupted_read_memory( (const void *)(uintptr_t)context->sp,
++                                               &return_pc, sizeof(return_pc) ) != sizeof(return_pc))
++        {
++            response->action = GEM_WINE_BOUNDARY_FAIL;
++            break;
++        }
++        context->pc = return_pc;
++        context->sp += sizeof(return_pc);
++        TRACE_(gem)("x86_64 unix-call index=%llu status=%#llx return=%p\n",
++                    (unsigned long long)index, (unsigned long long)context->x[8],
++                    (void *)(uintptr_t)return_pc );
++        break;
++    }
++    case GEM_WINE_EVENT_MEMORY_FAULT:
++        rec.ExceptionAddress = (void *)(uintptr_t)context->pc;
++        rec.NumberParameters = 2;
++        rec.ExceptionInformation[0] = request->stop.access == GEM_WINE_ACCESS_WRITE
++                                      ? EXCEPTION_WRITE_FAULT
++                                      : request->stop.access == GEM_WINE_ACCESS_FETCH
++                                        ? EXCEPTION_EXECUTE_FAULT : EXCEPTION_READ_FAULT;
++        rec.ExceptionInformation[1] = request->stop.fault_address;
++        status = virtual_handle_fault( data, &rec, (void *)(uintptr_t)context->sp );
++        if (status && status != STATUS_SUCCESS)
++        {
++            if (!rec.ExceptionCode) rec.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
++            if (gem_dispatch_exception_x86_64( context, &rec ))
++                response->action = GEM_WINE_BOUNDARY_FAIL;
++        }
++        break;
++    case GEM_WINE_EVENT_WINDOWS_EXCEPTION:
++        rec.ExceptionAddress = (void *)(uintptr_t)context->pc;
++        rec.ExceptionCode = EXCEPTION_BREAKPOINT;
++        rec.NumberParameters = 1;
++        rec.ExceptionInformation[0] = 0;
++        if (gem_dispatch_exception_x86_64( context, &rec ))
++            response->action = GEM_WINE_BOUNDARY_FAIL;
++        break;
++    case GEM_WINE_EVENT_ASYNC_REQUEST:
++        break;
++    default:
++        response->action = GEM_WINE_BOUNDARY_FAIL;
++        break;
++    }
++    return GEM_WINE_OK;
++}
++
+ static void gem_frame_set_upper_simd( struct thread_data *data, struct syscall_frame *frame )
+ {
+     struct gem_u128 upper[16];
+@@ -344,6 +612,8 @@ enum gem_wine_status gem_signal_boundary(
+ 
+     if (!data || data != get_thread_data() || !data->gem_thread || !request || !response)
+         return GEM_WINE_CALLBACK_ERROR;
++    if (request->context.isa == GEM_ISA_X64)
++        return gem_signal_boundary_x86_64( data, request, response );
+     frame = get_syscall_frame( data );
+     if (!frame || !gem_context_to_frame( frame, &request->context, data->teb ))
+         return GEM_WINE_CALLBACK_ERROR;
+@@ -458,8 +728,18 @@ void DECLSPEC_NORETURN gem_signal_run(void)
+     struct gem_wine_run_result result;
+     enum gem_wine_status status;
+ 
+-    gem_context_from_frame( &context, frame, data->teb );
+-    gem_frame_get_upper_simd( data, frame );
++    if (is_x86_64_guest())
++    {
++        if (!arm64_data->gem_x64_start_context) abort_thread(1);
++        context = *arm64_data->gem_x64_start_context;
++        free( arm64_data->gem_x64_start_context );
++        arm64_data->gem_x64_start_context = NULL;
++    }
++    else
++    {
++        gem_context_from_frame( &context, frame, data->teb );
++        gem_frame_get_upper_simd( data, frame );
++    }
+     TRACE_(gem)("enter pc=%p sp=%p teb=%p\n", (void *)(uintptr_t)context.pc,
+                 (void *)(uintptr_t)context.sp, data->teb );
+     for (;;)
+@@ -1883,6 +2163,8 @@ void signal_free_thread( TEB *teb )
+         arm64_thread_data( data )->gem_callback = callback->previous;
+         free( callback );
+     }
++    free( arm64_thread_data( data )->gem_x64_start_context );
++    arm64_thread_data( data )->gem_x64_start_context = NULL;
+ #endif
+ }
+ 
+@@ -1941,11 +2223,51 @@ void syscall_dispatcher_return_slowpath(void)
+ void init_syscall_frame( LPTHREAD_START_ROUTINE entry, void *arg, TEB *teb )
+ {
+     struct thread_data *data = get_thread_data();
++    struct arm64_thread_data *arm64_data = arm64_thread_data( data );
+     struct syscall_frame *frame = get_syscall_frame( data );
+     CONTEXT *ctx, context = { CONTEXT_ALL };
+     I386_CONTEXT *i386_context;
+     ARM_CONTEXT *arm_context;
+ 
++#if defined(__APPLE__)
++    if (is_x86_64_guest())
++    {
++        AMD64_CONTEXT amd64 = {0}, *amd64_context;
++        struct gem_thread_context *gem_context;
++        ULONG64 guest_return = UINT64_MAX - 15;
++
++        if (data->suspend || arm64_data->gem_x64_start_context) abort_thread(1);
++        amd64.ContextFlags = CONTEXT_AMD64_ALL;
++        amd64.Rcx = (ULONG_PTR)entry;
++        amd64.Rdx = (ULONG_PTR)arg;
++        amd64.Rsp = (ULONG_PTR)teb->Tib.StackBase - 0x28;
++        amd64.Rip = (ULONG_PTR)pRtlUserThreadStart;
++        amd64.EFlags = 0x200;
++        amd64.FltSave.ControlWord = 0x27f;
++        amd64.FltSave.MxCsr = amd64.MxCsr = 0x1f80;
++        amd64_context = (AMD64_CONTEXT *)((ULONG_PTR)amd64.Rsp & ~15) - 1;
++        *amd64_context = amd64;
++        amd64_context->ContextFlags = CONTEXT_AMD64_FULL;
++
++        if (!(gem_context = calloc( 1, sizeof(*gem_context) ))) abort_thread(1);
++        gem_context->layout_version = GEM_CONTEXT_LAYOUT_VERSION;
++        gem_context->context_size = GEM_THREAD_CONTEXT_EXPECTED_SIZE;
++        gem_context->teb = (uint64_t)(uintptr_t)teb;
++        gem_context->x[18] = gem_context->teb;
++        gem_context->isa = GEM_ISA_X64;
++        gem_context->pc = (uint64_t)(uintptr_t)pLdrInitializeThunk;
++        gem_context->sp = (uint64_t)(uintptr_t)amd64_context - sizeof(guest_return);
++        gem_context->x[0] = (uint64_t)(uintptr_t)amd64_context;
++        gem_context->x64_rflags = 0x202;
++        gem_context->x64_mxcsr = 0x1f80;
++        gem_context->x64_fcw = 0x27f;
++        memcpy( (void *)(uintptr_t)gem_context->sp, &guest_return, sizeof(guest_return) );
++        arm64_data->gem_x64_start_context = gem_context;
++        pthread_sigmask( SIG_UNBLOCK, &server_block_set, NULL );
++        return;
++    }
++#endif
++
+     context.X0  = (DWORD64)entry;
+     context.X1  = (DWORD64)arg;
+     context.X18 = (DWORD64)teb;
+diff --git a/dlls/ntdll/unix/unix_private.h b/dlls/ntdll/unix/unix_private.h
+index 28ea6a3b71..e00ddb74b7 100644
+--- a/dlls/ntdll/unix/unix_private.h
++++ b/dlls/ntdll/unix/unix_private.h
+@@ -76,6 +76,14 @@ extern WOW_PEB *wow_peb;
+ extern ULONG_PTR user_space_wow_limit;
+ extern SECTION_IMAGE_INFORMATION main_image_info;
+ 
++enum main_guest_mode
++{
++    MAIN_GUEST_NATIVE,
++    MAIN_GUEST_ARM64EC,
++    MAIN_GUEST_X86_64
++};
++extern enum main_guest_mode main_guest_mode;
++
+ static inline WOW_TEB *get_wow_teb( TEB *teb )
+ {
+     return teb->WowTebOffset ? (WOW_TEB *)((char *)teb + teb->WowTebOffset) : NULL;
+@@ -94,8 +102,12 @@ static inline BOOL is_old_wow64(void)
+ 
+ static inline BOOL is_arm64ec(void)
+ {
+-    return (current_machine == IMAGE_FILE_MACHINE_ARM64 &&
+-            main_image_info.Machine == IMAGE_FILE_MACHINE_AMD64);
++    return main_guest_mode == MAIN_GUEST_ARM64EC;
++}
++
++static inline BOOL is_x86_64_guest(void)
++{
++    return main_guest_mode == MAIN_GUEST_X86_64;
+ }
+ 
+ /* per-thread data for the Unix side, stored at the bottom of the signal stack */
+@@ -301,6 +313,8 @@ extern void *anon_mmap_alloc( size_t size, int prot );
+ extern void virtual_init(void);
+ extern void gem_process_init(void);
+ extern void gem_prepare_arm64ec(void);
++extern NTSTATUS gem_prepare_x86_64( void *module, SIZE_T image_size,
++                                    void *syscall_boundary, void *unix_call_boundary );
+ extern NTSTATUS gem_thread_init( struct thread_data *data );
+ extern void gem_thread_shutdown( struct thread_data *data );
+ extern void gem_process_shutdown( struct thread_data *data );

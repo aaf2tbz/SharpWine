@@ -27,6 +27,7 @@ jobs:
       - run: python3 tools/ci/check-repository.py
       - run: python3 tools/ci/test-check-repository.py
       - run: python3 tools/release/test-release-tools.py
+      - run: python3 tools/release/test-focused-overlay.py
       - run: python3 tools/release/validate-wine-patches.py
       - run: python3 tools/release/test-wine-patches.py
       - run: >-
@@ -34,12 +35,20 @@ jobs:
           tools/audit_blink_memory_order.py
           tools/audit_blink_embedding.py
           tools/ci/check-repository.py
+          tools/ci/build-x86-64-exit-fixture.py
           tools/ci/create-arm64x-issue14-bundle.py
           tools/ci/run-blink-tso-conformance.py
           tools/ci/test-check-repository.py
           tools/ci/validate-arm64x-issue14-artifact.py
           tools/ci/validate-blink-tso-evidence.py
           tools/release/repackage-published-runtime.py
+          tools/release/prepare-published-foundation.py
+          tools/release/apply-focused-overlay.py
+          tools/release/apply-runtime-patches.py
+          tools/release/create-focused-overlay.py
+          tools/release/create-runtime-patch-provenance.py
+          tools/release/finalize-x86-64-evidence.py
+          tools/release/reconstruct-x86-64-fixture.py
           tools/release/validate-release-assets.py
           tools/release/validate-readiness.py
           tools/release/validate-wine-patches.py
@@ -176,7 +185,7 @@ jobs:
           "${{ runner.temp }}/blink-tso/evidence.json"
 
   blink-x64-engine:
-    name: Real Blink interpreter adapter (native macOS ARM64)
+    name: GEM_x86_64 JIT and interpreter oracle (native macOS ARM64)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -184,16 +193,42 @@ jobs:
           persist-credentials: false
       - run: test "$(uname -m)" = arm64
       - run: test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = 0
-      - run: brew install make
       - run: >-
           cmake -S . -B build-x64
           -DMSWR_ENABLE_X64_ENGINE=ON
           -DMSWR_X64_ENGINE_CONFORMANCE=ON
           -DMSWR_WARNINGS_AS_ERRORS=ON
       - run: cmake --build build-x64 --parallel
-      - run: ctest --test-dir build-x64 -R gem.x64_engine_conformance --output-on-failure
+      - run: >-
+          ctest --test-dir build-x64 --output-on-failure
+          -R 'gem.x(64_engine|86_64_jit)_conformance'
       - run: tools/ci/audit-zero-rosetta.sh build-x64
-      - run: test -z "$(grep HAVE_JIT build-x64/_deps/blink_gem-src/config.h || true)"
+      - run: grep -q '^#define HAVE_JIT' build-x64/_deps/blink_gem-src/blink/builtin.h
+      - run: test -z "$(grep DISABLE_JIT build-x64/generated/blink-gem/config.h || true)"
+      - run: >-
+          test "$(file build-x64/x86_64_jit_conformance)" =
+          "build-x64/x86_64_jit_conformance: Mach-O 64-bit executable arm64"
+      - name: Fetch pinned native LLVM-MinGW fixture toolchain
+        env:
+          LLVM_MINGW_ARCHIVE: llvm-mingw-20260616-ucrt-macos-universal.tar.xz
+          LLVM_MINGW_SHA256: 2cab02a2e964bd4aae981150a45985d07c657cfa8d244959eb9e2dcc5eedd7b1
+        run: |
+          archive="${{ runner.temp }}/$LLVM_MINGW_ARCHIVE"
+          curl --fail --location --silent --show-error \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/$LLVM_MINGW_ARCHIVE" \
+            --output "$archive"
+          printf '%s  %s\n' "$LLVM_MINGW_SHA256" "$archive" | shasum -a 256 -c -
+          tar -xJf "$archive" -C "${{ runner.temp }}"
+      - name: Build exact AMD64 PE32+ startup fixture twice
+        run: >-
+          python3 tools/ci/build-x86-64-exit-fixture.py
+          --toolchain "${{ runner.temp }}/llvm-mingw-20260616-ucrt-macos-universal"
+          --output "${{ runner.temp }}/x86-64-fixture"
+          --commit "${{ github.sha }}"
+      - run: >-
+          test "$(file '${{ runner.temp }}/x86-64-fixture/x86_64_exit.exe')" =
+          "${{ runner.temp }}/x86-64-fixture/x86_64_exit.exe: PE32+ executable (console) x86-64, for MS Windows"
+      - run: test -z "$(git status --porcelain --untracked-files=all)"
 
   arm64x-toolchain-probe:
     name: ARM64X toolchain probe (native Windows ARM64)
@@ -422,7 +457,8 @@ jobs:
       - run: arch -arm64 cmake --build build-roundtrip --parallel
       - run: >-
           arch -arm64 ctest --test-dir build-roundtrip --output-on-failure
-          -R 'gem.(arm64x_roundtrip|wine_arm64x_conformance|wine_bridge_conformance|arm64ec_engine_conformance|x64_engine_conformance|pe_arm64x_loader_test|context_conversion_test)'
+          -R 'gem.(arm64x_roundtrip|wine_arm64x_conformance|wine_bridge_conformance|wine_x86_64_bridge_conformance|arm64ec_engine_conformance|x64_engine_conformance|x86_64_jit_conformance|pe_arm64x_loader_test|context_conversion_test)'
       - run: tools/ci/audit-zero-rosetta.sh build-roundtrip
-      - run: test -z "$(grep HAVE_JIT build-roundtrip/_deps/blink_gem-src/config.h || true)"
+      - run: grep -q '^#define HAVE_JIT' build-roundtrip/_deps/blink_gem-src/blink/builtin.h
+      - run: test -z "$(grep DISABLE_JIT build-roundtrip/generated/blink-gem/config.h || true)"
       - run: test -z "$(git status --porcelain --untracked-files=all)"

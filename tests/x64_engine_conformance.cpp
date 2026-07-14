@@ -87,12 +87,21 @@ int main() {
     map(m, STACK, 4096, GEM_PAGE_READWRITE);
     gem_x64_runtime_config cfg{};
     cfg.max_budget = 100;
+    cfg.engine_mode = GEM_X86_64_ENGINE_INTERPRETER;
     gem_x64_runtime *r = gem_x64_runtime_create(m, &cfg);
     assert(r);
     assert(
         strstr(gem_x64_runtime_engine_provenance(r),
-               "patch-sha256=36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03") !=
+               "patch-sha256=f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807") !=
         nullptr);
+    gem_x86_64_engine_info engine_info{};
+    engine_info.abi_version = 1U;
+    engine_info.size = sizeof(engine_info);
+    assert(gem_x64_runtime_engine_info(r, &engine_info));
+    assert(engine_info.engine_mode == GEM_X86_64_ENGINE_INTERPRETER);
+    assert(engine_info.host_arch == GEM_X86_64_HOST_AARCH64);
+    assert(engine_info.jit_compilations == 0U && engine_info.jit_executions == 0U &&
+           engine_info.jit_failures == 0U);
     gem_thread_context c{};
     init(c);
     uint8_t nop = 0x90;
@@ -123,22 +132,19 @@ int main() {
     uint64_t out = 0;
     assert(gem_memory_read(m, DATA + 8, &out, 8) == GEM_MEMORY_OK && out == value);
 
-    /* Pinned Blink's established opcode table decodes 0x50 as OpPushZvq.
-     * It is intentionally absent from the reviewed handler manifest. */
+    /* Decoded user-mode instructions outside the stable diagnostic manifest
+     * receive a deterministic mopcode-derived id and still retire through the
+     * checked one-instruction transaction. */
     const uint8_t push_rax = 0x50;
     assert(gem_memory_write(m, CODE, &push_rax, 1) == GEM_MEMORY_OK);
     init(c);
-    uint8_t stack_before[8]{};
-    assert(gem_memory_read(m, c.sp - 8, stack_before, sizeof(stack_before)) == GEM_MEMORY_OK);
-    auto unsupported_before = c;
-    auto unsupported_expected = c;
-    unsupported_expected.stop_reason = GEM_STOP_UNSUPPORTED_INSTRUCTION;
-    assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
-    assert(!memcmp(&c, &unsupported_expected, sizeof(c)));
-    uint8_t stack_after[8]{};
-    assert(gem_memory_read(m, unsupported_before.sp - 8, stack_after, sizeof(stack_after)) ==
-           GEM_MEMORY_OK);
-    assert(!memcmp(stack_before, stack_after, sizeof(stack_before)));
+    c.x[8] = UINT64_C(0x8877665544332211);
+    const uint64_t push_sp = c.sp;
+    assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+    assert(c.pc == CODE + 1U && c.sp == push_sp - sizeof(uint64_t));
+    uint64_t pushed = 0U;
+    assert(gem_memory_read(m, c.sp, &pushed, sizeof(pushed)) == GEM_MEMORY_OK &&
+           pushed == UINT64_C(0x8877665544332211));
 
     assert(gem_memory_write(m, CODE, loadstore, 3) == GEM_MEMORY_OK);
     init(c);
@@ -261,28 +267,38 @@ int main() {
     assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
     assert(c.pc == CODE);
 
+    const uint8_t int3 = 0xcc;
+    assert(gem_memory_write(m, CODE, &int3, 1) == GEM_MEMORY_OK);
+    init(c);
+    assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_WINDOWS_EXCEPTION);
+    assert(c.pc == CODE);
+    assert(gem_x64_runtime_last_stop_info(r, &info) && info.reason == GEM_STOP_WINDOWS_EXCEPTION);
+
     uint8_t x87[] = {0xd9, 0xe8};
     assert(gem_memory_write(m, CODE, x87, 2) == GEM_MEMORY_OK);
     init(c);
-    assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
-    assert(!memcmp(c.x87, before.x87, sizeof(c.x87)));
+    assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+    assert(c.pc == CODE + sizeof(x87));
     uint8_t mmx[] = {0x0f, 0x6f, 0xc0};
     assert(gem_memory_write(m, CODE, mmx, sizeof(mmx)) == GEM_MEMORY_OK);
     init(c);
-    assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
-    assert(!memcmp(c.x87, before.x87, sizeof(c.x87)));
+    assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+    assert(c.pc == CODE + sizeof(mmx));
 
+    /* Transactional shadow pages are a bounded FIFO cache, not a process-wide
+     * execution limit.  Crossing the 64-page capacity must keep running. */
     constexpr uint64_t chain = 0x100000;
     const uint8_t jump_page[] = {0xe9, 0xfb, 0x0f, 0, 0};
-    for (unsigned i = 0; i < 64; ++i) {
+    for (unsigned i = 0; i < 66; ++i) {
         map(m, chain + i * 4096U, 4096, GEM_PAGE_EXECUTE_READWRITE);
         assert(gem_memory_write(m, chain + i * 4096U, jump_page, sizeof(jump_page)) ==
                GEM_MEMORY_OK);
     }
     init(c);
     c.pc = chain;
-    assert(gem_x64_runtime_run(r, &c, 64) == GEM_STOP_INVARIANT_VIOLATION);
-    assert(gem_x64_runtime_last_stop_info(r, &info) && info.engine_status == UINT32_MAX);
+    assert(gem_x64_runtime_run(r, &c, 65) == GEM_STOP_BUDGET_EXPIRED);
+    assert(c.pc == chain + 65 * 4096U);
+    assert(gem_x64_runtime_last_stop_info(r, &info) && info.engine_status == 0);
 
     auto malformed = c;
     malformed.layout_version = 99;
@@ -334,9 +350,12 @@ int main() {
         gem_x64_runtime_handler_trace_reset(r);
         assert(gem_memory_write(m, CODE, &push_rax, 1) == GEM_MEMORY_OK);
         init(c);
-        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
         assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow) &&
-               trace_count == 0U && trace_overflow == 0U);
+               trace_count == 1U && trace_overflow == 0U &&
+               gem_x64_runtime_handler_trace_read(r, 0, &trace_rip, &trace_id) &&
+               trace_rip == CODE && trace_id == BLINK_GEM_HANDLER_DECODED_BASE + 0x050U &&
+               !strcmp(gem_x64_runtime_handler_name(trace_id), "OpPushZvq"));
 
         /* Determinism: identical repeated program yields an identical trace. */
         const uint8_t alu_then_mov[] = {0x48, 0x83, 0xc1, 0x02, 0x48, 0x8b, 0xc1};
@@ -373,7 +392,7 @@ int main() {
 
     /* Decoder-owned "last decode attempt" diagnostic: Blink's own
      * Mopcode()/DescribeMopcode() identity is surfaced verbatim, including for
-     * unsupported opcodes outside the reviewed handler manifest.  Pre-decode
+     * denied opcodes outside the decoded user-mode policy.  Pre-decode
      * faults must leave valid=0 with an empty name.  The wrapper validates
      * abi_version/size on entry and copies Blink-owned storage into caller
      * storage; the returned name lifetime is bound to the runtime. */
@@ -398,7 +417,7 @@ int main() {
         assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
         assert(!attempt.valid && attempt.name[0] == '\0');
 
-        /* Successful LoadInstruction with an allowlisted handler: identity is
+        /* Successful LoadInstruction with an admitted handler: identity is
          * Blink's own decode-dispatch result (handler_id != 0, name matches). */
         gem_x64_runtime_handler_trace_reset(r);
         assert(gem_memory_write(m, CODE, &nop, 1) == GEM_MEMORY_OK);
@@ -408,7 +427,7 @@ int main() {
         assert(attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_NOP &&
                !strcmp(attempt.name, "OpNop") && attempt.rip == CODE);
 
-        /* Reviewed LEA retires with Blink's decoder-owned handler id. */
+        /* LEA retires with Blink's stable decoder-owned handler id. */
         gem_x64_runtime_handler_trace_reset(r);
         const uint8_t lea[] = {0x48, 0x8d, 0x05, 0x2a, 0x00, 0x00, 0x00};
         assert(gem_memory_write(m, CODE, lea, sizeof(lea)) == GEM_MEMORY_OK);
@@ -439,7 +458,7 @@ int main() {
                !strcmp(attempt.name, "OpAluwFlip") && attempt.rip == CODE);
 
         /* The authentic x64 fixture also uses ADD EAX,ECX. The 32-bit form
-         * shares the same reviewed handler and must zero-extend its result. */
+         * shares the stable handler id and must zero-extend its result. */
         gem_x64_runtime_handler_trace_reset(r);
         const uint8_t add_eax_ecx[] = {0x03, 0xc1};
         assert(gem_memory_write(m, CODE, add_eax_ecx, sizeof(add_eax_ecx)) == GEM_MEMORY_OK);
@@ -486,14 +505,18 @@ int main() {
                attempt.handler_id == BLINK_GEM_HANDLER_OP_ALU_FLIP &&
                !strcmp(attempt.name, "OpAluwFlip"));
 
-        /* The 64-bit XOR variant still resolves to the shared handler but is
-         * outside the reviewed fixture form. */
+        /* The 64-bit XOR variant resolves to the shared handler and receives
+         * the deterministic decoded-instruction id. */
         const uint8_t xor_rax_rcx[] = {0x48, 0x33, 0xc1};
         assert(gem_memory_write(m, CODE, xor_rax_rcx, sizeof(xor_rax_rcx)) == GEM_MEMORY_OK);
         init(c);
-        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
+        c.x[8] = UINT64_C(0xf0f00ff00f0ff00f);
+        c.x[0] = UINT64_C(0x0ff0f00ff0f00ff0);
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(c.pc == CODE + sizeof(xor_rax_rcx) && c.x[8] == UINT64_C(0xff00ffffffffffff));
         assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
-        assert(attempt.valid && attempt.mopcode == 0x033U && attempt.handler_id == 0U &&
+        assert(attempt.valid && attempt.mopcode == 0x033U &&
+               attempt.handler_id == BLINK_GEM_HANDLER_DECODED_BASE + 0x033U &&
                !strcmp(attempt.name, "OpAluwFlip"));
 
         /* The authentic variadic path uses TEST ECX,ECX for its zero-count
@@ -513,7 +536,7 @@ int main() {
                !strcmp(attempt.name, "OpAluwTest"));
 
         /* MOVSXD RAX,dword ptr [RBX+8] models the fixture's signed variadic
-         * load while exercising the reviewed memory form. */
+         * load while exercising the stable checked-memory form. */
         const int32_t signed_value = -7;
         assert(gem_memory_write(m, DATA + 8U, &signed_value, sizeof(signed_value)) ==
                GEM_MEMORY_OK);
@@ -551,20 +574,27 @@ int main() {
                attempt.handler_id == BLINK_GEM_HANDLER_OP_NOP_EV &&
                !strcmp(attempt.name, "OpNopEv"));
 
-        /* 16-bit width and memory ModR/M remain outside the narrow rule. */
-        const std::array<std::array<uint8_t, 3>, 2> rejected_adds = {
+        /* Alternate widths and checked-memory forms use the decoded policy. */
+        const std::array<std::array<uint8_t, 3>, 2> decoded_adds = {
             {{0x66, 0x03, 0xc1}, {0x48, 0x03, 0x01}}};
-        for (const auto &rejected_add : rejected_adds) {
+        for (unsigned index = 0; index < decoded_adds.size(); ++index) {
+            const auto &decoded_add = decoded_adds[index];
             gem_x64_runtime_handler_trace_reset(r);
-            assert(gem_memory_write(m, CODE, rejected_add.data(), rejected_add.size()) ==
+            assert(gem_memory_write(m, CODE, decoded_add.data(), decoded_add.size()) ==
                    GEM_MEMORY_OK);
             init(c);
-            auto rejected_expected = c;
-            rejected_expected.stop_reason = GEM_STOP_UNSUPPORTED_INSTRUCTION;
-            assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
-            assert(!memcmp(&c, &rejected_expected, sizeof(c)));
+            c.x[8] = index ? 7U : UINT64_C(0x123456789abc0007);
+            c.x[0] = index ? DATA : 5U;
+            const uint64_t add_memory_value = 5U;
+            if (index)
+                assert(gem_memory_write(m, DATA, &add_memory_value, sizeof(add_memory_value)) ==
+                       GEM_MEMORY_OK);
+            assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+            assert(c.pc == CODE + decoded_add.size());
+            assert(c.x[8] == (index ? 12U : UINT64_C(0x123456789abc000c)));
             assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
-            assert(attempt.valid && attempt.mopcode == 0x003U && attempt.handler_id == 0U &&
+            assert(attempt.valid && attempt.mopcode == 0x003U &&
+                   attempt.handler_id == BLINK_GEM_HANDLER_DECODED_BASE + 0x003U &&
                    !strcmp(attempt.name, "OpAluwFlip") && attempt.rip == CODE);
         }
 
@@ -603,13 +633,20 @@ int main() {
         assert(attempt.valid && attempt.handler_id == BLINK_GEM_HANDLER_OP_SUB_PSD &&
                !strcmp(attempt.name, "OpSubpsd") && attempt.rip == CODE);
 
-        for (const std::array<uint8_t, 4> rejected_sse :
+        for (const std::array<uint8_t, 4> decoded_sse :
              {std::array<uint8_t, 4>{0x66, 0x0f, 0x58, 0xc0},
               std::array<uint8_t, 4>{0xf3, 0x0f, 0x58, 0xc0}}) {
-            assert(gem_memory_write(m, CODE, rejected_sse.data(), rejected_sse.size()) ==
+            assert(gem_memory_write(m, CODE, decoded_sse.data(), decoded_sse.size()) ==
                    GEM_MEMORY_OK);
             init(c);
-            assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
+            c.v[0].lo = 0U;
+            c.v[0].hi = 0U;
+            assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+            assert(c.pc == CODE + decoded_sse.size());
+            assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+            assert(attempt.valid && attempt.mopcode == 0x158U &&
+                   attempt.handler_id == BLINK_GEM_HANDLER_DECODED_BASE + 0x158U &&
+                   !strcmp(attempt.name, "OpAddpsd"));
         }
 
         /* Reviewed relative CALL transactionally pushes its return address and
@@ -666,17 +703,19 @@ int main() {
                attempt.handler_id == BLINK_GEM_HANDLER_OP_JMP_EQ &&
                !strcmp(attempt.name, "Op0ff") && attempt.rip == CODE);
 
-        /* Operand-size-overridden near indirect branches remain fail-closed;
-         * only the long-mode 64-bit forms used by Wine are admitted. */
-        const uint8_t indirect_jump_16[] = {0x66, 0xff, 0xe0};
-        assert(gem_memory_write(m, CODE, indirect_jump_16, sizeof(indirect_jump_16)) ==
-               GEM_MEMORY_OK);
+        /* GEM owns syscall delivery. Blink's Linux handler remains denied,
+         * while the decoded instruction is surfaced as a Windows boundary. */
+        const uint8_t denied_syscall[] = {0x0f, 0x05};
+        assert(gem_memory_write(m, CODE, denied_syscall, sizeof(denied_syscall)) == GEM_MEMORY_OK);
         init(c);
-        const auto rejected_indirect = c;
-        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
-        assert(c.pc == rejected_indirect.pc && c.sp == rejected_indirect.sp);
+        const auto denied_before = c;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_SYSCALL);
+        assert(c.pc == denied_before.pc && c.sp == denied_before.sp);
+        assert(gem_x64_runtime_last_stop_info(r, &info) &&
+               info.engine_status == GEM_X64_BOUNDARY_WINDOWS_SYSCALL);
         assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
-        assert(attempt.valid && attempt.mopcode == 0x0ffU && attempt.handler_id == 0U);
+        assert(attempt.valid && attempt.mopcode == 0x105U && attempt.handler_id == 0U &&
+               !strcmp(attempt.name, "OpSyscall"));
 
         /* CALL's return-record write is transactional on an unwritable stack. */
         assert(gem_memory_write(m, CODE, call, sizeof(call)) == GEM_MEMORY_OK);
@@ -759,7 +798,7 @@ int main() {
 
     /* >256 instruction overflow test: prove the trace is sticky, non-wrapping,
      * retains the first BLINK_GEM_MAX_TRACE_ENTRIES entries, resets cleanly on
-     * demand, and never alters guest execution, allowlisting, or committed
+     * demand, and never alters guest execution, admission, or committed
      * architectural state.  We step the same NOP BLINK_GEM_MAX_TRACE_ENTRIES + 8
      * times through the x64 runtime: the trace must hold exactly 256 entries
      * with overflow=1, the first retired RIP must still be CODE, and the
@@ -826,6 +865,7 @@ int main() {
         map(ctrl_m, STACK, 4096, GEM_PAGE_READWRITE);
         gem_x64_runtime_config ctrl_cfg{};
         ctrl_cfg.max_budget = 100U;
+        ctrl_cfg.engine_mode = GEM_X86_64_ENGINE_INTERPRETER;
         gem_x64_runtime *ctrl_r = gem_x64_runtime_create(ctrl_m, &ctrl_cfg);
         assert(ctrl_r);
         assert(gem_memory_write(ctrl_m, CODE, overflow_nops.data(), overflow_nops.size()) ==

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "commit": "1f702de4e653632aa256f7194ac88080ac4a90be",
+  "builds": 2,
+  "byteIdentical": true,
+  "host": {
+    "os": "macOS",
+    "architecture": "arm64",
+    "rosetta": false
+  },
+  "source": {
+    "path": "tests/fixtures/x86_64_exit.c",
+    "sha256": "7f396421b2ad4a9242ee95aa97391062adf703762085912ca17a0f37fa1dc3b3"
+  },
+  "toolchain": {
+    "compiler": "x86_64-w64-mingw32-clang",
+    "sha256": "c9b86311ade81d53235c93fafabdf98328d094de344ea9a9038e0dab6695ee9f"
+  },
+  "fixture": {
+    "path": "x86_64_exit.exe",
+    "sha256": "6bd63780629daf28abf168765f6b5f92a4b914601cfbc873930234931428c834",
+    "size": 3584,
+    "machine": 34404,
+    "sections": 4,
+    "timestamp": 0,
+    "entryPointRva": 4096
+  }
+}

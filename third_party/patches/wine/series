@@ -10,3 +10,4 @@
 0010-ntdll-register-arm64x-images-with-gem.patch
 0011-setupapi-add-bounded-native-bootstrap-mode.patch
 0012-ntdll-preserve-hybrid-budget-context.patch
+0013-ntdll-route-pure-amd64-guests-through-gem-x86-64.patch

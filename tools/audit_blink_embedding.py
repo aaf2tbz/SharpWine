@@ -39,6 +39,17 @@ TRACE_IDENTITIES = UNRESTRICTED_HANDLERS + (
     "OpMovslGdqpEd",
     "OpNopEv",
 )
+DENIED_HANDLERS = (
+    "OpUd",
+    "OpSyscall",
+    "OpHlt",
+    "OpCli",
+    "OpSti",
+    "OpInterrupt1",
+    "OpInterrupt3",
+    "OpInterruptImm",
+    "OpInto",
+)
 
 
 def digest_bytes(data):
@@ -91,7 +102,10 @@ def audit_handlers(source_root, provenance, machine_text):
     need(len(names) == len(set(names)), "duplicate handler manifest entry")
 
     compared = tuple(re.findall(r"handler == (Op[A-Za-z0-9_]+)", machine_text))
-    need(compared == APPROVED_HANDLER_DEFINITIONS, "compiled handler allowlist drift")
+    need(
+        compared == APPROVED_HANDLER_DEFINITIONS + DENIED_HANDLERS,
+        "compiled handler admission/denylist drift",
+    )
 
     for entry in manifest:
         name = entry["name"]
@@ -112,10 +126,10 @@ def audit_handlers(source_root, provenance, machine_text):
 
 def audit_trace(provenance, machine_text, embedding_text, embedding_header):
     # The decoder-owned handler identity is the single authority for both the
-    # allowlist decision and the diagnostic trace id.  GemHandlerId maps the
-    # exact Blink handler pointer to a stable 1..19 id. Shared/group handlers
-    # may be
-    # narrowed by Blink's already-decoded mopcode; no byte decoder is added.
+    # admission decision and diagnostic trace id. GemHandlerId retains stable
+    # 1..19 ids for the accepted corpus, denies host/system boundaries by exact
+    # handler identity, and assigns all other decoded safe instructions a
+    # deterministic 0x1000+mopcode id. No second byte decoder is added.
     mapped = tuple(
         (name, int(value))
         for name, value in re.findall(
@@ -142,6 +156,15 @@ def audit_trace(provenance, machine_text, embedding_text, embedding_header):
         if value != "0"
     )
     need(returned_ids == tuple(range(1, 20)), "GemHandlerId numbering/coverage drift")
+    need(
+        "return 0x1000 + Mopcode(rde);" in machine_text,
+        "decoded-handler identity fallback missing",
+    )
+    need(
+        "BLINK_GEM_HANDLER_DECODED_BASE" in embedding_header
+        and "DescribeMopcode(id - BLINK_GEM_HANDLER_DECODED_BASE)" in embedding_text,
+        "decoded-handler diagnostic mapping missing",
+    )
     restricted = provenance["handlerTrace"]["restrictions"]
     need(
         restricted
@@ -164,6 +187,22 @@ def audit_trace(provenance, machine_text, embedding_text, embedding_header):
     need(
         "return GemHandlerId(handler, rde) != 0;" in machine_text,
         "GemIsAllowedHandler not derived from GemHandlerId",
+    )
+    need(
+        "m->gemembed ||\n        (opclass != kOpPrecious && opclass != kOpSerializing)"
+        in machine_text
+        and machine_text.count(
+            "unassert(m->gemembed || opclass == kOpNormal || opclass == kOpBranching);"
+        )
+        == 2,
+        "GEM serializing-instruction JIT admission drift",
+    )
+    jit_policy = provenance.get("jitPolicy", {})
+    need(
+        jit_policy.get("pathBound") == "exactly one decoded instruction per GEM path"
+        and jit_policy.get("productionFallback")
+        == "none; interpreter mode is an explicit test oracle only",
+        "bounded JIT policy provenance drift",
     )
 
     # Identity must originate at Blink's own selected decode/dispatch handler.
@@ -196,11 +235,11 @@ def audit_trace(provenance, machine_text, embedding_text, embedding_header):
 
 def audit_decode_attempt(provenance, machine_text, embedding_text, embedding_header):
     # The "last decode attempt" record captures Blink's own decode dispatch
-    # result for every LoadInstruction, including handlers or mopcode variants
-    # outside the reviewed set. It is reset on every step, populated
+    # result for every LoadInstruction, including denied handlers. It is reset
+    # on every step, populated
     # immediately after a successful LoadInstruction using Blink's own
     # Mopcode()/DescribeMopcode() helpers, and never influences execution,
-    # allowlisting, or committed architectural state.
+    # admission, or committed architectural state.
     need(
         "BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION" in embedding_header,
         "decode attempt ABI version missing",
@@ -274,25 +313,32 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--patch", type=Path, required=True)
+    parser.add_argument("--jit-patch", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 2, "provenance schema")
+    need(provenance["schemaVersion"] == 3, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
+    need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
 
     embedding = (args.source / "blink/gem_embed.c").read_text()
     embedding_header = (args.source / "blink/gem_embed.h").read_text()
     machine = (args.source / "blink/machine.c").read_text()
+    fusion = (args.source / "blink/fusion.c").read_text()
+    jit = (args.source / "blink/jit.c").read_text()
+    jit_header = (args.source / "blink/jit.h").read_text()
+    instruction = (args.source / "blink/instruction.c").read_text()
     throw = (args.source / "blink/throw.c").read_text()
     for symbol in (
         "NewSystem(",
         "NewMachine(",
         "LoadInstruction(",
         "GetOp(",
+        "GemCompileInstruction(",
         "ExecuteInstruction(",
         "ReserveVirtual(",
         "ProtectVirtual(",
@@ -304,11 +350,44 @@ def main():
         "Immediate(",
         "DecodeInstruction(",
         "switch (op",
-        "pthread_jit",
-        "MAP_JIT",
-        "APRR",
     ):
         need(forbidden not in embedding, f"forbidden {forbidden}")
+
+    for required in (
+        "blink_gem_machine_create_with_config(",
+        "BLINK_GEM_ENGINE_JIT",
+        "pthread_once_(&g_blink_gem_init_once, blink_gem_init_runtime)",
+        "InitMap();",
+        "jit_compilations",
+        "write_xor_execute",
+        "drop_page(g, 0)",
+    ):
+        need(required in embedding, f"missing bounded JIT embedding invariant {required}")
+    need("m->gemembed || opclass == kOpBranching" in machine, "JIT path is not one instruction")
+    need(
+        "(m->gemembed || !op_overlaps_page_boundary)" in machine
+        and "page - 4096" in embedding,
+        "GEM cross-page instruction JIT/invalidation contract missing",
+    )
+    need(
+        "m->faultaddr = ip + i;" in instruction
+        and "if (!m->gemembed || !m->faultaddr) m->faultaddr = pc;" in instruction,
+        "GEM cross-page decode fault address missing",
+    )
+    need(
+        fusion.count("if (m->gemembed) return false;") == 2,
+        "GEM branch fusion can consume more than one decoded instruction",
+    )
+    need(
+        "GeneralDispatch(DISPATCH_NOTHING);" in machine
+        and "hook && hook != JitlessDispatch" in machine
+        and "if (!GemCompileInstruction(m))" in embedding,
+        "GEM compile path may accept an interpreter staging hook",
+    )
+    need("#ifdef BLINK_GEM_EMBEDDING" in jit_header, "bounded JIT sizing missing")
+    need("#define kJitMemorySize   1048576" in jit_header, "bounded JIT arena drift")
+    need("pthread_jit_write_protect_np(enabled);" in jit, "Apple JIT W^X control missing")
+    need("__builtin_add_overflow" in jit, "64-bit JIT arena alignment guard missing")
 
     audit_handlers(args.source, provenance, machine)
     audit_trace(provenance, machine, embedding, embedding_header)
@@ -317,7 +396,7 @@ def main():
         "if (m->gemembed)" in throw and "siglongjmp(m->onhalt, code)" in throw,
         "structured halt missing",
     )
-    print("real Blink interpreter embedding audit passed")
+    print("real Blink bounded interpreter/JIT embedding audit passed")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,15 @@
 #include "x64_engine_internal.h"
 #include <stdlib.h>
 #include <string.h>
+
+static uint32_t boundary_status(const struct gem_x64_runtime *r, uint64_t pc) {
+    if (r->config.windows_syscall_boundary && pc == r->config.windows_syscall_boundary)
+        return GEM_X64_BOUNDARY_WINDOWS_SYSCALL;
+    if (r->config.unix_call_boundary && pc == r->config.unix_call_boundary)
+        return GEM_X64_BOUNDARY_UNIX_CALL;
+    return 0;
+}
+
 struct gem_x64_runtime *gem_x64_runtime_create(struct gem_memory *m,
                                                const struct gem_x64_runtime_config *c) {
     struct gem_x64_runtime *r;
@@ -10,11 +19,29 @@ struct gem_x64_runtime *gem_x64_runtime_create(struct gem_memory *m,
     r = calloc(1, sizeof(*r));
     if (!r)
         return 0;
+    atomic_init(&r->async_stop_requested, false);
     r->memory = m;
     if (c)
         r->config = *c;
+    if (r->config.reserved || (r->config.engine_mode != GEM_X86_64_ENGINE_DEFAULT &&
+                               r->config.engine_mode != GEM_X86_64_ENGINE_JIT &&
+                               r->config.engine_mode != GEM_X86_64_ENGINE_INTERPRETER)) {
+        free(r);
+        return 0;
+    }
+    if (r->config.engine_mode == GEM_X86_64_ENGINE_DEFAULT)
+        r->config.engine_mode = GEM_X86_64_ENGINE_JIT;
     if (!r->config.host_return_sentinel)
         r->config.host_return_sentinel = GEM_X64_DEFAULT_HOST_RETURN_SENTINEL;
+    if ((r->config.windows_syscall_boundary &&
+         r->config.windows_syscall_boundary == r->config.host_return_sentinel) ||
+        (r->config.unix_call_boundary &&
+         r->config.unix_call_boundary == r->config.host_return_sentinel) ||
+        (r->config.windows_syscall_boundary && r->config.unix_call_boundary &&
+         r->config.windows_syscall_boundary == r->config.unix_call_boundary)) {
+        free(r);
+        return 0;
+    }
     if (!gem_x64_blink_create(r)) {
         free(r);
         return 0;
@@ -37,7 +64,7 @@ enum gem_stop_reason gem_x64_runtime_run(struct gem_x64_runtime *r, struct gem_t
     memset(&r->last_stop, 0, sizeof(r->last_stop));
     r->last_instruction_was_call = false;
     r->last_instruction_was_ret = false;
-    if (r->running || !gem_context_x64_materialize(c, &in) ||
+    if (r->running || r->backend_failed || !gem_context_x64_materialize(c, &in) ||
         (r->config.max_budget && budget > r->config.max_budget)) {
         r->last_stop.reason = GEM_STOP_INVARIANT_VIOLATION;
         return GEM_STOP_INVARIANT_VIOLATION;
@@ -50,6 +77,20 @@ enum gem_stop_reason gem_x64_runtime_run(struct gem_x64_runtime *r, struct gem_t
     r->running = true;
     while (retired < budget) {
         uint32_t one = 0;
+        if (in.rip == r->config.host_return_sentinel) {
+            reason = GEM_STOP_HOST_RETURN;
+            break;
+        }
+        if (atomic_exchange_explicit(&r->async_stop_requested, false, memory_order_acq_rel)) {
+            reason = GEM_STOP_ASYNC_REQUEST;
+            break;
+        }
+        const uint32_t boundary = boundary_status(r, in.rip);
+        if (boundary) {
+            r->last_stop.engine_status = boundary;
+            reason = GEM_STOP_SYSCALL;
+            break;
+        }
         r->transaction = gem_memory_transaction_begin(r->memory);
         if (!r->transaction) {
             reason = GEM_STOP_INVARIANT_VIOLATION;
@@ -86,6 +127,10 @@ bool gem_x64_runtime_last_stop_info(const struct gem_x64_runtime *r, struct gem_
     *o = r->last_stop;
     return true;
 }
+bool gem_x64_runtime_engine_info(const struct gem_x64_runtime *r,
+                                 struct gem_x86_64_engine_info *out) {
+    return gem_x64_blink_engine_info(r, out);
+}
 bool gem_x64_runtime_last_instruction_was_call(const struct gem_x64_runtime *r) {
     return r != NULL && r->last_stop.instructions_retired != 0U && r->last_instruction_was_call;
 }
@@ -93,12 +138,18 @@ bool gem_x64_runtime_last_instruction_was_ret(const struct gem_x64_runtime *r) {
     return r != NULL && r->last_stop.instructions_retired != 0U && r->last_instruction_was_ret;
 }
 void gem_x64_runtime_invalidate_code(struct gem_x64_runtime *r, uint64_t a, uint64_t s) {
-    (void)r;
-    (void)a;
-    (void)s;
+    if (r && (r->running || !gem_x64_blink_invalidate_code(r, a, s)))
+        r->backend_failed = true;
+}
+void gem_x64_runtime_request_async_stop(struct gem_x64_runtime *r) {
+    if (r)
+        atomic_store_explicit(&r->async_stop_requested, true, memory_order_release);
 }
 const char *gem_x64_runtime_engine_name(const struct gem_x64_runtime *r) {
-    return r ? "Blink interpreter" : "unavailable";
+    if (!r)
+        return "unavailable";
+    return r->config.engine_mode == GEM_X86_64_ENGINE_JIT ? "GEM_x86_64 Blink AArch64 JIT"
+                                                          : "GEM_x86_64 Blink interpreter oracle";
 }
 const char *gem_x64_runtime_engine_version(const struct gem_x64_runtime *r) {
     return r ? gem_x64_blink_version() : "unavailable";
@@ -107,8 +158,13 @@ const char *gem_x64_runtime_engine_license(const struct gem_x64_runtime *r) {
     return r ? "ISC" : "unavailable";
 }
 const char *gem_x64_runtime_engine_provenance(const struct gem_x64_runtime *r) {
-    return r ? "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;real-interpreter;"
-               "DISABLE_JIT;patch-sha256="
-               "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03"
-             : "unavailable";
+    if (!r)
+        return "unavailable";
+    return r->config.engine_mode == GEM_X86_64_ENGINE_JIT
+               ? "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;bounded-aarch64-jit;"
+                 "one-instruction-path;patch-sha256="
+                 "f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807"
+               : "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;interpreter-oracle;"
+                 "patch-sha256="
+                 "f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807";
 }

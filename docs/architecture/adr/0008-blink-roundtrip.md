@@ -11,8 +11,9 @@ Milestone 5 requires a standalone, repeatable ARM64EC → Blink x64 → ARM64EC 
 startup is changed. Milestones 1 through 4 established the inputs to that proof: a checked
 ARM64X/CHPE classifier, the fixed 720-byte `gem_thread_context`, pure ARM64EC/x64 context
 conversion, checked 4 KiB guest memory, pinned Dynarmic execution, and an authentic
-Microsoft-linked ARM64X fixture pipeline. ADR 0006 also accepts Blink's bounded interpreter as the
-x86 memory-order fallback while rejecting the timed-out concurrent JIT candidate.
+Microsoft-linked ARM64X fixture pipeline. ADR 0006 accepts Blink's bounded interpreter as the
+x86 memory-order oracle. Issue #45 subsequently adds a separately bounded, one-instruction JIT
+embedding; it does not revive the rejected unbounded concurrent candidate.
 
 The present ARM64EC runtime already has bounded runs, checked memory, stop information, metadata
 attachment, boundary stops, and code invalidation. It stops before a metadata-classified x64
@@ -247,14 +248,18 @@ acceptance.
 
 ## Phase 0–2 implementation increment
 
-The opt-in adapter applies a hashed ISC patch to the verified pinned archive and builds Blink's
-actual static interpreter with JIT disabled. Blink's established decoder selects a source-reviewed
+The opt-in adapter applies a hashed ISC patch series to the verified pinned archive and builds
+Blink as a native Apple-Clang ARM64 archive from an explicit CMake source inventory. Production
+`GEM_x86_64` selects Blink's bounded AArch64 JIT; the interpreter is selected explicitly only as a
+conformance oracle. Blink's established decoder selects a source-reviewed
 handler-function allowlist; the patch adds no decoder or opcode parser. The provenance record fixes
 the exact allowlist, each defining file's SHA-256, the reviewed definition line range, and the
 definition SHA-256. The embedding audit rejects any addition, removal, reordering, source drift, or
 definition drift; no semantics are claimed for handlers outside that manifest. Adapter-owned
-bounded shadow pages are refreshed while a private GEM memory transaction holds canonical memory
-stable.
+bounded shadow pages reconcile only the current instruction's fetch, stack-adjacent, read, and
+write pages against their canonical baselines while a private GEM memory transaction holds memory
+stable. Changed pages roll the instruction back and retry; committed writes advance the shadow
+baseline. This avoids a process-working-set sweep before every retired instruction.
 Fetch/read/write sets are validated through GEM, full-page differences are staged and atomically
 committed, and CPU state is exported only after memory succeeds. Windows one-shot guard behavior
 is the precise architectural exception to rollback: a guard fault consumes the guard bit after the
@@ -292,11 +297,14 @@ together or roll back together. Conformance preserves raw x87/MM state for all t
 the
 coordinator classifies the post-CALL PC with checked ARM64X metadata before another x64 fetch.
 
-The interpreter owns no decoded-code or JIT cache: its bounded page shadow is refreshed before
-each instruction. `gem_x64_runtime_invalidate_code` is therefore deliberately a no-op in this
-backend, and self-modifying-code conformance proves that the next step sees changed bytes. A future
-cached/JIT backend must replace this backend-specific contract rather than pretending this no-op
-invalidates a cache.
+Each production JIT path contains exactly one reviewed guest instruction and executes inside the
+same checked GEM transaction used by the interpreter oracle. The embedding initializes host-page
+state once, uses Apple's `MAP_JIT` write-protection API, bounds its executable arena and metadata,
+and reports compilation, execution, failure, host-architecture, and W^X evidence. Code
+invalidation removes every translated hook and transient shadow page touched by the range before
+execution can resume; invalid ranges or backend failures poison the runtime so the next run fails
+closed. Interpreter mode owns no translated-code cache but follows the same explicit invalidation
+surface so self-modifying-code tests exercise one stable contract.
 
 The Issue #14 producer may hand freshly built Microsoft-linked DLLs and sanitized evidence to its
 native macOS ARM64 consumer only as a run-scoped GitHub Actions artifact. Upload and download

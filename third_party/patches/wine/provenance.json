@@ -87,9 +87,16 @@
     {
       "order": 12,
       "path": "third_party/patches/wine/0012-ntdll-preserve-hybrid-budget-context.patch",
-      "sha256": "fc0b6209107195ac921a6f06909098fb2b520d42c8533fe92f2a7ec27e2711a9",
+      "sha256": "4f490164e0f98bd6d9e8a3de3af55ba5fe16223382b2c1999c5c97217c5bed5c",
       "authoringCommit": "66220c5789ff3448be17c952b9685b16e89023a9",
       "purpose": "Preserve the full in-flight ARM64EC/x64 GEM coordinator state across ordinary budget slices, and defer suspend publication until Wine's ARM64 syscall frame can represent the context without loss."
+    },
+    {
+      "order": 13,
+      "path": "third_party/patches/wine/0013-ntdll-route-pure-amd64-guests-through-gem-x86-64.patch",
+      "sha256": "019edf8fddfa0f3bfd7e987a1c14b726382a6634f1856f9d9d540628f688487c",
+      "authoringCommit": "e3fd4b86ac067374116e3e93bf963caa0d1101df",
+      "purpose": "Classify ordinary AMD64 PE32+ startup separately from ARM64EC, load the shipped x86_64 ntdll, and route its syscall and Unix-call boundaries through native ARM64 GEM_x86_64 without Rosetta."
     }
   ],
   "researchEvidence": {

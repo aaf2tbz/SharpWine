@@ -91,7 +91,11 @@
         },
         {
           "path": "third_party/patches/wine/0012-ntdll-preserve-hybrid-budget-context.patch",
-          "sha256": "fc0b6209107195ac921a6f06909098fb2b520d42c8533fe92f2a7ec27e2711a9"
+          "sha256": "4f490164e0f98bd6d9e8a3de3af55ba5fe16223382b2c1999c5c97217c5bed5c"
+        },
+        {
+          "path": "third_party/patches/wine/0013-ntdll-route-pure-amd64-guests-through-gem-x86-64.patch",
+          "sha256": "019edf8fddfa0f3bfd7e987a1c14b726382a6634f1856f9d9d540628f688487c"
         }
       ]
     },
@@ -116,8 +120,9 @@
       "distribution": "optional build-tree-only pinned source/build dependency",
       "adr": "docs/architecture/adr/0008-blink-roundtrip.md",
       "embedding_patch_sha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
+      "bounded_jit_patch_sha256": "f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807",
       "embedding_provenance": "docs/architecture/adr/0008-blink-embedding.provenance.json",
-      "accepting_mode": "real interpreter handler allowlist; DISABLE_JIT"
+      "accepting_mode": "bounded one-instruction AArch64 JIT; interpreter is an explicit conformance oracle"
     }
   }
 }

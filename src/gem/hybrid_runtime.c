@@ -521,6 +521,7 @@ gem_hybrid_runtime_create(struct gem_memory *memory, const struct gem_pe_arm64x_
     memset(&x64_config, 0, sizeof(x64_config));
     x64_config.host_return_sentinel = config->x64_return_sentinel;
     x64_config.max_budget = config->max_budget;
+    x64_config.engine_mode = GEM_X86_64_ENGINE_INTERPRETER;
     runtime->x64 = gem_x64_runtime_create(memory, &x64_config);
     if (runtime->x64 == NULL)
         goto Fail;

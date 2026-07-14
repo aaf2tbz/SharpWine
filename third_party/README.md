@@ -8,8 +8,9 @@ pinned revision only when engine support is enabled. Its generated source and bu
 ignored build directories; do not commit fetched Dynarmic sources, static libraries, or binaries here.
 
 Blink is pinned for issue #12 evidence and the opt-in issue #14 x64 adapter. Sources and generated
-artifacts remain build-tree-only. The separately ISC-licensed patch wraps Blink's real decoder and
-interpreter behind transactional GEM shadow pages and a reviewed handler allowlist. The accepting target
-is configured with `--disable-jit`; repository-original adapter code remains Apache-2.0.
+artifacts remain build-tree-only. The separately ISC-licensed patch series wraps Blink's real decoder,
+bounded native AArch64 JIT, and explicit interpreter oracle behind transactional GEM shadow pages and a
+reviewed handler allowlist. `GEM_x86_64` compiles at most one checked guest instruction per JIT path and
+uses Apple's `MAP_JIT` write-protection API; repository-original adapter code remains Apache-2.0.
 
 Each future component must be recorded in `NOTICE.md` and pass license review before integration.

@@ -1,0 +1,763 @@
+diff --git a/blink/fusion.c b/blink/fusion.c
+index fdcc3e3..0fa2b03 100644
+--- a/blink/fusion.c
++++ b/blink/fusion.c
+@@ -32,6 +32,7 @@
+ bool FuseBranchTest(P) {
+ #ifdef HAVE_JIT
+   i64 bdisp;
++  if (m->gemembed) return false;
+   u8 *p, jcc, jlen;
+   if (RegLog2(rde) < 2) {
+     LogCodOp(m, "can't fuse test: byte/word fuse unimplemented");
+@@ -146,6 +147,7 @@ bool FuseBranchTest(P) {
+ bool FuseBranchCmp(P, bool imm) {
+ #ifdef HAVE_JIT
+   i64 bdisp;
++  if (m->gemembed) return false;
+   u8 *p, jcc, jlen;
+   if (RegLog2(rde) < 2) {
+     LogCodOp(m, "can't fuse cmp: byte/word fuse unimplemented");
+diff --git a/blink/gem_embed.c b/blink/gem_embed.c
+index a189ec0..26de8db 100644
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -56,8 +56,18 @@ struct blink_gem_machine {
+   uint32_t trace_count;
+   uint32_t trace_overflowed;
+   struct blink_gem_decode_attempt last_decode;
++  enum blink_gem_engine engine;
++  uint64_t jit_compilations;
++  uint64_t jit_executions;
++  uint64_t jit_failures;
+ };
+ 
++static pthread_once_t_ g_blink_gem_init_once = PTHREAD_ONCE_INIT_;
++
++static void blink_gem_init_runtime(void) {
++  InitMap();
++}
++
+ static struct blink_gem_result result(enum blink_gem_outcome o) {
+   struct blink_gem_result r;
+   memset(&r, 0, sizeof(r));
+@@ -100,6 +110,43 @@ static int refresh_page(struct blink_gem_machine* g, struct shadow_page* p,
+     return 0;
+   return 1;
+ }
++static int reconcile_page(struct blink_gem_machine* g, struct shadow_page* p,
++                          uint32_t* error) {
++  uint32_t prot = 0;
++  uint8_t bytes[4096];
++  *error = g->cb.snapshot(g->opaque, p->address, bytes, &prot);
++  if (*error) return -1;
++  if (prot == p->protection && !memcmp(bytes, p->before, 4096)) return 0;
++#ifdef HAVE_JIT
++  if (g->engine == BLINK_GEM_ENGINE_JIT) {
++    if (p->address >= 4096 &&
++        ResetJitPage(&g->system->jit, (int64_t)(p->address - 4096)))
++      return -1;
++    if (ResetJitPage(&g->system->jit, (int64_t)p->address)) return -1;
++  }
++#endif
++  ResetInstructionCache(g->machine);
++  if (!refresh_page(g, p, error)) return -1;
++  return 1;
++}
++static int reconcile_range(struct blink_gem_machine* g, uint64_t address,
++                           uint64_t size, uint32_t* error) {
++  uint64_t end, page;
++  int changed = 0;
++  if (!size || __builtin_add_overflow(address, size - 1, &end)) return 0;
++  page = address & UINT64_C(0xfffffffffffff000);
++  for (;;) {
++    struct shadow_page* p = find_page(g, page);
++    if (p) {
++      int rc = reconcile_page(g, p, error);
++      if (rc < 0) return -1;
++      changed |= rc;
++    }
++    if (page >= (end & UINT64_C(0xfffffffffffff000))) break;
++    page += 4096;
++  }
++  return changed;
++}
+ static void drop_page(struct blink_gem_machine* g, size_t index) {
+   FreeVirtual(g->system, g->pages[index].address, 4096);
+   memmove(g->pages + index, g->pages + index + 1,
+@@ -108,17 +155,16 @@ static void drop_page(struct blink_gem_machine* g, size_t index) {
+   ResetTlb(g->machine);
+   ResetInstructionCache(g->machine);
+ }
+-
+ static int add_page(struct blink_gem_machine* g, uint64_t address,
+                     uint32_t* error) {
+   struct shadow_page* p;
+   uint32_t prot = 0;
+   uint8_t bytes[4096];
+   address &= ~UINT64_C(4095);
+-  if (g->page_count == BLINK_GEM_MAX_SHADOW_PAGES) {
+-    *error = 0xffffffffu;
+-    return 0;
+-  }
++  /* Shadow mappings are disposable transaction snapshots, not a process-wide
++   * guest working-set limit. Keep the cache strictly bounded by evicting its
++   * oldest mapping before admitting a new distinct page. */
++  if (g->page_count == BLINK_GEM_MAX_SHADOW_PAGES) drop_page(g, 0);
+   *error = g->cb.snapshot(g->opaque, address, bytes, &prot);
+   if (*error) return 0;
+   if (ReserveVirtual(g->system, address, 4096, pageflags(prot), -1, 0, false,
+@@ -177,16 +223,26 @@ static enum blink_gem_access fault_access(struct Machine* m, int fetch) {
+   return BLINK_GEM_ACCESS_READ;
+ }
+ 
+-struct blink_gem_machine* blink_gem_machine_create(
++struct blink_gem_machine* blink_gem_machine_create_with_config(
++    const struct blink_gem_config* config,
+     const struct blink_gem_callbacks* cb, void* opaque) {
+   struct blink_gem_machine* g;
+-  if (!cb || cb->abi_version != 1 || cb->size != sizeof(*cb) || !cb->snapshot ||
++  if (!config || config->abi_version != BLINK_GEM_CONFIG_ABI_VERSION ||
++      config->size != sizeof(*config) || config->reserved ||
++      (config->engine != BLINK_GEM_ENGINE_INTERPRETER &&
++       config->engine != BLINK_GEM_ENGINE_JIT) || !cb ||
++      cb->abi_version != 1 || cb->size != sizeof(*cb) || !cb->snapshot ||
+       !cb->validate || !cb->commit)
+     return 0;
++  if (pthread_once_(&g_blink_gem_init_once, blink_gem_init_runtime)) return 0;
++#ifndef HAVE_JIT
++  if (config->engine == BLINK_GEM_ENGINE_JIT) return 0;
++#endif
+   g = calloc(1, sizeof(*g));
+   if (!g) return 0;
+   g->cb = *cb;
+   g->opaque = opaque;
++  g->engine = config->engine;
+   FLAG_nolinear = true;
+   g->system = NewSystem(XED_MACHINE_MODE_LONG);
+   if (!g->system) goto Fail;
+@@ -195,6 +251,10 @@ struct blink_gem_machine* blink_gem_machine_create(
+   g->machine = NewMachine(g->system, 0);
+   if (!g->machine) goto Fail;
+   g->machine->gemembed = true;
++#ifdef HAVE_JIT
++  if (g->engine == BLINK_GEM_ENGINE_INTERPRETER)
++    DisableJit(&g->system->jit);
++#endif
+   return g;
+ Fail:
+   if (g->machine)
+@@ -204,6 +264,13 @@ Fail:
+   free(g);
+   return 0;
+ }
++struct blink_gem_machine* blink_gem_machine_create(
++    const struct blink_gem_callbacks* cb, void* opaque) {
++  const struct blink_gem_config config = {
++      BLINK_GEM_CONFIG_ABI_VERSION, sizeof(config),
++      BLINK_GEM_ENGINE_INTERPRETER, 0};
++  return blink_gem_machine_create_with_config(&config, cb, opaque);
++}
+ void blink_gem_machine_destroy(struct blink_gem_machine* g) {
+   if (g) {
+     if (g->machine) FreeMachine(g->machine);
+@@ -234,18 +301,22 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+   g->last_decode.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+   g->last_decode.size = sizeof(g->last_decode);
+   for (retries = 0; retries < (int)BLINK_GEM_MAX_SHADOW_PAGES + 1; ++retries) {
+-    for (i = 0; i < g->page_count;) {
+-      if (refresh_page(g, g->pages + i, &error)) {
+-        ++i;
+-      } else {
+-        drop_page(g, i);
+-      }
+-    }
+     import_state(m, in);
+     m->readaddr = m->writeaddr = 0;
+     m->readsize = m->writesize = 0;
+     m->faultaddr = 0;
+     m->oplen = 0;
++    rc = reconcile_range(g, in->rip, 15, &error);
++    if (rc) {
++      if (rc < 0) {
++        r = result(BLINK_GEM_MEMORY_FAULT);
++        r.fault_address = in->rip;
++        r.access = BLINK_GEM_ACCESS_FETCH;
++        r.memory_error = error;
++        return r;
++      }
++      continue;
++    }
+     ResetInstructionCache(m);
+     fetching = 1;
+     if (!(rc = sigsetjmp(m->onhalt, 1))) {
+@@ -253,6 +324,31 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+       LoadInstruction(m, m->ip);
+       fetch_address = m->ip;
+       fetch_size = Oplength(m->xedd->op.rde);
++      rc = reconcile_range(g, fetch_address, fetch_size, &error);
++      if (rc) {
++        m->canhalt = false;
++        if (rc < 0) {
++          r = result(BLINK_GEM_MEMORY_FAULT);
++          r.fault_address = fetch_address;
++          r.access = BLINK_GEM_ACCESS_FETCH;
++          r.memory_error = error;
++          return r;
++        }
++        continue;
++      }
++      rc = reconcile_range(g, in->gpr[4] >= 128 ? in->gpr[4] - 128 : 0,
++                           256, &error);
++      if (rc) {
++        m->canhalt = false;
++        if (rc < 0) {
++          r = result(BLINK_GEM_MEMORY_FAULT);
++          r.fault_address = in->gpr[4];
++          r.access = BLINK_GEM_ACCESS_READ;
++          r.memory_error = error;
++          return r;
++        }
++        continue;
++      }
+       handler_id =
+           GemHandlerId(GetOp(Mopcode(m->xedd->op.rde)), m->xedd->op.rde);
+       /* Capture Blink's own decode dispatch result for the most recent
+@@ -274,10 +370,68 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+         return result(BLINK_GEM_UNSUPPORTED);
+       }
+       fetching = 0;
+-      ExecuteInstruction(m);
++      if (g->engine == BLINK_GEM_ENGINE_JIT) {
++#ifdef HAVE_JIT
++        nexgen32e_f hook = (nexgen32e_f)GetJitHook(&m->system->jit, m->ip);
++        if (!hook || hook == JitlessDispatch) {
++          /* Compile exactly one GEM-owned transaction against disposable
++           * shadow state. machine.c forces gemembed paths to complete after
++           * one instruction. The compile pass is rolled back before the
++           * generated host path is allowed to commit architectural state. */
++          if (!GemCompileInstruction(m)) {
++            ++g->jit_failures;
++            r = result(BLINK_GEM_INVALID);
++            r.engine_status = 0xffffff01u;
++            return r;
++          }
++          hook = (nexgen32e_f)GetJitHook(&m->system->jit, in->rip);
++          ++g->jit_compilations;
++          for (i = 0; i < g->page_count; ++i) {
++            if (memcmp(g->pages[i].host, g->pages[i].before, 4096) &&
++                !refresh_page(g, g->pages + i, &error)) {
++              ++g->jit_failures;
++              r = result(BLINK_GEM_MEMORY_FAULT);
++              r.memory_error = error ? error : 0xffffff02u;
++              r.fault_address = g->pages[i].address;
++              return r;
++            }
++          }
++          import_state(m, in);
++          m->readaddr = m->writeaddr = 0;
++          m->readsize = m->writesize = 0;
++          m->faultaddr = 0;
++          m->oplen = 0;
++          ResetTlb(m);
++          ResetInstructionCache(m);
++        }
++        hook = (nexgen32e_f)GetJitHook(&m->system->jit, m->ip);
++        if (!hook || hook == JitlessDispatch) {
++          ++g->jit_failures;
++          r = result(BLINK_GEM_INVALID);
++          r.engine_status = 0xffffff03u;
++          return r;
++        }
++        ExecuteInstruction(m);
++        ++g->jit_executions;
++#else
++        r = result(BLINK_GEM_INVALID);
++        r.engine_status = 0xffffff04u;
++        return r;
++#endif
++      } else {
++        ExecuteInstruction(m);
++      }
+       m->canhalt = false;
+     } else {
+       m->canhalt = false;
++#ifdef HAVE_JIT
++      /* A lazy shadow-page fault can interrupt path construction before the
++       * instruction completes. Discard that partial path before retrying with
++       * the newly snapshotted page; otherwise the staged hook can remain
++       * JitlessDispatch and GEM would mistake a recoverable page miss for a
++       * permanent JIT failure. */
++      if (IsMakingPath(m)) AbandonPath(m);
++#endif
+       if (rc != kMachineSegmentationFault && rc != kMachineDecodeError &&
+           rc != kMachineUndefinedInstruction) {
+         r = result(BLINK_GEM_UNSUPPORTED);
+@@ -291,7 +445,15 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+       }
+       r.fault_address = m->faultaddr;
+       r.access = fault_access(m, fetching);
+-      if (!find_page(g, m->faultaddr)) {
++      if (find_page(g, m->faultaddr)) {
++        int changed = reconcile_page(g, find_page(g, m->faultaddr), &error);
++        if (changed > 0) continue;
++        if (changed < 0) {
++          r.outcome = BLINK_GEM_MEMORY_FAULT;
++          r.memory_error = error;
++          return r;
++        }
++      } else {
+         if (add_page(g, m->faultaddr, &error)) continue;
+         if (error == UINT32_MAX) {
+           r = result(BLINK_GEM_INVALID);
+@@ -304,6 +466,23 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+       r.memory_error = error;
+       return r;
+     }
++    rc = reconcile_range(g, (uint64_t)m->readaddr, (uint64_t)m->readsize,
++                         &error);
++    if (!rc)
++      rc = reconcile_range(g, (uint64_t)m->writeaddr,
++                           (uint64_t)m->writesize, &error);
++    if (rc) {
++      if (rc < 0) {
++        r = result(BLINK_GEM_MEMORY_FAULT);
++        r.fault_address = m->writesize ? (uint64_t)m->writeaddr
++                                       : (uint64_t)m->readaddr;
++        r.access = m->writesize ? BLINK_GEM_ACCESS_WRITE
++                                : BLINK_GEM_ACCESS_READ;
++        r.memory_error = error;
++        return r;
++      }
++      continue;
++    }
+     error = g->cb.validate(g->opaque, fetch_address, (size_t)fetch_size,
+                            BLINK_GEM_ACCESS_FETCH);
+     if (error) {
+@@ -336,13 +515,26 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+       }
+     }
+     nwrites = 0;
+-    for (i = 0; i < g->page_count; ++i)
+-      if (memcmp(g->pages[i].host, g->pages[i].before, 4096)) {
++    for (i = 0; i < g->page_count; ++i) {
++      uint64_t write_end;
++      uint64_t stack_begin = in->gpr[4] >= 128 ? in->gpr[4] - 128 : 0;
++      uint64_t stack_end = stack_begin + 255;
++      int write_candidate =
++          m->writesize > 0 &&
++          !__builtin_add_overflow((uint64_t)m->writeaddr,
++                                  (uint64_t)m->writesize - 1, &write_end) &&
++          g->pages[i].address <= write_end &&
++          g->pages[i].address + 4095 >= (uint64_t)m->writeaddr;
++      int stack_candidate = g->pages[i].address <= stack_end &&
++                            g->pages[i].address + 4095 >= stack_begin;
++      if ((write_candidate || stack_candidate) &&
++          memcmp(g->pages[i].host, g->pages[i].before, 4096)) {
+         writes[nwrites].address = g->pages[i].address;
+         writes[nwrites].data = g->pages[i].host;
+         writes[nwrites].size = 4096;
+         ++nwrites;
+       }
++    }
+     if (nwrites &&
+         (error = g->cb.commit(g->opaque, writes, nwrites, &commit_fault))) {
+       r = result(BLINK_GEM_MEMORY_FAULT);
+@@ -351,6 +543,11 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+       r.fault_address = commit_fault;
+       return r;
+     }
++    for (i = 0; i < nwrites; ++i) {
++      struct shadow_page* p = find_page(g, writes[i].address);
++      if (!p) return result(BLINK_GEM_INVALID);
++      memcpy(p->before, p->host, 4096);
++    }
+     export_state(m, in, out);
+     if (g->trace_count < BLINK_GEM_MAX_TRACE_ENTRIES) {
+       g->trace[g->trace_count].rip = fetch_address;
+@@ -369,7 +566,61 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+   return r;
+ }
+ const char* blink_gem_embedding_version(void) {
+-  return "blink-f006a4fc-real-interpreter-gem-v1";
++  return "blink-f006a4fc-gem-jit-v2";
++}
++bool blink_gem_machine_engine_info(const struct blink_gem_machine* g,
++                                   struct blink_gem_engine_info* out) {
++  if (!g || !out || out->abi_version != BLINK_GEM_ENGINE_INFO_ABI_VERSION ||
++      out->size != sizeof(*out))
++    return false;
++  out->engine = g->engine;
++#if defined(__aarch64__)
++  out->host_arch = BLINK_GEM_HOST_AARCH64;
++#else
++  out->host_arch = BLINK_GEM_HOST_UNKNOWN;
++#endif
++  out->jit_compilations = g->jit_compilations;
++  out->jit_executions = g->jit_executions;
++  out->jit_failures = g->jit_failures;
++#if defined(__APPLE__) && defined(__aarch64__) && defined(MAP_JIT)
++  out->write_xor_execute = 1;
++#else
++  out->write_xor_execute = 0;
++#endif
++  out->reserved = 0;
++  return true;
++}
++bool blink_gem_machine_invalidate_code(struct blink_gem_machine* g,
++                                       uint64_t address, uint64_t size) {
++  uint64_t end, page;
++  size_t i;
++  if (!g || !size || !canonical(address) ||
++      __builtin_add_overflow(address, size - 1, &end) || !canonical(end))
++    return false;
++#ifdef HAVE_JIT
++  if (g->engine == BLINK_GEM_ENGINE_JIT) {
++    page = address & UINT64_C(0xfffffffffffff000);
++    /* A decoded x86 instruction is at most 15 bytes, so a path whose bytes
++     * overlap this page can only start on this page or its immediate
++     * predecessor. GEM paths contain exactly one instruction. */
++    if (page >= 4096 && ResetJitPage(&g->system->jit, (int64_t)(page - 4096)))
++      return false;
++    for (;;) {
++      if (ResetJitPage(&g->system->jit, (int64_t)page)) return false;
++      if (page >= (end & UINT64_C(0xfffffffffffff000))) break;
++      page += 4096;
++    }
++  }
++#endif
++  ResetInstructionCache(g->machine);
++  for (i = 0; i < g->page_count;) {
++    if (g->pages[i].address >= (address & UINT64_C(0xfffffffffffff000)) &&
++        g->pages[i].address <= (end & UINT64_C(0xfffffffffffff000)))
++      drop_page(g, i);
++    else
++      ++i;
++  }
++  return true;
+ }
+ void blink_gem_machine_trace_reset(struct blink_gem_machine* g) {
+   if (g) {
+@@ -396,6 +647,9 @@ bool blink_gem_machine_trace_read(const struct blink_gem_machine* g, size_t inde
+   return true;
+ }
+ const char* blink_gem_handler_name(uint32_t id) {
++  if (id >= BLINK_GEM_HANDLER_DECODED_BASE &&
++      id < BLINK_GEM_HANDLER_DECODED_BASE + 0x400u)
++    return DescribeMopcode(id - BLINK_GEM_HANDLER_DECODED_BASE);
+   switch (id) {
+     case BLINK_GEM_HANDLER_OP_NOP: return "OpNop";
+     case BLINK_GEM_HANDLER_OP_MOV_ZVQP_IVQP: return "OpMovZvqpIvqp";
+diff --git a/blink/gem_embed.h b/blink/gem_embed.h
+index af211c0..3f94ccc 100644
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -21,17 +21,21 @@
+ #include <stddef.h>
+ #include <stdint.h>
+ #define BLINK_GEM_ABI_VERSION       1u
+-#define BLINK_GEM_MAX_SHADOW_PAGES  64u
++#define BLINK_GEM_MAX_SHADOW_PAGES 64u
+ #define BLINK_GEM_TRACE_ABI_VERSION 1u
+ #define BLINK_GEM_MAX_TRACE_ENTRIES 256u
+ #define BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION 1u
+ #define BLINK_GEM_DECODE_ATTEMPT_NAME_BYTES  32u
++#define BLINK_GEM_CONFIG_ABI_VERSION          1u
++#define BLINK_GEM_ENGINE_INFO_ABI_VERSION     1u
++#define BLINK_GEM_HANDLER_DECODED_BASE         0x1000u
+ /*
+  * Decoder-owned handler identity.  Each id names the exact Blink handler that
+  * Blink's own decode dispatch (GetOp(Mopcode(rde))) selected for a retired
+  * instruction; the numeric values match GemHandlerId() in blink/machine.c.
+- * The trace is diagnostic-only evidence.  It never influences execution,
+- * allowlisting, or committed architectural state.
++ * The named ids retain the accepted fixture ABI. Other safe decoded
++ * instructions use BLINK_GEM_HANDLER_DECODED_BASE + Blink's mopcode. The
++ * trace is diagnostic-only evidence; it never influences committed state.
+  */
+ enum blink_gem_handler_id {
+   BLINK_GEM_HANDLER_UNKNOWN = 0,
+@@ -97,6 +101,26 @@ enum blink_gem_outcome {
+   BLINK_GEM_UNSUPPORTED = 2,
+   BLINK_GEM_INVALID = 3
+ };
++enum blink_gem_engine {
++  BLINK_GEM_ENGINE_INTERPRETER = 1,
++  BLINK_GEM_ENGINE_JIT = 2
++};
++enum blink_gem_host_arch {
++  BLINK_GEM_HOST_UNKNOWN = 0,
++  BLINK_GEM_HOST_AARCH64 = 1
++};
++struct blink_gem_config {
++  uint32_t abi_version, size;
++  enum blink_gem_engine engine;
++  uint32_t reserved;
++};
++struct blink_gem_engine_info {
++  uint32_t abi_version, size;
++  enum blink_gem_engine engine;
++  enum blink_gem_host_arch host_arch;
++  uint64_t jit_compilations, jit_executions, jit_failures;
++  uint32_t write_xor_execute, reserved;
++};
+ struct blink_gem_state {
+   uint32_t abi_version, size;
+   uint64_t gpr[16], rip, rflags;
+@@ -133,10 +157,16 @@ struct blink_gem_callbacks {
+ struct blink_gem_machine;
+ struct blink_gem_machine* blink_gem_machine_create(
+     const struct blink_gem_callbacks*, void*);
++struct blink_gem_machine* blink_gem_machine_create_with_config(
++    const struct blink_gem_config*, const struct blink_gem_callbacks*, void*);
+ void blink_gem_machine_destroy(struct blink_gem_machine*);
+ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine*,
+                                                const struct blink_gem_state*,
+                                                struct blink_gem_state*);
++bool blink_gem_machine_engine_info(const struct blink_gem_machine*,
++                                   struct blink_gem_engine_info*);
++bool blink_gem_machine_invalidate_code(struct blink_gem_machine*, uint64_t,
++                                       uint64_t);
+ const char* blink_gem_embedding_version(void);
+ /*
+  * Bounded, machine-owned, decode-order handler trace.  Storage is fixed at
+diff --git a/blink/instruction.c b/blink/instruction.c
+index c9a6607..ebfb82d 100644
+--- a/blink/instruction.c
++++ b/blink/instruction.c
+@@ -65,6 +65,9 @@ static int LoadInstructionSlow(struct Machine *m, u64 ip) {
+       memcpy(copy, addr, i);
+       memcpy(copy + i, toil, 15 - i);
+       return ReadInstruction(m, copy, 15);
++    } else if (m->gemembed) {
++      m->faultaddr = ip + i;
++      return kMachineSegmentationFault;
+     } else {
+       return ReadInstruction(m, addr, i);
+     }
+@@ -110,7 +113,7 @@ void LoadInstruction(struct Machine *m, u64 pc) {
+     case 0:
+       break;
+     case kMachineSegmentationFault:
+-      m->faultaddr = pc;
++      if (!m->gemembed || !m->faultaddr) m->faultaddr = pc;
+       HaltMachine(m, rc);
+     case kMachineDecodeError:
+       HaltMachine(m, rc);
+diff --git a/blink/jit.c b/blink/jit.c
+index 6e6240e..d2e4ce9 100644
+--- a/blink/jit.c
++++ b/blink/jit.c
+@@ -171,6 +171,10 @@ static inline unsigned ShallNotPass(unsigned gen1, _Atomic(unsigned) *genptr) {
+ // frequently flakes with "Trace/BPT trap: 5" errors. this fixes that.
+ static void pthread_jit_write_protect_np_workaround(int enabled) {
+ #if defined(__APPLE__) && defined(__aarch64__)
++#ifdef BLINK_GEM_EMBEDDING
++  pthread_jit_write_protect_np(enabled);
++  return;
++#else
+   int count_start = 8192;
+   volatile int count = count_start;
+   uint64_t *addr, val, val2, reread = -1;
+@@ -225,6 +229,7 @@ static void pthread_jit_write_protect_np_workaround(int enabled) {
+   }
+   ERRF("failed to set jit write protection");
+   Abort();
++#endif
+ #else
+   pthread_jit_write_protect_np(enabled);
+ #endif
+@@ -619,16 +624,24 @@ bool CanJitForImmediateEffect(void) {
+ }
+ 
+ static u8 *AllocateJitMemory(long *state) {
+-  long i, brk;
+-  uintptr_t p;
++  long brk;
++  uintptr_t aligned, base, pagesize, used;
+   brk = *state;
+-  p = (uintptr_t)g_code;
+-  i = ROUNDUP(p + brk, FLAG_pagesize) - p;
+-  if (i + kJitBlockSize > kJitMemorySize) {
++  base = (uintptr_t)g_code;
++  pagesize = FLAG_pagesize;
++  if (brk < 0 || !pagesize || (pagesize & (pagesize - 1)) ||
++      __builtin_add_overflow(base, (uintptr_t)brk, &used) ||
++      __builtin_add_overflow(used, pagesize - 1, &aligned)) {
++    return 0;
++  }
++  aligned &= -pagesize;
++  if (aligned < base || aligned - base > kJitMemorySize ||
++      kJitBlockSize > kJitMemorySize - (aligned - base)) {
+     return 0;
+   }
+-  *state = i + kJitBlockSize;
+-  return g_code + i;
++  brk = aligned - base;
++  *state = brk + kJitBlockSize;
++  return g_code + brk;
+ }
+ 
+ static int MakeJitJump(u8 buf[5], uintptr_t pc, uintptr_t addr) {
+diff --git a/blink/jit.h b/blink/jit.h
+index e872822..4a11610 100644
+--- a/blink/jit.h
++++ b/blink/jit.h
+@@ -15,11 +15,17 @@
+ #define kJitAlign        16
+ #define kJitJumpTries    16
+ #define kJitBlockSize    262144
++#ifdef BLINK_GEM_EMBEDDING
++#define kJitMemorySize   1048576
++#define kJitInitialHooks 1024
++#define kJitInitialEdges 256
++#else
+ #define kJitMemorySize   32505856
+-#define kJitRetireQueue  (int)(kJitMemorySize / kJitBlockSize * .10)
+-#define kJitSlabInts     (65536 / sizeof(struct JitInts))
+ #define kJitInitialHooks 16384
+ #define kJitInitialEdges 4096
++#endif
++#define kJitRetireQueue  (int)(kJitMemorySize / kJitBlockSize * .10)
++#define kJitSlabInts     (65536 / sizeof(struct JitInts))
+ 
+ #ifdef __x86_64__
+ #define kJitRes0 kAmdAx
+diff --git a/blink/machine.c b/blink/machine.c
+index 7cc92e0..dd2fdda 100644
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2139,7 +2139,16 @@ int GemHandlerId(nexgen32e_f handler, long rde) {
+    * including redundant operand-size prefixes. */
+   if (handler == OpNopEv && Mopcode(rde) == 0x11f)
+     return 19;
+-  return 0;
++  /* GEM owns Windows syscall and exception delivery. Never let Blink's Linux
++   * syscall path, privileged control operations, or interrupt machinery cross
++   * the embedding boundary. Every other successfully decoded long-mode
++   * instruction gets a deterministic diagnostic id derived from Blink's own
++   * mopcode and remains subject to checked memory plus one-instruction commit. */
++  if (handler == OpUd || handler == OpSyscall || handler == OpHlt ||
++      handler == OpCli || handler == OpSti || handler == OpInterrupt1 ||
++      handler == OpInterrupt3 || handler == OpInterruptImm || handler == OpInto)
++    return 0;
++  return 0x1000 + Mopcode(rde);
+ }
+ 
+ bool GemIsAllowedHandler(nexgen32e_f handler, long rde) {
+@@ -2171,6 +2180,7 @@ static void GeneralDispatch(P) {
+   uintptr_t jitpc = 0;
+   bool op_overlaps_page_boundary;
+   bool path_would_overlap_page_boundary;
++  m->gemcompilingop = false;
+   ASM_LOGF("decoding [%s] at address %" PRIx64, DescribeOp(m, GetPc(m)),
+            GetPc(m));
+   LoadInstruction(m, GetPc(m));
+@@ -2192,10 +2202,11 @@ static void GeneralDispatch(P) {
+   }
+   // if we're in a jit path, or we're able to create a new path
+   if (IsMakingPath(m) ||
+-      (opclass != kOpPrecious && opclass != kOpSerializing &&
+-       !op_overlaps_page_boundary && CanJit(m) && CreatePath(A))) {
++      ((m->gemembed ||
++        (opclass != kOpPrecious && opclass != kOpSerializing)) &&
++       (m->gemembed || !op_overlaps_page_boundary) && CanJit(m) && CreatePath(A))) {
+     // begin adding this op to the jit path
+-    unassert(opclass == kOpNormal || opclass == kOpBranching);
++    unassert(m->gemembed || opclass == kOpNormal || opclass == kOpBranching);
+     ++m->path.elements;
+     STATISTIC(++path_elements);
+     AddPath_StartOp(A);
+@@ -2209,14 +2220,16 @@ static void GeneralDispatch(P) {
+   m->oplen = Oplength(rde);
+   m->ip += Oplength(rde);
+   // call the c implementation of the opcode
++  m->gemcompilingop = m->gemembed;
+   GetOp(Mopcode(rde))(A);
++  m->gemcompilingop = false;
+   // cleanup after ReserveAddress() if a memory access overlapped a page
+   if (m->stashaddr) {
+     CommitStash(m);
+   }
+   if (IsMakingPath(m)) {
+     // finish adding new element to jit path
+-    unassert(opclass == kOpNormal || opclass == kOpBranching);
++    unassert(m->gemembed || opclass == kOpNormal || opclass == kOpBranching);
+     // did the op generate its own assembly code?
+     if (GetJitPc(m->path.jb) != jitpc) {
+       // it did; that means we're done
+@@ -2227,9 +2240,11 @@ static void GeneralDispatch(P) {
+       AddPath_EndOp(A);
+       STATISTIC(++path_elements_auto);
+     }
+-    if (opclass == kOpBranching) {
++    if (m->gemembed || opclass == kOpBranching) {
+       // branches, calls, and jumps always force end of path
+-      // unlike precious ops the branching op can be in path
++      // unlike precious ops the branching op can be in path. GEM embedding
++      // also completes every path here so one checked transaction can never
++      // execute an unbounded multi-instruction JIT path.
+       CompletePath(A);
+     }
+   }
+@@ -2237,6 +2252,27 @@ static void GeneralDispatch(P) {
+ #endif
+ }
+ 
++bool GemCompileInstruction(struct Machine *m) {
++#ifdef HAVE_JIT
++  u64 pc;
++  nexgen32e_f hook;
++  if (!m || !m->gemembed || !m->canhalt || IsMakingPath(m) || !CanJit(m))
++    return false;
++  /* ExecuteInstruction() intentionally routes a staging hook through
++   * JitlessDispatch. That is correct for Blink's normal interpreter loop but
++   * cannot satisfy GEM's production-JIT contract: the staging hook may be
++   * left behind by an interrupted compilation and would become an implicit
++   * interpreter fallback. Compile directly through the one-instruction GEM
++   * GeneralDispatch path instead, then require an installed native hook. */
++  pc = m->ip;
++  GeneralDispatch(DISPATCH_NOTHING);
++  hook = (nexgen32e_f)GetJitHook(&m->system->jit, pc);
++  return hook && hook != JitlessDispatch;
++#else
++  return false;
++#endif
++}
++
+ void ExecuteInstruction(struct Machine *m) {
+ #if LOG_CPU
+   LogCpu(m);
+diff --git a/blink/machine.h b/blink/machine.h
+index b0507cb..7015666 100644
+--- a/blink/machine.h
++++ b/blink/machine.h
+@@ -439,6 +439,7 @@ struct Machine {               //
+   bool trapcpuid;                        //
+   bool boop;                             //
+   bool gemembed;                         // structured embedding mode
++  bool gemcompilingop;                    // suppress GEM opcode fast path
+   i8 trapno;                             //
+   i8 segvcode;                           //
+   struct MachineTlb tlb[32];             //
+@@ -480,6 +481,7 @@ void ResetInstructionCache(struct Machine *);
+ nexgen32e_f GetOp(long);
+ bool GemIsAllowedHandler(nexgen32e_f, long);
+ int GemHandlerId(nexgen32e_f, long);
++bool GemCompileInstruction(struct Machine *);
+ void LoadInstruction(struct Machine *, u64);
+ int LoadInstruction2(struct Machine *, u64);
+ void ExecuteInstruction(struct Machine *);
+diff --git a/blink/uop.c b/blink/uop.c
+index 1547710..18da75a 100644
+--- a/blink/uop.c
++++ b/blink/uop.c
+@@ -2090,7 +2090,7 @@ static unsigned JitterImpl(P, const char *fmt, va_list va, unsigned k,
+  */
+ void Jitter(P, const char *fmt, ...) {
+   va_list va;
+-  if (!IsMakingPath(m)) return;
++  if (!IsMakingPath(m) || (m->gemembed && m->gemcompilingop)) return;
+   va_start(va, fmt);
+   JitterImpl(A, fmt, va, 0, 0);
+   unassert(!i);

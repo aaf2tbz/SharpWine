@@ -53,7 +53,12 @@ static uint32_t commit(void *o, const struct blink_gem_write *w, size_t n,
 bool gem_x64_blink_create(struct gem_x64_runtime *r) {
     const struct blink_gem_callbacks c = {BLINK_GEM_ABI_VERSION, sizeof(c), snapshot, validate,
                                           commit};
-    r->backend = blink_gem_machine_create(&c, r);
+    const struct blink_gem_config config = {BLINK_GEM_CONFIG_ABI_VERSION, sizeof(config),
+                                            r->config.engine_mode == GEM_X86_64_ENGINE_JIT
+                                                ? BLINK_GEM_ENGINE_JIT
+                                                : BLINK_GEM_ENGINE_INTERPRETER,
+                                            0};
+    r->backend = blink_gem_machine_create_with_config(&config, &c, r);
     return r->backend != 0;
 }
 void gem_x64_blink_destroy(struct gem_x64_runtime *r) {
@@ -112,12 +117,48 @@ enum gem_stop_reason gem_x64_blink_step(struct gem_x64_runtime *r, const struct 
     }
     if (br.outcome == BLINK_GEM_MEMORY_FAULT)
         return GEM_STOP_MEMORY_FAULT;
-    if (br.outcome == BLINK_GEM_UNSUPPORTED)
+    if (br.outcome == BLINK_GEM_UNSUPPORTED) {
+        struct blink_gem_decode_attempt attempt;
+        memset(&attempt, 0, sizeof(attempt));
+        attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+        attempt.size = sizeof(attempt);
+        if (blink_gem_machine_decode_attempt_info(r->backend, &attempt) && attempt.valid &&
+            strcmp(attempt.name, "OpInterrupt3") == 0)
+            return GEM_STOP_WINDOWS_EXCEPTION;
+        if (attempt.valid && strcmp(attempt.name, "OpSyscall") == 0) {
+            r->last_stop.engine_status = GEM_X64_BOUNDARY_WINDOWS_SYSCALL;
+            return GEM_STOP_SYSCALL;
+        }
         return GEM_STOP_UNSUPPORTED_INSTRUCTION;
+    }
     return GEM_STOP_INVARIANT_VIOLATION;
 }
 const char *gem_x64_blink_version(void) {
     return blink_gem_embedding_version();
+}
+bool gem_x64_blink_engine_info(const struct gem_x64_runtime *r,
+                               struct gem_x86_64_engine_info *out) {
+    struct blink_gem_engine_info info;
+    if (!r || !out || out->abi_version != 1U || out->size != sizeof(*out))
+        return false;
+    memset(&info, 0, sizeof(info));
+    info.abi_version = BLINK_GEM_ENGINE_INFO_ABI_VERSION;
+    info.size = sizeof(info);
+    if (!blink_gem_machine_engine_info(r->backend, &info))
+        return false;
+    out->engine_mode =
+        info.engine == BLINK_GEM_ENGINE_JIT ? GEM_X86_64_ENGINE_JIT : GEM_X86_64_ENGINE_INTERPRETER;
+    out->host_arch = info.host_arch == BLINK_GEM_HOST_AARCH64 ? GEM_X86_64_HOST_AARCH64
+                                                              : GEM_X86_64_HOST_UNKNOWN;
+    out->jit_compilations = info.jit_compilations;
+    out->jit_executions = info.jit_executions;
+    out->jit_failures = info.jit_failures;
+    out->write_xor_execute = info.write_xor_execute;
+    out->reserved = 0;
+    return true;
+}
+bool gem_x64_blink_invalidate_code(struct gem_x64_runtime *r, uint64_t address, uint64_t size) {
+    return r && blink_gem_machine_invalidate_code(r->backend, address, size);
 }
 void gem_x64_runtime_handler_trace_reset(struct gem_x64_runtime *r) {
     if (r)

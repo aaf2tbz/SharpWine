@@ -11,14 +11,14 @@ boundary that the public context machinery can represent.
 
 This patch is distributed under Wine's LGPL-2.1-or-later terms.
 ---
- dlls/ntdll/unix/signal_arm64.c | 19 ++++++++++---------
- 1 file changed, 10 insertions(+), 9 deletions(-)
+ dlls/ntdll/unix/signal_arm64.c | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
 
 diff --git a/dlls/ntdll/unix/signal_arm64.c b/dlls/ntdll/unix/signal_arm64.c
-index 3e7d150..606530f 100644
+index e7445bccd2..6eff4e22cd 100644
 --- a/dlls/ntdll/unix/signal_arm64.c
 +++ b/dlls/ntdll/unix/signal_arm64.c
-@@ -486,18 +486,21 @@ void DECLSPEC_NORETURN gem_signal_run(void)
+@@ -487,18 +487,21 @@ void DECLSPEC_NORETURN gem_signal_run(void)
                  gem_context_from_frame( &context, frame, data->teb );
                  gem_frame_get_upper_simd( data, frame );
              }

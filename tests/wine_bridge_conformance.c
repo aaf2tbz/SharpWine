@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "metalsharp/gem/wine_bridge.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <assert.h>
 #include <pthread.h>
 #include <sched.h>

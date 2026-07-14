@@ -27,12 +27,17 @@ extern "C" {
 #define GEM_WINE_BOUNDARY_ABI_VERSION UINT32_C(1)
 #define GEM_WINE_RUN_RESULT_VERSION UINT32_C(1)
 #define GEM_WINE_ARM64X_CONFIG_VERSION UINT32_C(1)
+#define GEM_WINE_X86_64_CONFIG_VERSION UINT32_C(1)
 #define GEM_WINE_NATIVE_UNIX_CALL_SVC UINT32_C(0x5749)
 #define GEM_WINE_ARM64X_FLAG_SVC_BOUNDARIES UINT64_C(0x0000000000000001)
 #define GEM_WINE_ARM64X_FLAG_DEFER_ROUTING UINT64_C(0x0000000000000002)
 #define GEM_WINE_ARM64X_BOUNDARY_SVC UINT32_C(0x474d)
+#define GEM_WINE_X86_64_FLAG_INTERPRETER_ORACLE UINT64_C(0x0000000000000001)
+#define GEM_WINE_X86_64_BOUNDARY_WINDOWS_SYSCALL UINT32_C(1)
+#define GEM_WINE_X86_64_BOUNDARY_UNIX_CALL UINT32_C(2)
 #define GEM_WINE_GUEST_PAGE_SIZE UINT64_C(4096)
 #define GEM_WINE_KUSER_SHARED_DATA_ADDRESS UINT64_C(0x7ffe0000)
+#define GEM_WINE_X86_64_SYSCALL_DISPATCH_ADDRESS UINT64_C(0x7ffe1000)
 #define GEM_WINE_KUSER_CANONICAL_ADDRESS UINT64_C(0x1007ffe0000)
 
 struct gem_wine_process;
@@ -125,6 +130,21 @@ struct gem_wine_arm64x_config {
     uint64_t reserved[3];
 };
 
+/* Exact publication for the already-relocated pure AMD64 ntdll image. The
+ * bridge independently validates PE32+, machine type, image bounds, and both
+ * guest-resident dispatch boundaries before enabling the isolated x86_64
+ * runtime. Production uses JIT; the interpreter flag is test-only. */
+struct gem_wine_x86_64_config {
+    uint32_t version;
+    uint32_t struct_size;
+    uint64_t loaded_base;
+    uint64_t image_size;
+    uint64_t windows_syscall_boundary;
+    uint64_t unix_call_boundary;
+    uint64_t flags;
+    uint64_t reserved[3];
+};
+
 /* Bridge-owned copy of engine stop information. Fixed-width fields keep the
  * public dylib ABI independent from the internal engine's enum layout. */
 struct gem_wine_stop_info {
@@ -200,6 +220,8 @@ GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_process_config) == 80U,
                        "gem_wine_process_config ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_arm64x_config) == 88U,
                        "gem_wine_arm64x_config ABI changed");
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_x86_64_config) == 72U,
+                       "gem_wine_x86_64_config ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_stop_info) == 40U, "gem_wine_stop_info ABI changed");
 GEM_WINE_STATIC_ASSERT(offsetof(struct gem_wine_stop_info, instructions_retired) == 16U,
                        "gem_wine_stop_info instructions offset changed");
@@ -238,6 +260,9 @@ gem_wine_process_prepare_arm64ec(struct gem_wine_process *process);
 GEM_WINE_API enum gem_wine_status
 gem_wine_process_register_arm64x_mapped(struct gem_wine_process *process,
                                         const struct gem_wine_arm64x_config *config);
+GEM_WINE_API enum gem_wine_status
+gem_wine_process_prepare_x86_64(struct gem_wine_process *process,
+                                const struct gem_wine_x86_64_config *config);
 GEM_WINE_API enum gem_wine_status gem_wine_process_reserve(struct gem_wine_process *process,
                                                            uint64_t address, uint64_t size);
 GEM_WINE_API enum gem_wine_status gem_wine_process_commit_identity(struct gem_wine_process *process,

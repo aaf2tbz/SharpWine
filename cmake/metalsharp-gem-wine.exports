@@ -1,6 +1,7 @@
 _gem_wine_bridge_abi_version
 _gem_wine_process_register_arm64x_mapped
 _gem_wine_process_prepare_arm64ec
+_gem_wine_process_prepare_x86_64
 _gem_wine_status_name
 _gem_wine_process_create
 _gem_wine_process_destroy

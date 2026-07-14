@@ -141,7 +141,9 @@ gem_prefix="$work/gem-prefix"
 [[ -z "$(git -C "$root" status --porcelain=v1 --untracked-files=all)" ]] || {
     echo "repository must be clean before the integrated Wine build" >&2; exit 1;
 }
+export MACOSX_DEPLOYMENT_TARGET=15.0
 cmake -S "$root" -B "$gem_build" -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
     -DCMAKE_INSTALL_PREFIX="$gem_prefix" \
     -DMSWR_ENABLE_ARM64EC_ENGINE=ON -DMSWR_ENABLE_X64_ENGINE=ON \
     -DMSWR_BUILD_WINE_BRIDGE=ON \

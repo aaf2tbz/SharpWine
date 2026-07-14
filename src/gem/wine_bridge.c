@@ -5,6 +5,7 @@
 #include "metalsharp/gem/arm64ec_target.h"
 #include "metalsharp/gem/hybrid_runtime.h"
 #include "metalsharp/gem/pe_arm64x.h"
+#include "metalsharp/gem/x64_engine.h"
 
 #include <pthread.h>
 #include <stdatomic.h>
@@ -18,6 +19,9 @@ _Static_assert(GEM_WINE_KUSER_SHARED_DATA_ADDRESS == GEM_KUSER_SHARED_DATA_ADDRE
                "Wine bridge KUSER alias diverged from GEM");
 _Static_assert(GEM_WINE_KUSER_CANONICAL_ADDRESS == GEM_KUSER_CANONICAL_ADDRESS,
                "Wine bridge KUSER canonical address diverged from GEM");
+_Static_assert(GEM_WINE_X86_64_BOUNDARY_WINDOWS_SYSCALL == GEM_X64_BOUNDARY_WINDOWS_SYSCALL &&
+                   GEM_WINE_X86_64_BOUNDARY_UNIX_CALL == GEM_X64_BOUNDARY_UNIX_CALL,
+               "Wine bridge x86_64 boundary ABI diverged from GEM");
 _Static_assert((uint32_t)GEM_WINE_PAGE_NOACCESS == (uint32_t)GEM_PAGE_NOACCESS &&
                    (uint32_t)GEM_WINE_PAGE_READONLY == (uint32_t)GEM_PAGE_READONLY &&
                    (uint32_t)GEM_WINE_PAGE_READWRITE == (uint32_t)GEM_PAGE_READWRITE &&
@@ -50,6 +54,7 @@ struct gem_wine_thread {
     struct gem_wine_process *process;
     struct gem_wine_thread *next;
     struct gem_arm64ec_runtime *runtime;
+    struct gem_x64_runtime *x64_runtime;
     struct gem_wine_hybrid_binding *hybrids;
     struct gem_wine_hybrid_binding *coordinator_hybrid;
     _Atomic(struct gem_hybrid_runtime *) active_hybrid;
@@ -64,9 +69,81 @@ struct gem_wine_process {
     struct gem_wine_thread *threads;
     struct gem_wine_arm64x_image *images;
     _Atomic bool arm64x_routing_enabled;
+    _Atomic bool x86_64_routing_enabled;
+    struct gem_wine_x86_64_config x86_64_config;
     pthread_mutex_t threads_lock;
     pthread_mutex_t images_lock;
 };
+
+static bool read_guest(struct gem_wine_process *process, uint64_t address, void *value,
+                       size_t size) {
+    return gem_memory_read(process->memory, address, value, size) == GEM_MEMORY_OK;
+}
+
+static enum gem_wine_status memory_status(enum gem_memory_error error);
+
+static bool validate_x86_64_ntdll(struct gem_wine_process *process,
+                                  const struct gem_wine_x86_64_config *config) {
+    uint8_t dos[64], nt[264];
+    uint32_t pe_offset, signature, size_of_image, size_of_headers;
+    uint16_t machine, sections, optional_size, optional_magic;
+    uint64_t image_end;
+
+    if ((config->loaded_base & (GEM_WINE_GUEST_PAGE_SIZE - 1U)) != 0U ||
+        config->image_size < GEM_WINE_GUEST_PAGE_SIZE ||
+        (config->image_size & (GEM_WINE_GUEST_PAGE_SIZE - 1U)) != 0U ||
+        __builtin_add_overflow(config->loaded_base, config->image_size, &image_end) ||
+        config->windows_syscall_boundary < config->loaded_base ||
+        config->windows_syscall_boundary >= image_end ||
+        config->unix_call_boundary < config->loaded_base ||
+        config->unix_call_boundary >= image_end ||
+        config->windows_syscall_boundary == config->unix_call_boundary ||
+        !read_guest(process, config->loaded_base, dos, sizeof(dos)))
+        return false;
+    memcpy(&machine, dos, sizeof(machine));
+    if (machine != UINT16_C(0x5a4d))
+        return false;
+    memcpy(&pe_offset, dos + 0x3c, sizeof(pe_offset));
+    if (pe_offset < sizeof(dos) || pe_offset > config->image_size - sizeof(nt) ||
+        !read_guest(process, config->loaded_base + pe_offset, nt, sizeof(nt)))
+        return false;
+    memcpy(&signature, nt, sizeof(signature));
+    memcpy(&machine, nt + 4, sizeof(machine));
+    memcpy(&sections, nt + 6, sizeof(sections));
+    memcpy(&optional_size, nt + 20, sizeof(optional_size));
+    memcpy(&optional_magic, nt + 24, sizeof(optional_magic));
+    memcpy(&size_of_image, nt + 24 + 56, sizeof(size_of_image));
+    memcpy(&size_of_headers, nt + 24 + 60, sizeof(size_of_headers));
+    return signature == UINT32_C(0x00004550) && machine == UINT16_C(0x8664) && sections != 0U &&
+           optional_size >= UINT16_C(0x00f0) && optional_magic == UINT16_C(0x020b) &&
+           size_of_image == config->image_size && size_of_headers >= sizeof(dos) &&
+           size_of_headers <= size_of_image;
+}
+
+static enum gem_wine_status
+install_x86_64_dispatcher_page(struct gem_wine_process *process,
+                               const struct gem_wine_x86_64_config *config) {
+    uint64_t address = GEM_WINE_X86_64_SYSCALL_DISPATCH_ADDRESS;
+    uint32_t old_protection = 0U;
+    enum gem_memory_error error;
+
+    error = gem_memory_reserve(process->memory, &address, GEM_WINE_GUEST_PAGE_SIZE);
+    if (error != GEM_MEMORY_OK || address != GEM_WINE_X86_64_SYSCALL_DISPATCH_ADDRESS)
+        return error == GEM_MEMORY_OK ? GEM_WINE_MEMORY_ERROR : memory_status(error);
+    error =
+        gem_memory_commit(process->memory, address, GEM_WINE_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE);
+    if (error == GEM_MEMORY_OK)
+        error = gem_memory_write(process->memory, address, &config->windows_syscall_boundary,
+                                 sizeof(config->windows_syscall_boundary));
+    if (error == GEM_MEMORY_OK)
+        error = gem_memory_protect(process->memory, address, GEM_WINE_GUEST_PAGE_SIZE,
+                                   GEM_PAGE_READONLY, &old_protection);
+    if (error != GEM_MEMORY_OK || old_protection != GEM_PAGE_READWRITE) {
+        (void)gem_memory_release(process->memory, address, GEM_WINE_GUEST_PAGE_SIZE);
+        return error == GEM_MEMORY_OK ? GEM_WINE_MEMORY_ERROR : memory_status(error);
+    }
+    return GEM_WINE_OK;
+}
 
 static bool zero_words(const uint64_t *words, size_t count) {
     size_t index;
@@ -220,6 +297,17 @@ static void copy_stop_info(struct gem_wine_stop_info *destination,
     destination->fault_address = source->fault_address;
 }
 
+static void copy_x64_stop_info(struct gem_wine_stop_info *destination,
+                               const struct gem_x64_stop_info *source) {
+    memset(destination, 0, sizeof(*destination));
+    destination->reason = (uint32_t)source->reason;
+    destination->access = (uint32_t)source->access;
+    destination->memory_error = source->memory_error;
+    destination->engine_status = source->engine_status;
+    destination->instructions_retired = source->instructions_retired;
+    destination->fault_address = source->fault_address;
+}
+
 static bool copy_hybrid_stop_info(struct gem_wine_stop_info *destination,
                                   const struct gem_hybrid_stop_info *source,
                                   uint64_t instructions_retired) {
@@ -287,6 +375,7 @@ enum gem_wine_status gem_wine_process_create(const struct gem_wine_process_confi
         return GEM_WINE_NO_MEMORY;
     process->config = *config;
     atomic_init(&process->arm64x_routing_enabled, false);
+    atomic_init(&process->x86_64_routing_enabled, false);
     if (pthread_mutex_init(&process->threads_lock, NULL) != 0) {
         free(process);
         return GEM_WINE_ENGINE_ERROR;
@@ -336,6 +425,8 @@ enum gem_wine_status gem_wine_process_prepare_arm64ec(struct gem_wine_process *p
 
     if (process == NULL)
         return GEM_WINE_INVALID_ARGUMENT;
+    if (atomic_load_explicit(&process->x86_64_routing_enabled, memory_order_acquire))
+        return GEM_WINE_CONFLICT;
     atomic_store_explicit(&process->arm64x_routing_enabled, true, memory_order_release);
     if (pthread_mutex_lock(&process->threads_lock) != 0)
         return GEM_WINE_ENGINE_ERROR;
@@ -355,6 +446,34 @@ enum gem_wine_status gem_wine_process_prepare_arm64ec(struct gem_wine_process *p
     }
     (void)pthread_mutex_unlock(&process->threads_lock);
     return GEM_WINE_OK;
+}
+
+enum gem_wine_status gem_wine_process_prepare_x86_64(struct gem_wine_process *process,
+                                                     const struct gem_wine_x86_64_config *config) {
+    enum gem_wine_status status = GEM_WINE_OK;
+    if (process == NULL || config == NULL || config->version != GEM_WINE_X86_64_CONFIG_VERSION ||
+        config->struct_size != sizeof(*config) ||
+        (config->flags & ~GEM_WINE_X86_64_FLAG_INTERPRETER_ORACLE) != 0U ||
+        !zero_words(config->reserved, sizeof(config->reserved) / sizeof(config->reserved[0])))
+        return GEM_WINE_INVALID_ARGUMENT;
+    if (!validate_x86_64_ntdll(process, config))
+        return GEM_WINE_INVALID_ARGUMENT;
+    if (pthread_mutex_lock(&process->threads_lock) != 0)
+        return GEM_WINE_ENGINE_ERROR;
+    if (atomic_load_explicit(&process->arm64x_routing_enabled, memory_order_acquire))
+        status = GEM_WINE_CONFLICT;
+    else if (atomic_load_explicit(&process->x86_64_routing_enabled, memory_order_acquire))
+        status = memcmp(&process->x86_64_config, config, sizeof(*config)) == 0 ? GEM_WINE_OK
+                                                                               : GEM_WINE_CONFLICT;
+    else {
+        status = install_x86_64_dispatcher_page(process, config);
+        if (status == GEM_WINE_OK) {
+            process->x86_64_config = *config;
+            atomic_store_explicit(&process->x86_64_routing_enabled, true, memory_order_release);
+        }
+    }
+    (void)pthread_mutex_unlock(&process->threads_lock);
+    return status;
 }
 
 enum gem_wine_status
@@ -508,12 +627,33 @@ enum gem_wine_status gem_wine_process_invalidate_code(struct gem_wine_process *p
             return GEM_WINE_ENGINE_ERROR;
         }
         gem_arm64ec_runtime_invalidate_code(thread->runtime, address, size);
+        if (thread->x64_runtime != NULL)
+            gem_x64_runtime_invalidate_code(thread->x64_runtime, address, size);
         for (binding = thread->hybrids; binding != NULL; binding = binding->next)
             gem_hybrid_runtime_invalidate_code(binding->runtime, address, size);
         (void)pthread_mutex_unlock(&thread->runtime_lock);
     }
     (void)pthread_mutex_unlock(&process->threads_lock);
     return GEM_WINE_OK;
+}
+
+static bool ensure_x86_64_runtime(struct gem_wine_thread *thread) {
+    struct gem_x64_runtime_config config;
+    const struct gem_wine_x86_64_config *process_config = &thread->process->x86_64_config;
+    if (thread->x64_runtime != NULL)
+        return true;
+    if (!atomic_load_explicit(&thread->process->x86_64_routing_enabled, memory_order_acquire))
+        return false;
+    memset(&config, 0, sizeof(config));
+    config.host_return_sentinel = thread->process->config.host_return_sentinel;
+    config.max_budget = thread->process->config.segment_instruction_budget;
+    config.windows_syscall_boundary = process_config->windows_syscall_boundary;
+    config.unix_call_boundary = process_config->unix_call_boundary;
+    config.engine_mode = (process_config->flags & GEM_WINE_X86_64_FLAG_INTERPRETER_ORACLE) != 0U
+                             ? GEM_X86_64_ENGINE_INTERPRETER
+                             : GEM_X86_64_ENGINE_JIT;
+    thread->x64_runtime = gem_x64_runtime_create(thread->process->memory, &config);
+    return thread->x64_runtime != NULL;
 }
 
 enum gem_wine_status gem_wine_thread_create(struct gem_wine_process *process,
@@ -602,6 +742,7 @@ enum gem_wine_status gem_wine_thread_destroy(struct gem_wine_thread *thread) {
     (void)pthread_mutex_unlock(&process->threads_lock);
     atomic_store_explicit(&thread->active_hybrid, NULL, memory_order_release);
     destroy_hybrid_bindings(thread->hybrids);
+    gem_x64_runtime_destroy(thread->x64_runtime);
     gem_arm64ec_runtime_destroy(thread->runtime);
     (void)pthread_mutex_unlock(&thread->run_lock);
     (void)pthread_mutex_destroy(&thread->runtime_lock);
@@ -640,6 +781,7 @@ void gem_wine_thread_request_async_stop(struct gem_wine_thread *thread) {
             atomic_load_explicit(&thread->active_hybrid, memory_order_acquire);
         if (hybrid != NULL)
             gem_hybrid_runtime_request_async_stop(hybrid);
+        gem_x64_runtime_request_async_stop(thread->x64_runtime);
         gem_arm64ec_runtime_request_async_stop(thread->runtime);
     }
 }
@@ -650,7 +792,8 @@ static enum gem_wine_boundary_event classify_event(const struct gem_wine_process
                                                    const struct gem_wine_stop_info *stop) {
     switch (reason) {
     case GEM_STOP_SYSCALL:
-        if (stop->engine_status == GEM_WINE_NATIVE_UNIX_CALL_SVC)
+        if (stop->engine_status == GEM_WINE_NATIVE_UNIX_CALL_SVC ||
+            stop->engine_status == GEM_X64_BOUNDARY_UNIX_CALL)
             return GEM_WINE_EVENT_UNIX_CALL;
         return GEM_WINE_EVENT_SYSCALL;
     case GEM_STOP_MEMORY_FAULT:
@@ -745,6 +888,21 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
             }
             if (!gem_hybrid_runtime_coordinator_active(hybrid_binding->runtime))
                 thread->coordinator_hybrid = NULL;
+        } else if (context.isa == GEM_ISA_X64 &&
+                   atomic_load_explicit(&process->x86_64_routing_enabled, memory_order_acquire)) {
+            struct gem_x64_stop_info x64_stop;
+            if (!ensure_x86_64_runtime(thread)) {
+                (void)pthread_mutex_unlock(&thread->runtime_lock);
+                status = GEM_WINE_ENGINE_ERROR;
+                break;
+            }
+            reason = gem_x64_runtime_run(thread->x64_runtime, &context, budget);
+            if (!gem_x64_runtime_last_stop_info(thread->x64_runtime, &x64_stop)) {
+                (void)pthread_mutex_unlock(&thread->runtime_lock);
+                status = GEM_WINE_ENGINE_ERROR;
+                break;
+            }
+            copy_x64_stop_info(&stop, &x64_stop);
         } else {
             struct gem_arm64ec_stop_info arm_stop;
             if (context.isa != GEM_ISA_ARM64EC) {
@@ -810,7 +968,10 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
             status = GEM_WINE_ENGINE_ERROR;
             break;
         }
-        if (thread->config.boundary == NULL || context.isa != GEM_ISA_ARM64EC) {
+        if (thread->config.boundary == NULL ||
+            (context.isa != GEM_ISA_ARM64EC &&
+             !(context.isa == GEM_ISA_X64 &&
+               atomic_load_explicit(&process->x86_64_routing_enabled, memory_order_acquire)))) {
             run_result.outcome = GEM_WINE_RUN_UNHANDLED_STOP;
             status = GEM_WINE_STOPPED;
             break;
@@ -826,6 +987,7 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
             struct gem_wine_boundary_response response;
             struct gem_u128 upper_simd_before[16];
             enum gem_wine_status callback_status;
+            const bool arm64ec_context = context.isa == GEM_ISA_ARM64EC;
 
             memset(&request, 0, sizeof(request));
             request.version = GEM_WINE_BOUNDARY_ABI_VERSION;
@@ -837,7 +999,8 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
             response.version = GEM_WINE_BOUNDARY_ABI_VERSION;
             response.struct_size = (uint32_t)sizeof(response);
             response.context = context;
-            if (!gem_arm64ec_runtime_get_native_upper_simd(thread->runtime, upper_simd_before)) {
+            if (arm64ec_context &&
+                !gem_arm64ec_runtime_get_native_upper_simd(thread->runtime, upper_simd_before)) {
                 run_result.outcome = GEM_WINE_RUN_FAILED;
                 status = GEM_WINE_ENGINE_ERROR;
                 break;
@@ -847,7 +1010,9 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
             if (callback_status != GEM_WINE_OK ||
                 response.version != GEM_WINE_BOUNDARY_ABI_VERSION ||
                 response.struct_size != sizeof(response)) {
-                (void)gem_arm64ec_runtime_set_native_upper_simd(thread->runtime, upper_simd_before);
+                if (arm64ec_context)
+                    (void)gem_arm64ec_runtime_set_native_upper_simd(thread->runtime,
+                                                                    upper_simd_before);
                 run_result.outcome = GEM_WINE_RUN_FAILED;
                 status = GEM_WINE_CALLBACK_ERROR;
                 break;
@@ -872,7 +1037,9 @@ enum gem_wine_status gem_wine_thread_run(struct gem_wine_thread *thread,
                 ((request.event == GEM_WINE_EVENT_SYSCALL ||
                   request.event == GEM_WINE_EVENT_UNIX_CALL) &&
                  response.context.pc == request.context.pc)) {
-                (void)gem_arm64ec_runtime_set_native_upper_simd(thread->runtime, upper_simd_before);
+                if (arm64ec_context)
+                    (void)gem_arm64ec_runtime_set_native_upper_simd(thread->runtime,
+                                                                    upper_simd_before);
                 run_result.outcome = GEM_WINE_RUN_FAILED;
                 status = GEM_WINE_CALLBACK_ERROR;
                 break;
