@@ -230,6 +230,32 @@ jobs:
           "${{ runner.temp }}/x86-64-fixture/x86_64_exit.exe: PE32+ executable (console) x86-64, for MS Windows"
       - run: test -z "$(git status --porcelain --untracked-files=all)"
 
+  blink-i386-engine:
+    name: GEM_i386 JIT and interpreter oracle (native macOS ARM64)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - run: test "$(uname -m)" = arm64
+      - run: test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+      - run: brew install boost
+      - run: >-
+          cmake -S . -B build-i386
+          -DCMAKE_BUILD_TYPE=Debug
+          -DMSWR_ENABLE_I386_ENGINE=ON
+          -DMSWR_I386_ENGINE_CONFORMANCE=ON
+          -DMSWR_WARNINGS_AS_ERRORS=ON
+      - run: cmake --build build-i386 --parallel
+      - run: ctest --test-dir build-i386 --output-on-failure -L i386
+      - run: tools/ci/audit-zero-rosetta.sh build-i386
+      - run: grep -q '^#define HAVE_JIT' build-i386/_deps/blink_gem-src/blink/builtin.h
+      - run: test -z "$(grep DISABLE_JIT build-i386/generated/blink-gem/config.h || true)"
+      - run: >-
+          test "$(file build-i386/i386_engine_conformance)" =
+          "build-i386/i386_engine_conformance: Mach-O 64-bit executable arm64"
+      - run: test -z "$(git status --porcelain --untracked-files=all)"
+
   arm64x-toolchain-probe:
     name: ARM64X toolchain probe (native Windows ARM64)
     runs-on: windows-11-arm
