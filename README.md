@@ -4,7 +4,7 @@
 
 MetalSharp Wine Runtime is a native Apple-silicon Wine distribution for running the supported Windows AArch64 and ARM64EC/x64 paths without Rosetta. It combines Wine 11.12 with a four-architecture PE installation, a self-contained macOS runtime closure, and an ARM64-only host Mach-O process graph.
 
-The current release is [v0.1.0](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/tag/v0.1.0). It proves fresh-prefix Wineboot, native AArch64 builtins, and the repository's authentic ARM64EC/x64 fixture. It does not claim general i386 or x86_64 application compatibility yet; see the [known limitations](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/download/v0.1.0/KNOWN-LIMITATIONS.md).
+The configured release is [v0.1.1](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/tag/v0.1.1). It proves fresh-prefix Wineboot, native AArch64 builtins, the authentic ARM64EC/x64 fixture, and the bounded pure x86_64 exception and `cmd.exe` paths through the native ARM64 GEM/Blink JIT. It does not claim i386/WoW64 or blanket arbitrary x86_64 application compatibility; see the [known limitations](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/download/v0.1.1/KNOWN-LIMITATIONS.md).
 
 ## What it is
 
@@ -26,14 +26,14 @@ ARM64EC transitions are classified from copied, bounds-checked ARM64X/CHPE metad
 
 ## Install and run
 
-On Apple silicon, download the archive and its checksum from [v0.1.0](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/tag/v0.1.0). You need `zstd`, `tar`, and a writable location for `WINEPREFIX`.
+On Apple silicon, download the archive and its checksum from [v0.1.1](https://github.com/aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64/releases/tag/v0.1.1). You need `zstd`, `tar`, and a writable location for `WINEPREFIX`.
 
 ```sh
-shasum -a 256 -c metalsharp-wine-v0.1.0-macos-arm64.tar.zst.sha256
-zstd -d --stdout metalsharp-wine-v0.1.0-macos-arm64.tar.zst | tar -xf -
+shasum -a 256 -c metalsharp-wine-v0.1.1-macos-arm64.tar.zst.sha256
+zstd -d --stdout metalsharp-wine-v0.1.1-macos-arm64.tar.zst | tar -xf -
 export WINEPREFIX="$PWD/metalsharp-prefix"
-./metalsharp-wine-v0.1.0-macos-arm64/bin/wineboot --init
-./metalsharp-wine-v0.1.0-macos-arm64/bin/wine cmd.exe /c exit
+./metalsharp-wine-v0.1.1-macos-arm64/bin/wineboot --init
+./metalsharp-wine-v0.1.1-macos-arm64/bin/wine cmd.exe /c exit
 ```
 
 Do not use `arch -x86_64`, Rosetta, or an x86_64 Homebrew environment. The packaged runtime includes its declared non-system dependencies; macOS system frameworks remain external by design.
@@ -52,15 +52,18 @@ For development, use CMake 3.24+, a C11 compiler, Python 3.11+, Git, CTest, and 
 
 ## Verification and release CI
 
-Mainline release verification downloads the already-published archive, validates its checksum, manifest, and ARM64-only host closure, then runs isolated fresh-prefix Wineboot/native/hybrid smoke tests. It does not build Wine in GitHub Actions.
+Mainline release verification downloads the already-published archive, validates its checksum, manifest, and ARM64-only host closure, then runs isolated fresh-prefix native, ARM64EC, pure x86_64 exception, and x86_64 `cmd.exe` smoke tests.
 
-To publish an update without rebuilding Wine, merge a deliberate version bump to
+To publish a focused update, merge a deliberate version bump to
 [`release/current.json`](release/current.json) on `main`, set `previousTag` to the
-currently published release, and place runtime-only updates below its configured
-`runtimeOverlay`. The release workflow downloads and validates the previous public
-bundle, applies that overlay, audits and smoke-tests the result, creates a new
-immutable tag, and dispatches the public-artifact verifier for that new tag. A
-release record whose tag does not change is a no-op.
+currently published release, and bind an exact hash-reviewed runtime patch set and
+overlay policy. The native Apple-silicon release job downloads and verifies that
+published tarball, applies the policy-listed binary patches to its extracted runtime,
+probes the patched tree, applies the final hash-bound overlay, audits and smoke-tests
+the result, and creates the immutable tag.
+The published-release event then redownloads and independently verifies that tag. A
+release record whose tag does not change is a no-op; release CI never builds the full
+Wine runtime or uses an Intel runner.
 
 Local repository checks remain available through:
 

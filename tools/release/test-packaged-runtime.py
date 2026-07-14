@@ -88,19 +88,26 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime", required=True, type=pathlib.Path)
     parser.add_argument("--evidence", required=True, type=pathlib.Path)
+    parser.add_argument("--x86-64-fixture", required=True, type=pathlib.Path)
     parser.add_argument("--stress-iterations", type=int, default=8)
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
     runtime = args.runtime.resolve(strict=True)
+    x86_64_fixture = args.x86_64_fixture.resolve(strict=True)
     if args.stress_iterations < 1 or args.timeout < 30:
         fail("invalid stress or timeout bound")
     wine = runtime / "bin/wine"
     wineserver = runtime / "bin/wineserver"
     selftest = runtime / "share/metalsharp/selftest"
     for path in (wine, wineserver, selftest / "arm64x_fixture_host.exe",
-                 selftest / "arm64x_fixture.dll"):
+                 selftest / "arm64x_fixture.dll", x86_64_fixture,
+                 runtime / "lib/wine/x86_64-windows/cmd.exe"):
         if not path.exists():
-            fail(f"missing packaged test input: {path.relative_to(runtime)}")
+            try:
+                display = path.relative_to(runtime)
+            except ValueError:
+                display = path
+            fail(f"missing packaged test input: {display}")
     args.evidence.mkdir(parents=True, exist_ok=True)
     prefix = pathlib.Path(tempfile.mkdtemp(prefix="mswr-v0.1-prefix-"))
     env = os.environ.copy()
@@ -224,6 +231,14 @@ def main() -> None:
         quiesce_wineserver()
         run_test("arm64ec-x64-hybrid", [str(wine), str(selftest / "arm64x_fixture_host.exe")],
                  ("ARM64X linked fixture native execution passed",), timeout=120, trace_gem=True)
+        quiesce_wineserver()
+        run_test("x86_64-exception", [str(wine), str(x86_64_fixture)],
+                 ("pure AMD64 routing enabled",), timeout=120, trace_gem=True)
+        quiesce_wineserver()
+        run_test("x86_64-cmd-exit",
+                 [str(wine), str(runtime / "lib/wine/x86_64-windows/cmd.exe"),
+                  "/d", "/c", "exit", "0"],
+                 ("pure AMD64 routing enabled",), timeout=120, trace_gem=True)
         for index in range(args.stress_iterations):
             quiesce_wineserver()
             run_test(f"hybrid-stress-{index + 1:03d}",
@@ -264,7 +279,7 @@ def main() -> None:
                "teardownClean": True}
     (args.evidence / "summary.json").write_text(
         json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
-    print("packaged Wine fresh-prefix, native ARM64, and authentic hybrid tests passed")
+    print("packaged Wine native ARM64, ARM64EC, and pure x86_64 tests passed")
 
 
 if __name__ == "__main__":
