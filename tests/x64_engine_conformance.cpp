@@ -187,7 +187,7 @@ static void test_explicit_jit_mode() {
     assert(interpreted_output == input && compiled_output == interpreted_output);
 
     /* Fault and unsupported outcomes must be identical and transactional. */
-    const uint8_t unsupported = 0x50;
+    const uint8_t unsupported = 0x5e;
     for (gem_memory *memory : {interpreter_memory, jit_memory})
         assert(gem_memory_write(memory, CODE, &unsupported, sizeof(unsupported)) == GEM_MEMORY_OK);
     gem_x64_runtime_invalidate_code(interpreter, CODE, 1);
@@ -336,10 +336,10 @@ int main() {
     uint64_t out = 0;
     assert(gem_memory_read(m, DATA + 8, &out, 8) == GEM_MEMORY_OK && out == value);
 
-    /* Pinned Blink's established opcode table decodes 0x50 as OpPushZvq.
-     * It is intentionally absent from the reviewed handler manifest. */
-    const uint8_t push_rax = 0x50;
-    assert(gem_memory_write(m, CODE, &push_rax, 1) == GEM_MEMORY_OK);
+    /* Pinned Blink's established opcode table decodes 0x58 as OpPopZvq.
+     * POP remains intentionally absent from the reviewed handler manifest. */
+    const uint8_t pop_rax = 0x58;
+    assert(gem_memory_write(m, CODE, &pop_rax, 1) == GEM_MEMORY_OK);
     init(c);
     uint8_t stack_before[8]{};
     assert(gem_memory_read(m, c.sp - 8, stack_before, sizeof(stack_before)) == GEM_MEMORY_OK);
@@ -545,7 +545,7 @@ int main() {
                trace_id == BLINK_GEM_HANDLER_OP_MOV_GVQP_EVQP && trace_rip == CODE);
 
         gem_x64_runtime_handler_trace_reset(r);
-        assert(gem_memory_write(m, CODE, &push_rax, 1) == GEM_MEMORY_OK);
+        assert(gem_memory_write(m, CODE, &pop_rax, 1) == GEM_MEMORY_OK);
         init(c);
         assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
         assert(gem_x64_runtime_handler_trace_info(r, &trace_count, &trace_overflow) &&
@@ -763,6 +763,40 @@ int main() {
         assert(attempt.valid && attempt.mopcode == 0x11fU &&
                attempt.handler_id == BLINK_GEM_HANDLER_OP_NOP_EV &&
                !strcmp(attempt.name, "OpNopEv"));
+
+        /* Ordinary PE32+ prologues save RSI with long-mode PUSH r64. The
+         * accepted form decrements RSP by eight, stores the exact register,
+         * and preserves flags and unrelated architectural state. */
+        const uint8_t push_rsi[] = {0x56};
+        assert(gem_memory_write(m, CODE, push_rsi, sizeof(push_rsi)) == GEM_MEMORY_OK);
+        init(c);
+        const auto push_before = c;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_BUDGET_EXPIRED);
+        uint64_t pushed = 0U;
+        assert(gem_memory_read(m, push_before.sp - sizeof(pushed), &pushed, sizeof(pushed)) ==
+               GEM_MEMORY_OK);
+        assert(c.pc == CODE + sizeof(push_rsi) && c.sp == push_before.sp - sizeof(pushed) &&
+               pushed == push_before.x[25] &&
+               (c.x64_rflags & UINT64_C(0x8d5)) == (push_before.x64_rflags & UINT64_C(0x8d5)) &&
+               !memcmp(c.x87, push_before.x87, sizeof(c.x87)));
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(attempt.valid && attempt.mopcode == 0x056U &&
+               attempt.handler_id == BLINK_GEM_HANDLER_OP_PUSH_ZVQ &&
+               !strcmp(attempt.name, "OpPushZvq"));
+
+        /* Operand-size-overridden PUSH remains outside the long-mode r64
+         * contract and must not mutate context or stack memory. */
+        const uint8_t push_rsi_16[] = {0x66, 0x56};
+        assert(gem_memory_write(m, CODE, push_rsi_16, sizeof(push_rsi_16)) == GEM_MEMORY_OK);
+        init(c);
+        const auto rejected_push = c;
+        assert(gem_x64_runtime_run(r, &c, 1) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
+        auto rejected_push_expected = rejected_push;
+        rejected_push_expected.stop_reason = GEM_STOP_UNSUPPORTED_INSTRUCTION;
+        assert(!memcmp(&c, &rejected_push_expected, sizeof(c)));
+        assert(gem_x64_runtime_decode_attempt_info(r, &attempt));
+        assert(attempt.valid && attempt.mopcode == 0x056U && attempt.handler_id == 0U &&
+               !strcmp(attempt.name, "OpPushZvq"));
 
         /* 16-bit width and memory ModR/M remain outside the narrow rule. */
         const std::array<std::array<uint8_t, 3>, 2> rejected_adds = {

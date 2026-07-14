@@ -3,7 +3,7 @@
   "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
   "archiveSha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
   "patchSha256": [
-    "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
+    "0282b23ea2e146b05517cac635760886e584537745f7edb7bc875cc809cca7af",
     "560648510b5d3b5e0feb5e9462fb1534d652422f15cf69e14662a276fd96d396"
   ],
   "license": "ISC",
@@ -13,9 +13,9 @@
     "blink/throw.c": "5df4b02be0d089b25c6318841cb072c5af9ca1b3e5aa9e11982bdc73ca7e2eed"
   },
   "postPatch": {
-    "blink/gem_embed.c": "ada3edfea4e0bbc9dba419214566186b46f8fe6b021868a8b9f81ef36d3c0978",
-    "blink/gem_embed.h": "f75fb70cdf3be27a4ce3fce9d08a1ad63047484355b32e02e52a48b6bcd2e1c0",
-    "blink/machine.c": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+    "blink/gem_embed.c": "90036c3365f90c778f4a9f9b245d32e1aa07a02932f892cda88e9364cad712e4",
+    "blink/gem_embed.h": "1431b9082fe59f0b3c33858316ca8604e80591c9923269a8c6c9078b7095108b",
+    "blink/machine.c": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
     "blink/machine.h": "69a0c145e3c7218f82e774113458ff8de295759dc709d14a05cb1626228a1685",
     "blink/throw.c": "1826aa163631f978d742f8d00af0198f7b86c5b17cd2fc5dae3f7d427f33eefe"
   },
@@ -28,7 +28,7 @@
     {
       "name": "OpNop",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 1471,
       "endLine": 1479,
       "definitionSha256": "b0d1c352885969febe97a5b0963f5b550fa31aab091d7b39dd8015f8b9a3f2f9"
@@ -36,7 +36,7 @@
     {
       "name": "OpMovZvqpIvqp",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 397,
       "endLine": 417,
       "definitionSha256": "caf0bf3c87ae024cb1b9c6a03f37d941bf594a49c3bb94d06cc09b156f494be1"
@@ -44,7 +44,7 @@
     {
       "name": "OpMovEvqpGvqp",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 121,
       "endLine": 128,
       "definitionSha256": "a034375c3863c9864d9ed9346ee823efe8d16bd86ba6b161a85e0c2275d489c6"
@@ -52,7 +52,7 @@
     {
       "name": "OpMovGvqpEvqp",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 130,
       "endLine": 137,
       "definitionSha256": "0041b90b7dfe1d9176da68ab7af8538d01b5edbdacd83449c21baa9a68d173ac"
@@ -60,7 +60,7 @@
     {
       "name": "OpBsuwiImm",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 743,
       "endLine": 745,
       "definitionSha256": "a352df3e6d6b30da372ebb3ce890b8c72ae67c26c44d2b46ee9fda0c875770ce"
@@ -76,7 +76,7 @@
     {
       "name": "OpJcc",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 921,
       "endLine": 957,
       "definitionSha256": "03e9b384f40790d5394909c96f673b6327fc4e539590a9b5a1a26908c2082759"
@@ -84,7 +84,7 @@
     {
       "name": "OpJmp",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 908,
       "endLine": 911,
       "definitionSha256": "1a8ed1c0df3f1dcfc193a985226887e766fb097fb7283561aade16eecc708a22"
@@ -100,7 +100,7 @@
     {
       "name": "OpLeaGvqpM",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 113,
       "endLine": 119,
       "definitionSha256": "e3125acecb150966c0698a30e7767381ff4ab0d62b329a91a80e4604e9b8bbb8"
@@ -116,7 +116,7 @@
     {
       "name": "OpAluFlip",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 514,
       "endLine": 549,
       "definitionSha256": "c44475cdbd324a1caf52d22e600cfcaea1199e2df5506459bf8621ec9d8c74f7"
@@ -124,7 +124,7 @@
     {
       "name": "Op0ff",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 1219,
       "endLine": 1221,
       "definitionSha256": "11c16132e8c123d9d725942dc04f448304fcd3df88af47324ce7196c16405747"
@@ -148,7 +148,7 @@
     {
       "name": "OpAluTest",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 492,
       "endLine": 501,
       "definitionSha256": "5e3c06bed0b0bb447037a7a4b81ba6c967e071ba99a4108d2068530b5448f6b5"
@@ -156,7 +156,7 @@
     {
       "name": "OpMovslGdqpEd",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 177,
       "endLine": 185,
       "definitionSha256": "198a18886dd257969b5a6dd7ddd6fa6fdfb2851c8184c545ee6f0771d37b3790"
@@ -164,10 +164,18 @@
     {
       "name": "OpNopEv",
       "file": "blink/machine.c",
-      "sourceSha256": "898c8f59110e33d703d95aff35297e9e69fddfde33fadae4da41f5b8c224314f",
+      "sourceSha256": "367090c00bb73b97c586d320bc253b4ad3644aee1a95dd8e4ece1425e9379fe9",
       "startLine": 1409,
       "endLine": 1422,
       "definitionSha256": "20f7e63977efffc0d80d2e66d70b4b02cef28b7a253a5269a6cc3cdefb6b0ee2"
+    },
+    {
+      "name": "OpPushZvq",
+      "file": "blink/stack.c",
+      "sourceSha256": "d17a2dcd451fe4e75da3e327bf311ab54939360b9d9d81583c5d818ecc7dd36f",
+      "startLine": 115,
+      "endLine": 124,
+      "definitionSha256": "bd12cca0da8ece1f32a827b8cd62baf34ac5b1d13116c789ca9c7e89136480f9"
     }
   ],
   "handlerTrace": {
@@ -254,6 +262,10 @@
       {
         "id": 19,
         "name": "OpNopEv"
+      },
+      {
+        "id": 20,
+        "name": "OpPushZvq"
       }
     ],
     "restrictions": [
@@ -296,6 +308,11 @@
         "id": 19,
         "handler": "OpNopEv",
         "forms": "0x0f 0x1f alignment NOP"
+      },
+      {
+        "id": 20,
+        "handler": "OpPushZvq",
+        "forms": "long-mode PUSH r64, opcodes 0x50..0x57"
       }
     ]
   },
@@ -363,6 +380,11 @@
         "mopcode": "0x11F",
         "name": "OpNopEv",
         "handlerId": 19
+      },
+      {
+        "mopcode": "0x050..0x057",
+        "name": "OpPushZvq",
+        "handlerId": 20
       }
     ],
     "rejectedSharedHandlerExample": {

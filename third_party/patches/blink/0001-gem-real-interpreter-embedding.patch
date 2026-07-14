@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..a189ec0b8241e1a7a5a6ac373257931130a5529c
 --- /dev/null
 +++ b/blink/gem_embed.c
-@@ -0,0 +1,434 @@
+@@ -0,0 +1,435 @@
 +/*
 + * Copyright 2022 Justine Alexandra Roberts Tunney
 + * Copyright 2026 MetalSharp Wine Runtime contributors
@@ -422,6 +422,7 @@ index 0000000000000000000000000000000000000000..a189ec0b8241e1a7a5a6ac3732579311
 +    case BLINK_GEM_HANDLER_OP_ALU_TEST: return "OpAluTest";
 +    case BLINK_GEM_HANDLER_OP_MOVSL_GDQP_ED: return "OpMovslGdqpEd";
 +    case BLINK_GEM_HANDLER_OP_NOP_EV: return "OpNopEv";
++    case BLINK_GEM_HANDLER_OP_PUSH_ZVQ: return "OpPushZvq";
 +    default: return "OpUnknown";
 +  }
 +}
@@ -443,7 +444,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..af211c039ab55dee67f561bada7a61eed64d2002
 --- /dev/null
 +++ b/blink/gem_embed.h
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,165 @@
 +/*
 + * Copyright 2022 Justine Alexandra Roberts Tunney
 + * Copyright 2026 MetalSharp Wine Runtime contributors
@@ -499,7 +500,8 @@ index 0000000000000000000000000000000000000000..af211c039ab55dee67f561bada7a61ee
 +  BLINK_GEM_HANDLER_OP_SUB_PSD = 16,
 +  BLINK_GEM_HANDLER_OP_ALU_TEST = 17,
 +  BLINK_GEM_HANDLER_OP_MOVSL_GDQP_ED = 18,
-+  BLINK_GEM_HANDLER_OP_NOP_EV = 19
++  BLINK_GEM_HANDLER_OP_NOP_EV = 19,
++  BLINK_GEM_HANDLER_OP_PUSH_ZVQ = 20
 +};
 +struct blink_gem_trace_entry {
 +  uint64_t rip;
@@ -612,7 +614,7 @@ diff --git a/blink/machine.c b/blink/machine.c
 index ad309eb2b837423ba31dec2f8db30b94edfa502d..7cc92e0851551b734901cbf98e255470be468ab9 100644
 --- a/blink/machine.c
 +++ b/blink/machine.c
-@@ -2092,0 +2093,56 @@ nexgen32e_f GetOp(long op) {
+@@ -2092,0 +2093,62 @@ nexgen32e_f GetOp(long op) {
 +int GemHandlerId(nexgen32e_f handler, long rde) {
 +  if (handler == OpNop) return 1;
 +  if (handler == OpMovZvqpIvqp) return 2;
@@ -662,6 +664,12 @@ index ad309eb2b837423ba31dec2f8db30b94edfa502d..7cc92e0851551b734901cbf98e255470
 +   * including redundant operand-size prefixes. */
 +  if (handler == OpNopEv && Mopcode(rde) == 0x11f)
 +    return 19;
++  /* Ordinary PE32+ compiler prologues save nonvolatile registers with the
++   * long-mode PUSH r64 family. Reject operand-size overrides and every
++   * legacy/real-mode stack width. */
++  if (handler == OpPushZvq && Mopcode(rde) >= 0x050 &&
++      Mopcode(rde) <= 0x057 && !Osz(rde) && Mode(rde) == XED_MODE_LONG)
++    return 20;
 +  return 0;
 +}
 +
