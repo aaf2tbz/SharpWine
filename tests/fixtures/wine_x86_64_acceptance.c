@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
 
     progress("entry");
     checks[0] = argc == 2 && !strcmp(argv[1], "mswr-argument");
-    checks[1] = GetEnvironmentVariableA("MSWR_X64_ENV", environment, sizeof(environment)) == 13 &&
+    checks[1] = GetEnvironmentVariableA("MSWR_X64_ENV", environment, sizeof(environment)) == 12 &&
                 !strcmp(environment, "oracle-value");
     checks[2] = GetModuleFileNameA(NULL, module, sizeof(module)) > 0;
 
