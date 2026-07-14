@@ -118,6 +118,14 @@ enum gem_stop_reason gem_x64_blink_step(struct gem_x64_runtime *r, const struct 
     r->last_stop.access = (enum gem_x64_memory_access)br.access;
     r->last_stop.memory_error = br.memory_error;
     r->last_stop.engine_status = br.engine_status;
+    if (br.outcome == BLINK_GEM_UNSUPPORTED && br.engine_status == 0U) {
+        struct blink_gem_decode_attempt attempt;
+        memset(&attempt, 0, sizeof(attempt));
+        attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+        attempt.size = sizeof(attempt);
+        if (blink_gem_machine_decode_attempt_info(r->backend, &attempt) && attempt.valid)
+            r->last_stop.engine_status = UINT32_C(0x80000000) | attempt.mopcode;
+    }
     if (br.outcome == BLINK_GEM_RETIRED) {
         struct blink_gem_decode_attempt attempt;
         memset(&attempt, 0, sizeof(attempt));

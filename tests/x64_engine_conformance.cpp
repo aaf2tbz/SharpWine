@@ -202,6 +202,7 @@ static void test_explicit_jit_mode() {
     assert(gem_x64_runtime_last_stop_info(interpreter, &interpreted_stop));
     assert(gem_x64_runtime_last_stop_info(jit, &compiled_stop));
     assert(same_stop(interpreted_stop, compiled_stop));
+    assert((interpreted_stop.engine_status & UINT32_C(0x80000000)) != 0U);
 
     const uint8_t load[] = {0x48, 0x8b, 0x03};
     for (gem_memory *memory : {interpreter_memory, jit_memory})

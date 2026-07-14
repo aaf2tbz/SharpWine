@@ -81,6 +81,16 @@ jobs:
       - name: Install and pin the native Intel reference
         run: |
           brew install --cask wine-stable
+          # The pinned upstream macOS bundle is currently unsigned and Homebrew
+          # marks the cask accordingly.  Remove only its quarantine attribute on
+          # this ephemeral Intel oracle before executing the verified bundle.
+          wine_app="/Applications/Wine Stable.app"
+          test -d "$wine_app"
+          xattr -dr com.apple.quarantine "$wine_app" 2>/dev/null || true
+          if xattr -lr "$wine_app" | grep -q 'com.apple.quarantine'; then
+            echo "Wine reference remains quarantined" >&2
+            exit 1
+          fi
           wine --version | grep -F 'wine-11.0'
           test "$(brew info --cask --json=v2 wine-stable | python3 -c 'import json,sys; print(json.load(sys.stdin)["casks"][0]["version"])')" = "11.0_1"
       - name: Run the native Intel semantic oracle

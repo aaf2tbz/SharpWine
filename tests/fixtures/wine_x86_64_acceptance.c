@@ -12,6 +12,11 @@
 static volatile LONG shared_counter;
 static DWORD tls_index = TLS_OUT_OF_INDEXES;
 
+static void progress(const char *stage) {
+    printf("MSWR_X64_PROGRESS %s\n", stage);
+    fflush(stdout);
+}
+
 static BOOL CALLBACK init_once_callback(PINIT_ONCE once, PVOID parameter, PVOID *context) {
     (void)once;
     (void)parameter;
@@ -74,6 +79,7 @@ int main(int argc, char **argv) {
         return run_child();
     startup.cb = sizeof(startup);
 
+    progress("entry");
     checks[0] = argc == 2 && !strcmp(argv[1], "mswr-argument");
     checks[1] = GetEnvironmentVariableA("MSWR_X64_ENV", environment, sizeof(environment)) == 13 &&
                 !strcmp(environment, "oracle-value");
@@ -87,6 +93,7 @@ int main(int argc, char **argv) {
     _mm_storeu_pd(lanes, sum);
     checks[4] = lanes[0] == 4.0 && lanes[1] == 5.0 && ((INT64)-7 >> 1) == -4;
 
+    progress("threads");
     tls_index = TlsAlloc();
     event = CreateEventA(NULL, TRUE, FALSE, NULL);
     mutex = CreateMutexA(NULL, FALSE, NULL);
@@ -98,6 +105,7 @@ int main(int argc, char **argv) {
                 shared_counter == 1000 && WaitForSingleObject(mutex, 1000) == WAIT_OBJECT_0 &&
                 ReleaseMutex(mutex);
 
+    progress("virtual-memory");
     memory = VirtualAlloc(NULL, 8192, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (memory) {
         DWORD old_protection = 0;
@@ -106,6 +114,7 @@ int main(int argc, char **argv) {
                     old_protection == PAGE_READWRITE && VirtualFree(memory, 0, MEM_RELEASE);
     }
 
+    progress("file");
     checks[7] = GetTempPathA(sizeof(temporary), temporary) > 0 &&
                 GetTempFileNameA(temporary, "msx", 0, file_name) != 0;
     if (checks[7]) {
@@ -116,6 +125,7 @@ int main(int argc, char **argv) {
         file = NULL;
     }
 
+    progress("registry");
     checks[8] = RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\MetalSharp\\x64Acceptance", 0, NULL,
                                 0, KEY_ALL_ACCESS, NULL, &key, &disposition) == ERROR_SUCCESS &&
                 RegSetValueExA(key, "value", 0, REG_DWORD, (BYTE *)&registry_value,
@@ -129,10 +139,12 @@ int main(int argc, char **argv) {
         RegCloseKey(key);
     RegDeleteKeyA(HKEY_CURRENT_USER, "Software\\MetalSharp\\x64Acceptance");
 
+    progress("callback-exception");
     checks[9] = InitOnceExecuteOnce(&once, init_once_callback, NULL, &callback_context) &&
                 (uintptr_t)callback_context == 0x5aU;
     checks[10] = check_exception();
 
+    progress("child-process");
     _snprintf(child_command, sizeof(child_command), "\"%s\" --child", module);
     SetEnvironmentVariableA("MSWR_X64_CHILD", "1");
     checks[11] =
@@ -141,6 +153,7 @@ int main(int argc, char **argv) {
         GetExitCodeProcess(process.hProcess, &child_code) && child_code == 37;
     checks[12] = GetCurrentProcessId() != 0 && GetCurrentThreadId() != 0;
 
+    progress("result");
     for (unsigned int i = 0; i < sizeof(checks); ++i)
         passed &= checks[i] != 0;
     printf("MSWR_X64_V1 {\"passed\":%s,\"checks\":{"
