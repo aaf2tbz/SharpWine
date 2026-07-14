@@ -42,31 +42,21 @@ def main() -> None:
         fail("compiler or source is absent")
     args.output.mkdir(parents=True, exist_ok=False)
     # LLVM-MinGW target drivers are basename-sensitive symlinks to one wrapper;
-    # resolving the symlink would erase the selected target triple. Native
-    # Windows CI instead uses MSVC so its SEH oracle has Microsoft's complete
-    # asynchronous exception implementation.
+    # resolving the symlink would erase the selected target triple.
     compiler = str(args.compiler.absolute())
-    is_msvc = args.compiler.name.lower() in {"cl", "cl.exe"}
     outputs = []
     for name in ("a", "b"):
         path = args.output / f"wine_x86_64_acceptance-{name}.exe"
-        if is_msvc:
-            command = [compiler, "/nologo", "/O2", "/W4", "/WX", "/Brepro",
-                       "/D_CRT_SECURE_NO_WARNINGS", str(args.source.resolve()), "advapi32.lib",
-                       "/link", "/SUBSYSTEM:CONSOLE", f"/OUT:{path}"]
-        else:
-            command = [compiler, "-O2", "-g0", "-Wall", "-Wextra", "-Werror",
-                       "-fms-extensions", "-Wl,--no-insert-timestamp", "-Wl,--subsystem,console",
-                       str(args.source.resolve()), "-ladvapi32", "-o", str(path)]
+        command = [compiler, "-O2", "-g0", "-Wall", "-Wextra", "-Werror",
+                   "-fms-extensions", "-Wl,--no-insert-timestamp", "-Wl,--subsystem,console",
+                   str(args.source.resolve()), "-ladvapi32", "-o", str(path)]
         subprocess.run(command, check=True)
         check_pe(path)
         outputs.append(path)
     if outputs[0].read_bytes() != outputs[1].read_bytes():
         fail("two clean builds produced different fixture bytes")
-    identity_result = subprocess.run([compiler] if is_msvc else [compiler, "--version"],
-                                     text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                     check=False)
-    identity = next(line for line in identity_result.stdout.splitlines() if line.strip()).strip()
+    identity = subprocess.run([compiler, "--version"], text=True, stdout=subprocess.PIPE,
+                              check=True).stdout.splitlines()[0]
     manifest = {"schema": 1, "kind": "mswr-x86_64-windows-fixture",
                 "source": args.source.name, "sourceSha256": digest(args.source),
                 "binary": outputs[0].name, "binarySha256": digest(outputs[0]),
