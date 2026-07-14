@@ -46,6 +46,28 @@ def main() -> None:
                 "MSWR_X64_ENV": "oracle-value", "LC_ALL": "C", "LANG": "C"})
     if args.mode != "intel-native":
         env["METALSHARP_GEM_X64_ENGINE"] = args.mode
+    elif args.wineserver and args.wineserver.exists():
+        # Wine 11's first-prefix setup asks win32u for a desktop while applying
+        # wine.inf.  A headless Intel runner can leave that desktop helper
+        # alive even after the registry and drive layout are complete. Bound
+        # this bootstrap separately, stop its server, and accept the prefix
+        # only if Wine wrote all three registry hives. The fixture execution
+        # below remains independently bounded and must pass in full.
+        bootstrap_env = env.copy()
+        bootstrap_env["WINEDEBUG"] = "-all"
+        try:
+            subprocess.run([str(args.wine.resolve()), "wineboot", "--init"],
+                           env=bootstrap_env, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=30, check=False)
+        except subprocess.TimeoutExpired:
+            pass
+        subprocess.run([str(args.wineserver.resolve()), "-k"], env=bootstrap_env,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=30, check=False)
+        missing_hives = [name for name in ("system.reg", "user.reg", "userdef.reg")
+                         if not (prefix / name).is_file()]
+        if missing_hives:
+            fail(f"bounded Intel prefix bootstrap did not create {missing_hives}")
     started = time.monotonic()
     timed_out = False
     with tempfile.TemporaryFile() as log:
