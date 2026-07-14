@@ -10,10 +10,12 @@ output=
 llvm_mingw=${LLVM_MINGW:-}
 deps_root=${MSWR_DEPS_ROOT:-}
 commit=
+x64_fixture=
+x64_manifest=
 jobs=${MSWR_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}
 
 usage() {
-    echo "usage: $0 --commit REPOSITORY_SHA --output DIRECTORY --llvm-mingw DIRECTORY --deps DIRECTORY [--jobs N]" >&2
+    echo "usage: $0 --commit REPOSITORY_SHA --output DIRECTORY --llvm-mingw DIRECTORY --deps DIRECTORY [--x64-fixture FILE --x64-manifest FILE] [--jobs N]" >&2
     exit 2
 }
 
@@ -23,6 +25,8 @@ while [[ $# -gt 0 ]]; do
         --output) output=${2:-}; shift 2 ;;
         --llvm-mingw) llvm_mingw=${2:-}; shift 2 ;;
         --deps) deps_root=${2:-}; shift 2 ;;
+        --x64-fixture) x64_fixture=${2:-}; shift 2 ;;
+        --x64-manifest) x64_manifest=${2:-}; shift 2 ;;
         --jobs) jobs=${2:-}; shift 2 ;;
         -h|--help) usage ;;
         *) echo "unknown option: $1" >&2; usage ;;
@@ -33,6 +37,9 @@ done
 [[ -n "$output" && "$output" != / ]] || { echo "--output must be a non-root directory" >&2; exit 2; }
 [[ -n "$llvm_mingw" ]] || { echo "--llvm-mingw is required" >&2; exit 2; }
 [[ -n "$deps_root" ]] || { echo "--deps is required" >&2; exit 2; }
+[[ -z "$x64_fixture" && -z "$x64_manifest" || -n "$x64_fixture" && -n "$x64_manifest" ]] || {
+    echo "--x64-fixture and --x64-manifest must be provided together" >&2; exit 2;
+}
 [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || { echo "--jobs must be a positive integer" >&2; exit 2; }
 [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || {
     echo "Wine foundation builds require a native macOS ARM64 host" >&2; exit 1;
@@ -203,12 +210,32 @@ file "$acceptance_exe" | grep -Eq 'PE32\+ executable.*Aarch64' || {
 }
 x64_fixture_dir="$prefix/share/metalsharp/selftest"
 mkdir -p "$x64_fixture_dir"
-python3 "$root/tools/ci/build-x86_64-windows-fixture.py" \
-    --compiler "$llvm_mingw/bin/x86_64-w64-mingw32-clang" \
-    --source "$root/tests/fixtures/wine_x86_64_acceptance.c" \
-    --output "$work/x86_64-fixture" --manifest "$x64_fixture_dir/x86_64-fixture.json"
-install -m 755 "$work/x86_64-fixture/wine_x86_64_acceptance-a.exe" \
-    "$x64_fixture_dir/wine_x86_64_acceptance.exe"
+if [[ -n "$x64_fixture" ]]; then
+    python3 - "$x64_fixture" "$x64_manifest" <<'PY'
+import hashlib, json, pathlib, struct, sys
+binary, manifest_path = map(pathlib.Path, sys.argv[1:])
+if not binary.is_file() or not manifest_path.is_file():
+    raise SystemExit("native x86_64 oracle fixture or manifest is absent")
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+data = binary.read_bytes()
+pe = struct.unpack_from("<I", data, 0x3c)[0] if len(data) >= 0x100 else 0
+if (manifest.get("schema") != 1 or manifest.get("kind") != "mswr-x86_64-windows-fixture" or
+        manifest.get("binarySha256") != hashlib.sha256(data).hexdigest() or
+        manifest.get("size") != len(data) or pe + 26 > len(data) or
+        data[:2] != b"MZ" or data[pe:pe + 4] != b"PE\0\0" or
+        struct.unpack_from("<H18xH", data, pe + 4) != (0x8664, 0x20b)):
+    raise SystemExit("native x86_64 oracle fixture does not match its strict manifest")
+PY
+    install -m 644 "$x64_manifest" "$x64_fixture_dir/x86_64-fixture.json"
+    install -m 755 "$x64_fixture" "$x64_fixture_dir/wine_x86_64_acceptance.exe"
+else
+    python3 "$root/tools/ci/build-x86_64-windows-fixture.py" \
+        --compiler "$llvm_mingw/bin/x86_64-w64-mingw32-clang" \
+        --source "$root/tests/fixtures/wine_x86_64_acceptance.c" \
+        --output "$work/x86_64-fixture" --manifest "$x64_fixture_dir/x86_64-fixture.json"
+    install -m 755 "$work/x86_64-fixture/wine_x86_64_acceptance-a.exe" \
+        "$x64_fixture_dir/wine_x86_64_acceptance.exe"
+fi
 install -m 755 "$deps_root/vulkan/libvulkan.dylib" "$runtime_dir/libvulkan.1.dylib"
 ln -sfn libvulkan.1.dylib "$runtime_dir/libvulkan.dylib"
 install -m 755 "$deps_root/moltenvk/libMoltenVK.dylib" "$runtime_dir/libMoltenVK.dylib"
@@ -428,8 +455,8 @@ if missing or found:
 PY
 
 # Ordinary PE32+ must pass through both explicit GEM_x86_64 modes. These are
-# fresh-prefix executions of the rebuilt Wine tree and rebuilt fixture, not an
-# overlay or a copied DXMT/Winemetal artifact.
+# fresh-prefix executions of the rebuilt Wine tree and the manifest-bound
+# native Windows oracle fixture, not an overlay or copied DXMT/Winemetal code.
 python3 "$root/tools/ci/run-x86_64-wine-fixture.py" --wine "$prefix/bin/wine" \
     --wineserver "$prefix/bin/wineserver" --fixture "$x64_fixture_dir/wine_x86_64_acceptance.exe" \
     --mode jit --output "$acceptance_dir/x86_64-jit.json" --timeout 180

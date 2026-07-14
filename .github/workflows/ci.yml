@@ -63,33 +63,24 @@ jobs:
         run: |
           if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw 'non-x86_64 Windows runner' }
           if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -ne 'X64') { throw 'non-native .NET OS architecture' }
-      - name: Fetch and verify the locked Windows LLVM-MinGW toolchain
+      - name: Build and run the reproducible native MSVC fixture
         shell: pwsh
-        env:
-          LLVM_MINGW_RELEASE: "20260616"
-          LLVM_MINGW_SHA256: "b9b68a4d276e16fa25802aaba458e4638f64b3884c290aaccdc2d87083b6ca35"
         run: |
-          $archive = "${{ runner.temp }}\llvm-mingw.zip"
-          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/mstorsjo/llvm-mingw/releases/download/$env:LLVM_MINGW_RELEASE/llvm-mingw-$env:LLVM_MINGW_RELEASE-ucrt-x86_64.zip" -OutFile $archive
-          if ((Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() -ne $env:LLVM_MINGW_SHA256) { throw 'LLVM-MinGW digest mismatch' }
-          Expand-Archive -LiteralPath $archive -DestinationPath "${{ runner.temp }}\llvm-mingw"
-      - name: Build the reproducible source fixture
-        shell: pwsh
-        run: >-
-          python tools/ci/build-x86_64-windows-fixture.py
-          --compiler "${{ runner.temp }}\llvm-mingw\llvm-mingw-$env:LLVM_MINGW_RELEASE-ucrt-x86_64\bin\x86_64-w64-mingw32-clang.exe"
-          --source tests/fixtures/wine_x86_64_acceptance.c
-          --output "${{ runner.temp }}\x86_64-fixture"
-          --manifest "${{ runner.temp }}\x86_64-fixture\manifest.json"
-        env:
-          LLVM_MINGW_RELEASE: "20260616"
-      - name: Run the fixture directly on native Windows x86_64
-        shell: pwsh
-        run: >-
-          python tools/ci/run-x86_64-native-fixture.py
-          --fixture "${{ runner.temp }}\x86_64-fixture\wine_x86_64_acceptance-a.exe"
-          --output "${{ runner.temp }}\x86_64-fixture\windows-native.json"
-          --timeout 30
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$install) { throw 'MSVC x86_64 toolchain is unavailable' }
+          Import-Module "$install\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $install -SkipAutomaticLocation -DevCmdArguments '-arch=amd64 -host_arch=amd64'
+          $compiler = (Get-Command cl.exe -ErrorAction Stop).Source
+          python tools/ci/build-x86_64-windows-fixture.py `
+            --compiler $compiler `
+            --source tests/fixtures/wine_x86_64_acceptance.c `
+            --output "${{ runner.temp }}\x86_64-fixture" `
+            --manifest "${{ runner.temp }}\x86_64-fixture\manifest.json"
+          python tools/ci/run-x86_64-native-fixture.py `
+            --fixture "${{ runner.temp }}\x86_64-fixture\wine_x86_64_acceptance-a.exe" `
+            --output "${{ runner.temp }}\x86_64-fixture\windows-native.json" `
+            --timeout 30
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: x86_64-windows-oracle-${{ github.run_id }}
@@ -527,6 +518,8 @@ jobs:
           --commit "${{ github.sha }}" --output "${{ runner.temp }}/x86_64-foundation"
           --llvm-mingw "${{ runner.temp }}/llvm-mingw"
           --deps "${{ runner.temp }}/runtime-deps"
+          --x64-fixture "${{ runner.temp }}/x86_64-oracle/wine_x86_64_acceptance-a.exe"
+          --x64-manifest "${{ runner.temp }}/x86_64-oracle/manifest.json"
       - name: Require the identical native fixture and compare all semantics
         run: |
           cmp "${{ runner.temp }}/x86_64-oracle/wine_x86_64_acceptance-a.exe" \
