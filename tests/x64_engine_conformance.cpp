@@ -92,7 +92,7 @@ int main() {
     assert(r);
     assert(
         strstr(gem_x64_runtime_engine_provenance(r),
-               "patch-sha256=f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807") !=
+               "patch-sha256=797f92651c17b86cce97a5bc73dd88e0c014e4f7c8664b4ee4d4c431a8175c80") !=
         nullptr);
     gem_x86_64_engine_info engine_info{};
     engine_info.abi_version = 1U;

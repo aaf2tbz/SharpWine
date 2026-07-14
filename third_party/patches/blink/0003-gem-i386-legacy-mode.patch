@@ -1,0 +1,289 @@
+diff --git a/blink/gem_embed.c b/blink/gem_embed.c
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -57,6 +57,7 @@ struct blink_gem_machine {
+   uint32_t trace_overflowed;
+   struct blink_gem_decode_attempt last_decode;
+   enum blink_gem_engine engine;
++  enum blink_gem_guest_mode guest_mode;
+   uint64_t jit_compilations;
+   uint64_t jit_executions;
+   uint64_t jit_failures;
+@@ -77,6 +78,10 @@ static int canonical(uint64_t a) {
+   return (a >> 48) == ((a & (UINT64_C(1) << 47)) ? UINT64_C(0xffff) : 0);
+ }
++static int guest_address(const struct blink_gem_machine* g, uint64_t a) {
++  return g->guest_mode == BLINK_GEM_GUEST_LEGACY_32 ? a <= UINT32_MAX
++                                                     : canonical(a);
++}
+ static int hostprot(uint32_t p) {
+   int r = 0;
+   if (p & 1) r |= PROT_READ;
+   if (p & 2) r |= PROT_WRITE;
+@@ -199,6 +204,12 @@ static void import_state(struct Machine* m, const struct blink_gem_state* s) {
+   memcpy(m->xmm, s->xmm, sizeof(m->xmm));
+   m->mxcsr = s->mxcsr;
+   m->fpu.cw = s->fcw;
++  if (m->mode.omode != XED_MODE_LONG) {
++    m->fpu.sw = s->fsw;
++    m->fpu.tw = s->ftw;
++    memcpy(m->fpu.st, s->x87, sizeof(s->x87));
++  }
++  m->fs.base = s->fs_base;
+   m->gs.base = s->gs_base;
+ }
+ static void export_state(const struct Machine* m,
+@@ -212,6 +224,12 @@ static void export_state(const struct Machine* m,
+   memcpy(out->xmm, m->xmm, sizeof(out->xmm));
+   out->mxcsr = m->mxcsr;
+   out->fcw = (uint16_t)m->fpu.cw;
++  if (m->mode.omode != XED_MODE_LONG) {
++    out->fsw = (uint16_t)m->fpu.sw;
++    out->ftw = (uint16_t)m->fpu.tw;
++    memcpy(out->x87, m->fpu.st, sizeof(out->x87));
++  }
++  out->fs_base = m->fs.base;
+   out->gs_base = m->gs.base;
+ }
+ static enum blink_gem_access fault_access(struct Machine* m, int fetch) {
+@@ -228,9 +241,11 @@ struct blink_gem_machine* blink_gem_machine_create_with_config(
+     const struct blink_gem_callbacks* cb, void* opaque) {
+   struct blink_gem_machine* g;
+   if (!config || config->abi_version != BLINK_GEM_CONFIG_ABI_VERSION ||
+-      config->size != sizeof(*config) || config->reserved ||
++      config->size != sizeof(*config) ||
+       (config->engine != BLINK_GEM_ENGINE_INTERPRETER &&
+-       config->engine != BLINK_GEM_ENGINE_JIT) || !cb ||
++       config->engine != BLINK_GEM_ENGINE_JIT) ||
++      (config->guest_mode != BLINK_GEM_GUEST_LONG &&
++       config->guest_mode != BLINK_GEM_GUEST_LEGACY_32) || !cb ||
+       cb->abi_version != 1 || cb->size != sizeof(*cb) || !cb->snapshot ||
+       !cb->validate || !cb->commit)
+     return 0;
+@@ -243,11 +264,14 @@ struct blink_gem_machine* blink_gem_machine_create_with_config(
+   g->cb = *cb;
+   g->opaque = opaque;
+   g->engine = config->engine;
++  g->guest_mode = config->guest_mode;
+   FLAG_nolinear = true;
+   g->system = NewSystem(XED_MACHINE_MODE_LONG);
+   if (!g->system) goto Fail;
+   g->system->cr3 = AllocatePageTable(g->system);
+   if (!g->system->cr3) goto Fail;
+   g->machine = NewMachine(g->system, 0);
+   if (!g->machine) goto Fail;
++  if (config->guest_mode == BLINK_GEM_GUEST_LEGACY_32)
++    g->machine->mode = XED_MACHINE_MODE_LEGACY_32;
+   g->machine->gemembed = true;
+@@ -268,7 +286,7 @@ struct blink_gem_machine* blink_gem_machine_create(
+     const struct blink_gem_callbacks* cb, void* opaque) {
+   const struct blink_gem_config config = {
+       BLINK_GEM_CONFIG_ABI_VERSION, sizeof(config),
+-      BLINK_GEM_ENGINE_INTERPRETER, 0};
++      BLINK_GEM_ENGINE_INTERPRETER, BLINK_GEM_GUEST_LONG};
+   return blink_gem_machine_create_with_config(&config, cb, opaque);
+ }
+ void blink_gem_machine_destroy(struct blink_gem_machine* g) {
+@@ -290,7 +308,8 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+   volatile int fetching;
+   uint64_t fetch_address = 0, fetch_size = 0, commit_fault = 0;
+   if (!g || !in || !out || in->abi_version != 1 || in->size != sizeof(*in) ||
+-      !canonical(in->rip) || !canonical(in->gpr[4]) || !canonical(in->gs_base))
++      !guest_address(g, in->rip) || !guest_address(g, in->gpr[4]) ||
++      !guest_address(g, in->gs_base) || !guest_address(g, in->fs_base))
+     return result(BLINK_GEM_INVALID);
+   m = g->machine;
+   /* Reset the machine-owned "last decode attempt" record at the start of
+diff --git a/blink/gem_embed.h b/blink/gem_embed.h
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -105,6 +105,10 @@ enum blink_gem_engine {
+   BLINK_GEM_ENGINE_INTERPRETER = 1,
+   BLINK_GEM_ENGINE_JIT = 2
+ };
++enum blink_gem_guest_mode {
++  BLINK_GEM_GUEST_LONG = 1,
++  BLINK_GEM_GUEST_LEGACY_32 = 2
++};
+ enum blink_gem_host_arch {
+   BLINK_GEM_HOST_UNKNOWN = 0,
+   BLINK_GEM_HOST_AARCH64 = 1
+@@ -112,7 +116,7 @@ enum blink_gem_host_arch {
+ struct blink_gem_config {
+   uint32_t abi_version, size;
+   enum blink_gem_engine engine;
+-  uint32_t reserved;
++  enum blink_gem_guest_mode guest_mode;
+ };
+ struct blink_gem_engine_info {
+   uint32_t abi_version, size;
+@@ -129,6 +133,9 @@ struct blink_gem_state {
+   uint16_t fcw, fsw;
+   uint8_t x87[8][16];
+   uint64_t gs_base;
++  uint64_t fs_base;
++  uint16_t ftw;
++  uint16_t reserved[3];
+ };
+ struct blink_gem_result {
+   enum blink_gem_outcome outcome;
+diff --git a/blink/machine.h b/blink/machine.h
+--- a/blink/machine.h
++++ b/blink/machine.h
+@@ -573,13 +573,18 @@ void HandleFatalSystemSignal(struct Machine *, const siginfo_t *);
+
+ void CountOp(long *);
+ void FastPush(struct Machine *, long);
++void FastPush32(struct Machine *, long);
+ void FastPop(struct Machine *, long);
++void FastPop32(struct Machine *, long);
+ void FastCall(struct Machine *, u64);
++void FastCall32(struct Machine *, u64);
+ void FastCallAbs(u64, struct Machine *);
++void FastCallAbs32(u64, struct Machine *);
+ void FastJmp(struct Machine *, u64);
+ void FastJmpAbs(u64, struct Machine *);
+ void FastLeave(struct Machine *);
+ i64 PredictRet(struct Machine *, i64);
++i64 PredictRet32(struct Machine *, i64);
+
+ typedef void (*putreg64_f)(u64, struct Machine *);
+ extern const putreg64_f kPutReg64[16];
+diff --git a/blink/uop.c b/blink/uop.c
+--- a/blink/uop.c
++++ b/blink/uop.c
+@@ -1419,12 +1419,24 @@ MICRO_OP void FastPush(struct Machine *m, long rexbsrm) {
+   Write64(ToHost(v), x);
+ }
+
++MICRO_OP void FastPush32(struct Machine *m, long rexbsrm) {
++  u32 v, x = Get32(m->weg[rexbsrm]);
++  Put64(m->sp, (v = Get32(m->sp) - 4));
++  Write32(ToHost(v), x);
++}
++
+ MICRO_OP void FastPop(struct Machine *m, long rexbsrm) {
+   u64 v = Get64(m->sp);
+   Put64(m->sp, v + 8);
+   Put64(m->weg[rexbsrm], Read64(ToHost(v)));
+ }
+
++MICRO_OP void FastPop32(struct Machine *m, long rexbsrm) {
++  u32 v = Get32(m->sp);
++  Put64(m->sp, v + 4);
++  Put64(m->weg[rexbsrm], Read32(ToHost(v)));
++}
++
+ MICRO_OP void FastCall(struct Machine *m, u64 disp) {
+   u64 v, x = m->ip + disp;
+   Put64(m->sp, (v = Get64(m->sp) - 8));
+@@ -1432,13 +1444,27 @@ MICRO_OP void FastCall(struct Machine *m, u64 disp) {
+   m->ip = x;
+ }
+
++MICRO_OP void FastCall32(struct Machine *m, u64 disp) {
++  u32 v, x = m->ip + disp;
++  Put64(m->sp, (v = Get32(m->sp) - 4));
++  Write32(ToHost(v), m->ip);
++  m->ip = x;
++}
++
+ MICRO_OP void FastCallAbs(u64 x, struct Machine *m) {
+   u64 v;
+   Put64(m->sp, (v = Get64(m->sp) - 8));
+   Write64(ToHost(v), m->ip);
+   m->ip = x;
+ }
+
++MICRO_OP void FastCallAbs32(u64 x, struct Machine *m) {
++  u32 v;
++  Put64(m->sp, (v = Get32(m->sp) - 4));
++  Write32(ToHost(v), m->ip);
++  m->ip = (u32)x;
++}
++
+ MICRO_OP void FastLeave(struct Machine *m) {
+   u64 v = Get64(m->bp);
+   Put64(m->sp, v + 8);
+@@ -1458,6 +1492,13 @@ MICRO_OP i64 PredictRet(struct Machine *m, i64 prediction) {
+   return m->ip ^ prediction;
+ }
+
++MICRO_OP i64 PredictRet32(struct Machine *m, i64 prediction) {
++  u32 v = Get32(m->sp);
++  Put64(m->sp, v + 4);
++  m->ip = Read32(ToHost(v));
++  return m->ip ^ (u32)prediction;
++}
++
+ ////////////////////////////////////////////////////////////////////////////////
+ // SIGN EXTENDING
+
+diff --git a/blink/stack.c b/blink/stack.c
+--- a/blink/stack.c
++++ b/blink/stack.c
+@@ -120,6 +120,7 @@ void OpPushZvq(P) {
+            "a1i"
+            "m",
+-           RexbSrm(rde), FastPush);
++           RexbSrm(rde),
++           Mode(rde) == XED_MODE_LEGACY ? FastPush32 : FastPush);
+   }
+ }
+
+@@ -174,6 +175,7 @@ void OpPopZvq(P) {
+            "a1i"
+            "m",
+-           RexbSrm(rde), FastPop);
++           RexbSrm(rde),
++           Mode(rde) == XED_MODE_LEGACY ? FastPop32 : FastPop);
+   }
+ }
+
+@@ -184,6 +186,6 @@ void OpCallJvds(P) {
+   OpCall(A, m->ip + disp);
+   if (HasLinearMapping() && IsMakingPath(m)) {
+-    Terminate(A, FastCall);
++    Terminate(A, Mode(rde) == XED_MODE_LEGACY ? FastCall32 : FastCall);
+   }
+ }
+
+@@ -200,7 +202,7 @@ void OpCallEq(P) {
+            "s0a1="  // arg1 = machine
+            "t"      // arg0 = res0
+            "m",     // call micro-op (FastCallAbs)
+-           FastCallAbs);
++           Mode(rde) == XED_MODE_LEGACY ? FastCallAbs32 : FastCallAbs);
+   }
+   OpCall(A, LoadAddressFromMemory(A));
+ }
+@@ -272,6 +274,7 @@ void OpRet(P) {
+            "m"    // call micro-op (PredictRet)
+            "q",   // arg0 = machine
+-           m->ip, PredictRet);
++           m->ip,
++           Mode(rde) == XED_MODE_LEGACY ? PredictRet32 : PredictRet);
+     AlignJit(m->path.jb, 8, 3);
+     u8 code[] = {
+         0x48, 0x85, 0300 | kJitRes0 << 3 | kJitRes0,  // test %rax,%rax
+@@ -284,6 +287,7 @@ void OpRet(P) {
+            "r0a2="  // arg2 = res0
+            "q",     // arg0 = machine
+-           m->ip, PredictRet);
++           m->ip,
++           Mode(rde) == XED_MODE_LEGACY ? PredictRet32 : PredictRet);
+     u32 code[] = {
+         0xb5000000 | (8 / 4) << 5 | kJitArg2,  // cbnz x2,#8
+     };
+diff --git a/blink/ssefloat.c b/blink/ssefloat.c
+--- a/blink/ssefloat.c
++++ b/blink/ssefloat.c
+@@ -122,7 +122,7 @@ void OpPextrwGdqpUdqIb(P) {
+   u8 i;
+   i = uimm0;
+   i &= Osz(rde) ? 7 : 3;
+-  Put16(RegRexrReg(m, rde), Get16(XmmRexbRm(m, rde) + i * 2));
++  Put64(RegRexrReg(m, rde), Get16(XmmRexbRm(m, rde) + i * 2));
+ }
+
+ void OpPinsrwVdqEwIb(P) {

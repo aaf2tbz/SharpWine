@@ -1,0 +1,5 @@
+0001-build-pair-i386-pe-modules-with-arm64-unix-bridge.patch
+0002-fix-airconv-fix-compile-metal-shader-with-toolchain-from-XCode-27-beta-1.patch
+0003-build-scrub-source-paths-from-metal-air.patch
+0004-build-bind-paired-bridge-version.patch
+0005-build-require-reproducible-native-link-layout.patch

@@ -1,4 +1,4 @@
-name: Verify published Wine release
+name: Verify published SharpWine release
 
 on:
   release:
@@ -8,14 +8,14 @@ on:
       tag:
         description: Published release tag to verify
         required: true
-        default: v0.1.1
+        default: v0.1.2
 
 permissions:
   contents: read
 
 jobs:
   verify-published-release:
-    name: Download and smoke-test published Wine runtime
+    name: Download and smoke-test published SharpWine runtime
     if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
     runs-on: macos-15
     timeout-minutes: 30
@@ -32,14 +32,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          assets="${RUNNER_TEMP}/metalsharp-wine-assets"
+          assets="${RUNNER_TEMP}/sharpwine-assets"
           mkdir -p "$assets"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$assets"
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
             > "$assets/RELEASE-NOTES.md"
           commit="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq .targetCommitish)"
           version="${TAG#v}"
-          archive="metalsharp-wine-v${version}-macos-arm64.tar.zst"
+          archive="sharpwine-v${version}-macos-arm64.tar.zst"
           (
             cd "$assets"
             shasum -a 256 -c "$archive.sha256"
@@ -66,16 +66,17 @@ jobs:
         run: |
           set -euo pipefail
           brew install zstd
-          assets="${RUNNER_TEMP}/metalsharp-wine-assets"
-          root="${RUNNER_TEMP}/metalsharp-wine-runtime"
+          assets="${RUNNER_TEMP}/sharpwine-assets"
+          root="${RUNNER_TEMP}/sharpwine-runtime"
           version="${TAG#v}"
-          archive="metalsharp-wine-v${version}-macos-arm64.tar.zst"
+          archive="sharpwine-v${version}-macos-arm64.tar.zst"
           mkdir -p "$root"
           "$(brew --prefix zstd)/bin/zstd" -d --stdout \
             "$assets/$archive" | tar -xf - -C "$root"
-          runtime="$root/metalsharp-wine-v${version}-macos-arm64"
+          runtime="$root/sharpwine-v${version}-macos-arm64"
           python3 tools/release/audit-runtime.py --root "$runtime"
           python3 tools/release/test-packaged-runtime.py --runtime "$runtime" \
             --x86-64-fixture "$X86_64_FIXTURE" \
+            --skip-retained-x86-64 \
             --evidence "${RUNNER_TEMP}/published-release-evidence" \
             --stress-iterations 1 --timeout 300

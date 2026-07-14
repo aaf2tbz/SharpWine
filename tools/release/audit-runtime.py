@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed audit of an unpacked MetalSharp Wine runtime."""
+"""Fail-closed audit of an unpacked SharpWine runtime."""
 
 from __future__ import annotations
 
@@ -22,6 +22,8 @@ BRIDGE_EXPORTS = {
     "_gem_wine_bridge_abi_version", "_gem_wine_process_bind_kuser",
     "_gem_wine_process_commit_identity", "_gem_wine_process_create",
     "_gem_wine_process_decommit", "_gem_wine_process_destroy",
+    "_gem_wine_i386_thread_create", "_gem_wine_i386_thread_run",
+    "_gem_wine_process_commit_i386_host", "_gem_wine_process_prepare_i386",
     "_gem_wine_process_invalidate_code", "_gem_wine_process_map_identity",
     "_gem_wine_process_prepare_arm64ec", "_gem_wine_process_prepare_x86_64",
     "_gem_wine_process_protect",
@@ -113,15 +115,40 @@ def resolve_dependency(root: Path, origin: Path, name: str) -> Path | None:
 def audit(root: Path, forbidden: list[str]) -> list[dict[str, object]]:
     root = root.resolve(strict=True)
     required = (
-        "bin/wine", "bin/wineserver", "lib/libmetalsharp-gem-wine.0.1.0.dylib",
-        "lib/wine/aarch64-unix/ntdll.so", "lib/wine/aarch64-windows/cmd.exe",
-        "lib/wine/i386-windows/ntdll.dll", "lib/wine/x86_64-windows/ntdll.dll",
+        "bin/wine", "bin/wineserver", "bin/.wine-i386-real",
+        "lib/libmetalsharp-gem-wine.0.1.0.dylib", "lib/wine/aarch64-unix/ntdll.so",
+        "lib/wine/aarch64-unix/xtajit.so", "lib/wine/aarch64-unix/winemetal.so",
+        "lib/wine/aarch64-windows/cmd.exe", "lib/wine/aarch64-windows/wow64.dll",
+        "lib/wine/aarch64-windows/xtajit.dll", "lib/wine/i386-windows/ntdll.dll",
+        "lib/wine/i386-windows/d3d10core.dll", "lib/wine/i386-windows/d3d11.dll",
+        "lib/wine/i386-windows/dxgi.dll", "lib/wine/i386-windows/winemetal.dll",
+        "lib/wine/i386-windows/sharpwine-i386-acceptance.exe",
+        "lib/wine/x86_64-windows/ntdll.dll", "share/metalsharp/dxmt-build-manifest.json",
         "share/wine/wine.inf", "share/metalsharp/selftest/arm64x_fixture.dll",
         "share/metalsharp/selftest/arm64x_fixture_host.exe",
     )
     for relative in required:
         if not (root / relative).is_file():
             fail(f"required runtime file is missing: {relative}")
+    dxmt_manifest_path = root / "share/metalsharp/dxmt-build-manifest.json"
+    try:
+        dxmt_manifest = json.loads(dxmt_manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        fail(f"invalid DXMT build manifest: {error}")
+    if not isinstance(dxmt_manifest, dict):
+        fail("DXMT build manifest root is not an object")
+    dxmt_files = dxmt_manifest.get("files")
+    if dxmt_manifest.get("schema") != 1 or dxmt_manifest.get("passed") is not True or \
+            dxmt_manifest.get("reproducibility", {}).get("byteIdentical") is not True or \
+            not isinstance(dxmt_files, list):
+        fail("DXMT build manifest lacks passing reproducibility evidence")
+    for record in dxmt_files:
+        if not isinstance(record, dict) or not isinstance(record.get("path"), str):
+            fail("DXMT build manifest contains an invalid file record")
+        packaged = root / "lib/wine" / record["path"]
+        if not packaged.is_file() or record.get("sha256") != sha256(packaged) or \
+                record.get("size") != packaged.stat().st_size:
+            fail(f"packaged DXMT file differs from its build manifest: {record.get('path')}")
     # Filesystem provenance/quarantine attributes are applied by macOS itself
     # and are not package members. The deterministic tar validator rejects all
     # PAX/SCHILY xattr records in the publication archive.

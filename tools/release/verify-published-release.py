@@ -19,7 +19,10 @@ def uploaded_assets(tag: str) -> set[str]:
     match = VERSION.fullmatch(tag)
     if not match:
         fail(f"release tag is invalid: {tag!r}")
-    archive = f"metalsharp-wine-v{match.group(1)}-macos-arm64.tar.zst"
+    version = match.group(1)
+    numeric = version.split("-", 1)[0].split("+", 1)[0]
+    prefix = "metalsharp-wine" if tuple(map(int, numeric.split("."))) <= (0, 1, 1) else "sharpwine"
+    archive = f"{prefix}-v{version}-macos-arm64.tar.zst"
     return {archive, f"{archive}.sha256", "release-manifest.json",
             "wine-integration-evidence.json", "sbom.spdx.json", "evidence-index.json",
             "KNOWN-LIMITATIONS.md"}

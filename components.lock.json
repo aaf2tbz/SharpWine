@@ -1,6 +1,12 @@
 {
   "schema": 1,
   "build_dependencies": {
+    "xcode": {
+      "version": "27.0",
+      "build": "27A5218g",
+      "sdk": "27.0",
+      "metal": "32023.918"
+    },
     "llvm_mingw": {
       "repository": "https://github.com/mstorsjo/llvm-mingw/releases",
       "release": "20260616",
@@ -19,8 +25,11 @@
         "libxcb": "1.17.0",
         "libxdmcp": "1.1.5",
         "llvm": "22.1.8",
+        "llvm@15": "15.0.7",
         "mesa": "26.1.4",
+        "meson": "1.11.1",
         "molten-vk": "1.4.1",
+        "ninja": "1.13.2",
         "sdl2-compat": "2.32.70",
         "sdl3": "3.4.12",
         "spirv-tools": "1.4.350.1",
@@ -96,6 +105,55 @@
         {
           "path": "third_party/patches/wine/0013-ntdll-route-pure-amd64-guests-through-gem-x86-64.patch",
           "sha256": "019edf8fddfa0f3bfd7e987a1c14b726382a6634f1856f9d9d540628f688487c"
+        },
+        {
+          "path": "third_party/patches/wine/0014-ntdll-add-gem-backed-i386-wow64-execution-on-arm64.patch",
+          "sha256": "989610f9fb94798c712c36625448ef61f0e41b39ff35451c9125a095c78e25b3"
+        }
+      ]
+    },
+    "dxmt": {
+      "repository": "https://github.com/3Shain/dxmt.git",
+      "revision": "589adb780354b461645b29999cefaf533594ee99",
+      "version": "v0.80-metalsharp.1",
+      "license": "MIT",
+      "source_archive_sha256": "f1a5522c3cbe46a7784bdcc7be6152c4c246e40ecb98f51816fabfa642eedc39",
+      "patch_series": "third_party/patches/dxmt/series",
+      "patch_provenance": "third_party/patches/dxmt/provenance.json",
+      "submodules": [
+        {
+          "path": "external/nvapi",
+          "repository": "https://github.com/NVIDIA/nvapi.git",
+          "revision": "d08488fcc82eef313b0464db37d2955709691e94",
+          "source_archive_sha256": "436936c965f711f743c8606cb7c2621736cecf41e0fd6557555b2f1903b0350f"
+        },
+        {
+          "path": "include/native/directx",
+          "repository": "https://github.com/misyltoad/mingw-directx-headers",
+          "revision": "9df86f2341616ef1888ae59919feaa6d4fad693d",
+          "source_archive_sha256": "9c1b8bbfd2d6c758fac4d93c2808a46bc1eee429fe656b4f21b29e02615aa8aa"
+        }
+      ],
+      "patches": [
+        {
+          "path": "third_party/patches/dxmt/0001-build-pair-i386-pe-modules-with-arm64-unix-bridge.patch",
+          "sha256": "b5b211e7ed563759a2f73dd1d4c483cf34926770283ebbd61eed98edaef72a2c"
+        },
+        {
+          "path": "third_party/patches/dxmt/0002-fix-airconv-fix-compile-metal-shader-with-toolchain-from-XCode-27-beta-1.patch",
+          "sha256": "abfbba6d30009cb8e380d972532cb682abda23eca20c15c0a57b4e981ecb2ad6"
+        },
+        {
+          "path": "third_party/patches/dxmt/0003-build-scrub-source-paths-from-metal-air.patch",
+          "sha256": "18cc56a34ed339b12d7355535a27c98917f2178bebb48701eec67bba83d97a51"
+        },
+        {
+          "path": "third_party/patches/dxmt/0004-build-bind-paired-bridge-version.patch",
+          "sha256": "01fb27e1d157fc16ad46264e347a149ea6a112519f3169be4bb9d164a9340475"
+        },
+        {
+          "path": "third_party/patches/dxmt/0005-build-require-reproducible-native-link-layout.patch",
+          "sha256": "c0be7f7bb19abc2e56b9f55fe2083408dff3d988a8865efdbd53e2759f15e3af"
         }
       ]
     },
@@ -120,9 +178,10 @@
       "distribution": "optional build-tree-only pinned source/build dependency",
       "adr": "docs/architecture/adr/0008-blink-roundtrip.md",
       "embedding_patch_sha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
-      "bounded_jit_patch_sha256": "f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807",
+      "bounded_jit_patch_sha256": "797f92651c17b86cce97a5bc73dd88e0c014e4f7c8664b4ee4d4c431a8175c80",
+      "i386_legacy_patch_sha256": "50499a434838be5620fb86d4a6e214e6a9545eeac0dd059b1f56385a78b6cbeb",
       "embedding_provenance": "docs/architecture/adr/0008-blink-embedding.provenance.json",
-      "accepting_mode": "bounded one-instruction AArch64 JIT; interpreter is an explicit conformance oracle"
+      "accepting_mode": "bounded one-instruction AArch64 JIT for long and legacy-32 guest modes; interpreter is an explicit conformance oracle"
     }
   }
 }

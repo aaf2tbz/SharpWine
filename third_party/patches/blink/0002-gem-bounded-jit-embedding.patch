@@ -31,7 +31,7 @@ index a189ec0..26de8db 100644
 +  uint64_t jit_executions;
 +  uint64_t jit_failures;
  };
- 
+
 +static pthread_once_t_ g_blink_gem_init_once = PTHREAD_ONCE_INIT_;
 +
 +static void blink_gem_init_runtime(void) {
@@ -110,7 +110,7 @@ index a189ec0..26de8db 100644
 @@ -177,16 +223,26 @@ static enum blink_gem_access fault_access(struct Machine* m, int fetch) {
    return BLINK_GEM_ACCESS_READ;
  }
- 
+
 -struct blink_gem_machine* blink_gem_machine_create(
 +struct blink_gem_machine* blink_gem_machine_create_with_config(
 +    const struct blink_gem_config* config,
@@ -569,7 +569,7 @@ index 6e6240e..d2e4ce9 100644
  #endif
 @@ -619,16 +624,24 @@ bool CanJitForImmediateEffect(void) {
  }
- 
+
  static u8 *AllocateJitMemory(long *state) {
 -  long i, brk;
 -  uintptr_t p;
@@ -597,7 +597,7 @@ index 6e6240e..d2e4ce9 100644
 +  *state = brk + kJitBlockSize;
 +  return g_code + brk;
  }
- 
+
  static int MakeJitJump(u8 buf[5], uintptr_t pc, uintptr_t addr) {
 diff --git a/blink/jit.h b/blink/jit.h
 index e872822..4a11610 100644
@@ -620,7 +620,7 @@ index e872822..4a11610 100644
 +#endif
 +#define kJitRetireQueue  (int)(kJitMemorySize / kJitBlockSize * .10)
 +#define kJitSlabInts     (65536 / sizeof(struct JitInts))
- 
+
  #ifdef __x86_64__
  #define kJitRes0 kAmdAx
 diff --git a/blink/machine.c b/blink/machine.c
@@ -643,7 +643,7 @@ index 7cc92e0..dd2fdda 100644
 +    return 0;
 +  return 0x1000 + Mopcode(rde);
  }
- 
+
  bool GemIsAllowedHandler(nexgen32e_f handler, long rde) {
 @@ -2171,6 +2180,7 @@ static void GeneralDispatch(P) {
    uintptr_t jitpc = 0;
@@ -703,7 +703,7 @@ index 7cc92e0..dd2fdda 100644
 @@ -2237,6 +2252,27 @@ static void GeneralDispatch(P) {
  #endif
  }
- 
+
 +bool GemCompileInstruction(struct Machine *m) {
 +#ifdef HAVE_JIT
 +  u64 pc;
@@ -761,3 +761,46 @@ index 1547710..18da75a 100644
    va_start(va, fmt);
    JitterImpl(A, fmt, va, 0, 0);
    unassert(!i);
+
+diff --git a/blink/gem_embed.c b/blink/gem_embed.c
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -323,6 +323,15 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+   memset(&g->last_decode, 0, sizeof(g->last_decode));
+   g->last_decode.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+   g->last_decode.size = sizeof(g->last_decode);
++  /* Native Wine syscalls and the external-memory bridge can update any
++   * already-cached guest data page between single-instruction steps. */
++  for (i = 0; i < g->page_count;) {
++    if (reconcile_page(g, g->pages + i, &error) < 0) {
++      drop_page(g, i);
++      continue;
++    }
++    ++i;
++  }
+   for (retries = 0; retries < (int)BLINK_GEM_MAX_SHADOW_PAGES + 1; ++retries) {
+     import_state(m, in);
+     m->readaddr = m->writeaddr = 0;
+diff --git a/blink/machine.c b/blink/machine.c
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -905,7 +905,7 @@ void Terminate(P, void uop(struct Machine *, u64)) {
+
+ static void OpJmp(P) {
+   m->ip += disp;
+-  Terminate(A, FastJmp);
++  if (!m->gemembed) Terminate(A, FastJmp);
+ }
+
+ static cc_f GetCc(P) {
+@@ -921,7 +921,10 @@ static void OpJcc(P) {
+   cc_f cc;
+   cc = GetCc(A);
+-  if (IsMakingPath(m)) {
++  /* A GEM path owns exactly one instruction, so use AddPath's generated
++   * native wrapper for Jcc. Blink's connected-path fast form assumes flags
++   * and control flow can remain live across adjacent instructions. */
++  if (IsMakingPath(m) && !m->gemembed) {
+     FlushSkew(A);
+ #ifdef __x86_64__
+     Jitter(A, "mq", cc);

@@ -47,7 +47,9 @@ def load_json(path: Path) -> dict[str, Any]:
 def archive_name(version: str) -> str:
     if not version or any(char not in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.+-" for char in version):
         fail(f"invalid version: {version!r}")
-    return f"metalsharp-wine-v{version}-macos-arm64.tar.zst"
+    numeric = version.split("-", 1)[0].split("+", 1)[0]
+    prefix = "metalsharp-wine" if tuple(map(int, numeric.split("."))) <= (0, 1, 1) else "sharpwine"
+    return f"{prefix}-v{version}-macos-arm64.tar.zst"
 
 
 def inventory(root: Path) -> list[dict[str, object]]:
@@ -105,8 +107,12 @@ def make_tar(runtime: Path, output: Path, top: str, epoch: int) -> None:
 
 def integration_evidence(summary: dict[str, Any], repository: str, commit: str,
                          version: str) -> dict[str, Any]:
-    required = {"wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid",
-                "x86_64-exception", "x86_64-cmd-exit"}
+    required = {"wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid"}
+    numeric = tuple(map(int, version.split("-", 1)[0].split("+", 1)[0].split(".")))
+    if numeric <= (0, 1, 1):
+        required |= {"x86_64-exception", "x86_64-cmd-exit"}
+    else:
+        required.add("i386-gem-acceptance")
     if (summary.get("passed") is not True or summary.get("freshPrefix") is not True or
             summary.get("teardownClean") is not True or not isinstance(summary.get("tests"), list)):
         fail("smoke-test summary did not pass required lifecycle gates")
@@ -168,42 +174,59 @@ def main() -> None:
     integration = integration_evidence(summary, args.repository, args.commit, args.version)
     canonical(args.output / "wine-integration-evidence.json", integration)
     sbom = dict(base_sbom)
-    sbom["name"] = f"MetalSharp-Wine-{args.version}"
+    sbom["name"] = f"SharpWine-{args.version}"
     sbom["documentNamespace"] = (
         f"https://github.com/{args.repository}/releases/tag/v{args.version}/sbom/{args.commit}")
     creation = dict(sbom.get("creationInfo", {}))
     creation["created"] = datetime.datetime.fromtimestamp(
         args.source_date_epoch, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
     sbom["creationInfo"] = creation
+    packages = list(sbom.get("packages", []))
+    if not any(isinstance(item, dict) and item.get("SPDXID") == "SPDXRef-dxmt"
+               for item in packages):
+        dxmt = build_manifest["components"].get("dxmt", {})
+        packages.append({"SPDXID": "SPDXRef-dxmt",
+                         "downloadLocation": dxmt.get("repository", "NOASSERTION"),
+                         "filesAnalyzed": False,
+                         "licenseConcluded": dxmt.get("license", "NOASSERTION"),
+                         "licenseDeclared": dxmt.get("license", "NOASSERTION"),
+                         "name": "dxmt", "versionInfo": dxmt.get("version", "NOASSERTION")})
+    sbom["packages"] = packages
     canonical(args.output / "sbom.spdx.json", sbom)
     index = dict(base_index)
     index["repository"] = args.repository
     index["commit"] = args.commit
     index["version"] = args.version
-    criteria = list(index.get("criteria", []))
-    criteria.append({"id": "published-bundle-overlay-repackage", "passed": True,
-                     "evidence": ["wine-integration-evidence.json", "release-manifest.json"]})
-    criteria.append({"id": "pure-x86-64-exception-and-cmd", "passed": True,
-                     "evidence": ["wine-integration-evidence.json"]})
+    replacements = {
+        "published-bundle-overlay-repackage": {
+            "id": "published-bundle-overlay-repackage", "passed": True,
+            "evidence": ["wine-integration-evidence.json", "release-manifest.json"]},
+        "i386-wow64-gem-and-paired-dxmt": {
+            "id": "i386-wow64-gem-and-paired-dxmt", "passed": True,
+            "evidence": ["wine-integration-evidence.json", "release-manifest.json"]},
+    }
+    criteria = [item for item in index.get("criteria", [])
+                if isinstance(item, dict) and item.get("id") not in replacements]
+    criteria.extend(replacements.values())
     index["criteria"] = criteria
     canonical(args.output / "evidence-index.json", index)
     (args.output / "KNOWN-LIMITATIONS.md").write_text(
-        f"# Known limitations for MetalSharp Wine v{args.version}\n\n"
-        "This release claims the bounded pure x86_64 PE32+ path proven by the packaged "
-        "exception fixture and x86_64 cmd.exe smoke test on Apple Silicon through the native "
-        "ARM64 GEM/Blink JIT. It does not claim i386/WoW64, Intel macOS hosting, Rosetta, or "
-        "blanket compatibility with arbitrary x86_64 applications.\n\n"
-        "The existing native AArch64 and accepted ARM64EC/x64 paths remain supported. Optional "
+        f"# Known limitations for SharpWine v{args.version}\n\n"
+        "This release validates a bounded source-built PE32 i386 fixture through WoW64 and the "
+        "native ARM64 GEM/Blink bridge, plus the paired DXMT i386 PE/ARM64 Unix payload. It does "
+        "not yet claim corpus-wide or arbitrary Windows application/game compatibility.\n\n"
+        "The native AArch64, accepted ARM64EC/x64, and bounded pure x86_64 paths remain supported. "
+        "Intel macOS hosting and Rosetta are not supported. Optional "
         f"host integrations not present in the {args.previous_tag} foundation remain outside "
         "the release. "
         "Apple frameworks and operating-system services remain external by design.\n",
         encoding="utf-8")
-    notes = (f"# MetalSharp Wine v{args.version}\n\n"
+    notes = (f"# SharpWine v{args.version}\n\n"
              f"This immutable release is derived from {args.previous_tag}, with the reviewed "
-             "four-file, hash-bound runtime patch applied to the published bundle on native "
-             "Apple Silicon. CI verified every base, patch, and result digest, then proved the "
-             "pure x86_64 exception and cmd paths alongside the retained AArch64 and ARM64EC "
-             "gates without Rosetta.\n")
+             "hash-bound i386/WoW64 and paired DXMT runtime patch applied to the published bundle "
+             "on native Apple Silicon. CI verifies every base, patch, and result digest, then "
+             "runs the bounded i386 fixture alongside the retained AArch64 and ARM64EC/x64 "
+             "gates without Rosetta, while carrying forward v0.1.1's pure x86_64 evidence.\n")
     (args.output / "RELEASE-NOTES.md").write_text(notes, encoding="utf-8")
 
     metadata = args.runtime / "share/metalsharp"

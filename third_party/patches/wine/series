@@ -11,3 +11,4 @@
 0011-setupapi-add-bounded-native-bootstrap-mode.patch
 0012-ntdll-preserve-hybrid-budget-context.patch
 0013-ntdll-route-pure-amd64-guests-through-gem-x86-64.patch
+0014-ntdll-add-gem-backed-i386-wow64-execution-on-arm64.patch

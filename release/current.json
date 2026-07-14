@@ -1,8 +1,8 @@
 {
   "schema": 2,
-  "version": "0.1.1",
-  "tag": "v0.1.1",
-  "previousTag": "v0.1.0",
-  "overlayPolicy": "release/v0.1.1-overlay-policy.json",
-  "runtimePatchSet": "release/runtime-patches/v0.1.1/manifest.json"
+  "version": "0.1.2",
+  "tag": "v0.1.2",
+  "previousTag": "v0.1.1",
+  "overlayPolicy": "release/v0.1.2-overlay-policy.json",
+  "runtimePatchSet": "release/runtime-patches/v0.1.2/manifest.json"
 }

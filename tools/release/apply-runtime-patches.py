@@ -35,6 +35,25 @@ def digest(path: Path) -> str:
     return digest_bytes(path.read_bytes())
 
 
+def read_patch(patch_root: Path, value: object, runtime_path: str) -> bytes:
+    names = value if isinstance(value, list) else [value]
+    if not names:
+        fail(f"runtime patch has no parts: {runtime_path}")
+    parts: list[bytes] = []
+    seen: set[str] = set()
+    for value_part in names:
+        patch_name = safe_relative(value_part)
+        flat_name = patch_name.as_posix()
+        if len(patch_name.parts) != 1 or flat_name in seen:
+            fail(f"patch filename is not unique and flat: {patch_name}")
+        seen.add(flat_name)
+        patch = patch_root / patch_name
+        if patch.is_symlink() or not patch.is_file():
+            fail(f"runtime patch is missing: {runtime_path}")
+        parts.append(patch.read_bytes())
+    return b"".join(parts)
+
+
 def number(value: bytes) -> int:
     if len(value) != 8:
         fail("truncated BSDIFF40 integer")
@@ -124,43 +143,52 @@ def main() -> None:
     allowed = {record.get("path"): record.get("action") for record in policy.get("allowedChanges", [])
                if isinstance(record, dict)}
     patches = patch_set.get("runtimePatches")
-    if not isinstance(patches, list) or len(patches) != 3:
-        fail("patch set must contain exactly three runtime binary patches")
+    if not isinstance(patches, list) or not patches:
+        fail("patch set must contain at least one runtime binary patch")
     args.output.mkdir(parents=True)
     results: list[dict[str, object]] = []
     seen: set[str] = set()
-    required_fields = {"path", "patch", "patchSha256", "baseSha256", "resultSha256",
-                       "resultSize", "mode"}
+    required_fields = {"path", "action", "patch", "patchSha256", "baseSha256",
+                       "resultSha256", "resultSize", "mode"}
     for record in patches:
         if not isinstance(record, dict) or set(record) != required_fields:
             fail("runtime patch record has invalid fields")
         relative = safe_relative(record["path"])
         name = relative.as_posix()
-        if name in seen or allowed.get(name) != "replace":
+        action = record["action"]
+        if name in seen or action not in {"add", "replace"} or allowed.get(name) != action:
             fail(f"runtime patch is duplicated or not policy-approved: {name}")
         seen.add(name)
         source = runtime / relative
-        patch_name = safe_relative(record["patch"])
-        if len(patch_name.parts) != 1:
-            fail(f"patch filename is not flat: {patch_name}")
-        patch = patch_root / patch_name
-        if source.is_symlink() or not source.is_file() or patch.is_symlink() or not patch.is_file():
-            fail(f"runtime source or patch is missing: {name}")
-        if digest(source) != record["baseSha256"] or digest(patch) != record["patchSha256"]:
+        patch_bytes = read_patch(patch_root, record["patch"], name)
+        if action == "replace":
+            if source.is_symlink() or not source.is_file():
+                fail(f"runtime source is missing: {name}")
+            source_bytes = source.read_bytes()
+        else:
+            if source.exists() or record["baseSha256"] != digest_bytes(b""):
+                fail(f"added runtime path exists in the foundation: {name}")
+            source_bytes = b""
+        if digest_bytes(source_bytes) != record["baseSha256"] or \
+                digest_bytes(patch_bytes) != record["patchSha256"]:
             fail(f"base or patch hash mismatch: {name}")
-        patched = apply_bsdiff(source.read_bytes(), patch.read_bytes())
+        patched = apply_bsdiff(source_bytes, patch_bytes)
         if len(patched) != record["resultSize"] or digest_bytes(patched) != record["resultSha256"]:
             fail(f"patched output identity mismatch: {name}")
         destination = args.output / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(patched)
         os.chmod(destination, record["mode"])
-        results.append({"path": name, "baseSha256": record["baseSha256"],
+        results.append({"path": name, "action": action, "baseSha256": record["baseSha256"],
                         "patchSha256": record["patchSha256"],
                         "resultSha256": record["resultSha256"],
                         "resultSize": record["resultSize"], "mode": record["mode"]})
-    if seen != {name for name, action in allowed.items() if action == "replace"}:
-        fail("runtime patch set does not cover every policy replacement")
+    evidence_paths = {"share/metalsharp/x86_64-acceptance-evidence.json",
+                      "share/metalsharp/i386-acceptance-evidence.json"}
+    expected = {name for name, action in allowed.items()
+                if action in {"add", "replace"} and name not in evidence_paths}
+    if seen != expected:
+        fail("runtime patch set does not cover every policy payload")
     fixture = patch_set.get("fixture")
     fixture_fields = {"patch", "patchSha256", "baseSha256", "resultSha256", "resultSize"}
     if not isinstance(fixture, dict) or set(fixture) != fixture_fields or \
@@ -175,17 +203,29 @@ def main() -> None:
         fail("fixture output identity mismatch")
     args.fixture_output.parent.mkdir(parents=True, exist_ok=True)
     args.fixture_output.write_bytes(fixture_bytes)
-    evidence_path = args.output / "share/metalsharp/x86_64-acceptance-evidence.json"
-    evidence_path.parent.mkdir(parents=True, exist_ok=True)
-    evidence = {"schema": 1, "repositoryCommit": args.commit,
-                "release": patch_set["release"], "base": patch_set["base"],
-                "patchSetSha256": digest(patch_set_path), "runtimePatches": results,
-                "fixture": {"sha256": fixture["resultSha256"], "size": fixture["resultSize"]},
-                "status": "awaiting packaged-runtime probe"}
-    evidence_path.write_text(json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n",
-                             encoding="utf-8")
-    os.chmod(evidence_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
-    print("applied three exact runtime patches and reconstructed the x86_64 fixture")
+    if "share/metalsharp/x86_64-acceptance-evidence.json" in allowed:
+        evidence_path = args.output / "share/metalsharp/x86_64-acceptance-evidence.json"
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence = {"schema": 1, "repositoryCommit": args.commit,
+                    "release": patch_set["release"], "base": patch_set["base"],
+                    "patchSetSha256": digest(patch_set_path), "runtimePatches": results,
+                    "fixture": {"sha256": fixture["resultSha256"],
+                                "size": fixture["resultSize"]},
+                    "status": "awaiting packaged-runtime probe"}
+        evidence_path.write_text(
+            json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8")
+        os.chmod(evidence_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+    if "share/metalsharp/i386-acceptance-evidence.json" in allowed:
+        i386_evidence = args.output / "share/metalsharp/i386-acceptance-evidence.json"
+        i386_evidence.parent.mkdir(parents=True, exist_ok=True)
+        i386_evidence.write_text(json.dumps({"schema": 1, "repositoryCommit": args.commit,
+                                             "release": patch_set["release"],
+                                             "status": "awaiting packaged-runtime probe"},
+                                            sort_keys=True, separators=(",", ":")) + "\n",
+                                 encoding="utf-8")
+        os.chmod(i386_evidence, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+    print(f"applied {len(results)} exact runtime patches and reconstructed the x86_64 fixture")
 
 
 if __name__ == "__main__":

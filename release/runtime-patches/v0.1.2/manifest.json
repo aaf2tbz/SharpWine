@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "format": "BSDIFF40",
+  "release": {
+    "version": "0.1.2",
+    "tag": "v0.1.2",
+    "previousTag": "v0.1.1"
+  },
+  "base": {
+    "archive": "metalsharp-wine-v0.1.1-macos-arm64.tar.zst",
+    "sha256": "4abb76bd6515b841d40468e5603e583e3a6c5b009214c8c7ad378d0683b97469"
+  },
+  "runtimePatches": [
+    {
+      "path": "LICENSES/COPYING-MinGW-w64-DirectX-Headers.txt",
+      "action": "add",
+      "patch": "LICENSES_COPYING-MinGW-w64-DirectX-Headers_txt.bsdiff",
+      "patchSha256": "b1254d0f368c682395c89e056fafbd672e705546fddf37bfa149bcffaac9ff6a",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "f38e6194bd3bfa1b654f118e5acefe0aead437bbe669eee43957ccc65a7127f1",
+      "resultSize": 5905,
+      "mode": 420
+    },
+    {
+      "path": "LICENSES/License-NVAPI.txt",
+      "action": "add",
+      "patch": "LICENSES_License-NVAPI_txt.bsdiff",
+      "patchSha256": "d102ce02461c06a38e53a0063460bfb2ba618d54410496a08fff9490c08c7769",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "bab44777f0f4d0333479ea0be6e24c084464a8cb64b98f1253fcc3df70f6eccf",
+      "resultSize": 1217,
+      "mode": 420
+    },
+    {
+      "path": "LICENSES/MIT-DXMT.txt",
+      "action": "add",
+      "patch": "LICENSES_MIT-DXMT_txt.bsdiff",
+      "patchSha256": "47192bbb5bc4de957e2a3bf3f7196fbc504e996d39c1976ae0e3ff7be216d0d1",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "6b928413c6308c106f3e0080bd94b6427b56d587d400fd40e6cbfbab7d9c4ae1",
+      "resultSize": 1065,
+      "mode": 420
+    },
+    {
+      "path": "bin/.wine-i386-real",
+      "action": "add",
+      "patch": "bin__wine-i386-real.bsdiff",
+      "patchSha256": "1c406124b7e69f05aaf1b82133f1fc93307577b98ebb17af38de5eb8fe474f30",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "010a496edec1338a93481b034b6ec119bac45affe095ba8c03cce7d283706062",
+      "resultSize": 35552,
+      "mode": 493
+    },
+    {
+      "path": "lib/libmetalsharp-gem-wine.0.1.0.dylib",
+      "action": "replace",
+      "patch": "lib_libmetalsharp-gem-wine_0_1_0_dylib.bsdiff",
+      "patchSha256": "1afba24aba7ab1f8a56d5f4d94232238a3a98ea2aaba9ff55bfa204f687e4d9d",
+      "baseSha256": "282a16c2878c184b0d8cff1b289d3f997846b6cba223787d4bfa7a76bc00a5d6",
+      "resultSha256": "a70156175b26593a9b1100357cb810e05c69465390b34434cf646767851d49a7",
+      "resultSize": 4432112,
+      "mode": 493
+    },
+    {
+      "path": "lib/wine/aarch64-unix/ntdll.so",
+      "action": "replace",
+      "patch": "lib_wine_aarch64-unix_ntdll_so.bsdiff",
+      "patchSha256": "e9553bb17de94a457725cc06cddd425c78bb940e2cdb99a269bc8c4cf2b60e39",
+      "baseSha256": "b267a5823d9d9cb77c609245aff91347372f6d6546b3bfc8d3834258de247a35",
+      "resultSha256": "1aee496aa38996af86e3e12f8752833466f5cd1309485bfae879277e43d686a1",
+      "resultSize": 604520,
+      "mode": 493
+    },
+    {
+      "path": "lib/wine/aarch64-unix/winemetal.so",
+      "action": "add",
+      "patch": [
+        "lib_wine_aarch64-unix_winemetal_so.bsdiff.part00",
+        "lib_wine_aarch64-unix_winemetal_so.bsdiff.part01",
+        "lib_wine_aarch64-unix_winemetal_so.bsdiff.part02",
+        "lib_wine_aarch64-unix_winemetal_so.bsdiff.part03"
+      ],
+      "patchSha256": "1d5dccb341fd9fd7bf54e4039164d0b185fd86af041dea3d1c1dc288bed13a60",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "c069252f4147f20ca3d2be73b7233e656c5b1872bcf8c93c4aedde4a7e44637f",
+      "resultSize": 19318032,
+      "mode": 493
+    },
+    {
+      "path": "lib/wine/aarch64-unix/xtajit.so",
+      "action": "add",
+      "patch": "lib_wine_aarch64-unix_xtajit_so.bsdiff",
+      "patchSha256": "82ddb10c012c1c7909bac4c33744f66cc56cfbff3a2c97af31c5cc1bb0c248a6",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "ef018fab16bc74a1f68321678c0f8dbe2f73d93e74251834a77b703313a881e5",
+      "resultSize": 52472,
+      "mode": 493
+    },
+    {
+      "path": "lib/wine/aarch64-windows/wow64.dll",
+      "action": "replace",
+      "patch": "lib_wine_aarch64-windows_wow64_dll.bsdiff",
+      "patchSha256": "e0eb66c7daa63dc85f0e5a2bc2345bf8a6c55af26ed4bd4609f1b26b2a8b556f",
+      "baseSha256": "5e3f512b99f44af13a756339adbe003520310d3d56226bf98f8a7b8a1868b8cf",
+      "resultSha256": "f5db757b04190af7f992ad3d90fc2d54328d0cb21a93204de3949bc64751e4da",
+      "resultSize": 1703936,
+      "mode": 420
+    },
+    {
+      "path": "lib/wine/aarch64-windows/xtajit.dll",
+      "action": "add",
+      "patch": "lib_wine_aarch64-windows_xtajit_dll.bsdiff",
+      "patchSha256": "86bc4396983b5bcbd106fbf8d5ff78f9174dc69c9890d076a68ecfeaf1bc34de",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "160c47916e66dea9678ca036f3758002f6591554f31969d20545566770147da9",
+      "resultSize": 851968,
+      "mode": 420
+    },
+    {
+      "path": "lib/wine/i386-windows/d3d10core.dll",
+      "action": "replace",
+      "patch": "lib_wine_i386-windows_d3d10core_dll.bsdiff",
+      "patchSha256": "9f1522c4eff30e698e98ce19d796c56ea758c95fc2245998e94b27187ba76a2c",
+      "baseSha256": "11859d4a995d84a3c1510d0ac9ee492a35dd16e664269958c06269e37e13fb43",
+      "resultSha256": "1241fea0f0c32634a333c663d69781661f1f0cba631b9080ae02465eac4f2cc0",
+      "resultSize": 1069056,
+      "mode": 420
+    },
+    {
+      "path": "lib/wine/i386-windows/d3d11.dll",
+      "action": "replace",
+      "patch": "lib_wine_i386-windows_d3d11_dll.bsdiff",
+      "patchSha256": "6596d028700e4b6e7fdae0a4832e4fe7e1288e9af2a36a08e01164c984d42458",
+      "baseSha256": "c918f40c8b24ffe689391878937ee039865c241d46aab0619b9f1350b30e5efc",
+      "resultSha256": "be485378af7b18f19d339f05b6dc6ff3fe94759c09ed13eb10c2fa8e0b33ef3e",
+      "resultSize": 4648960,
+      "mode": 420
+    },
+    {
+      "path": "lib/wine/i386-windows/dxgi.dll",
+      "action": "replace",
+      "patch": "lib_wine_i386-windows_dxgi_dll.bsdiff",
+      "patchSha256": "766dab4615674d77d3bb2b435fcff07ba0272265539b0eb6a849173613a91efc",
+      "baseSha256": "96f00c41101757f7792d00c7965df3aadb57f41c81d28ac90ac3f759daad46e6",
+      "resultSha256": "3f017a70a66cacaadddcab7071a1afab4724c4a1e664200494b56858983743d2",
+      "resultSize": 1351680,
+      "mode": 420
+    },
+    {
+      "path": "lib/wine/i386-windows/ntdll.dll",
+      "action": "replace",
+      "patch": "lib_wine_i386-windows_ntdll_dll.bsdiff",
+      "patchSha256": "e83967a79e29fcbc398e1e2867abf42287643400585e5726f8fef217fb7482f1",
+      "baseSha256": "bf7c72ca086a9c2d02df8799cba63f5306daca0d3d8f3b7489084829dbeb96b2",
+      "resultSha256": "0a8ac47d02896b0e644a3e4c9f6228723a6e89acd5f665dee1df5f7ee496947e",
+      "resultSize": 3909048,
+      "mode": 420
+    },
+    {
+      "path": "lib/wine/i386-windows/secur32.dll",
+      "action": "replace",
+      "patch": "lib_wine_i386-windows_secur32_dll.bsdiff",
+      "patchSha256": "3ecd6ab9d38668283eb9635cfa1362246e943c8be2ff6b0c06cb1973e8bde322",
+      "baseSha256": "ab8bc39f3cae6fbffa77a156c0ee95af1f52d0b5b6d6dbe6d02b31cf4382ca30",
+      "resultSha256": "c2200b9cb9275b12298f3fa0d2e1dc84c0d857927a4a5da1e6b6e40415d2d40e",
+      "resultSize": 746819,
+      "mode": 420
+    },
+    {
+      "path": "lib/wine/i386-windows/sharpwine-i386-acceptance.exe",
+      "action": "add",
+      "patch": "lib_wine_i386-windows_sharpwine-i386-acceptance_exe.bsdiff",
+      "patchSha256": "2b96d74b93e638f6edd83de216635e3888d89096a617e90c75fde5ca5a9f8a22",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "2570de0fe1cae933e53ed22c0d37070ebf0b34982307a073670a92acd6ed46d3",
+      "resultSize": 76288,
+      "mode": 493
+    },
+    {
+      "path": "lib/wine/i386-windows/ucrtbase.dll",
+      "action": "replace",
+      "patch": "lib_wine_i386-windows_ucrtbase_dll.bsdiff",
+      "patchSha256": "0530e31bbe2d6304ea53ef3f9f08b0a5d0b962b2442adfe0b53cc588ea6fc758",
+      "baseSha256": "966d18e06ff49ff10ea8f405f010d13ff94c5d0828aa300a62929d7457cec73c",
+      "resultSha256": "e18d3fbf68f0ae083dbdd6320739ef3f3496a6a5cd1a7e48a2757f43e8105314",
+      "resultSize": 4057584,
+      "mode": 420
+    },
+    {
+      "path": "lib/wine/i386-windows/winemetal.dll",
+      "action": "add",
+      "patch": "lib_wine_i386-windows_winemetal_dll.bsdiff",
+      "patchSha256": "446d40289135fa924b9bc1752b22ff8adc1be44c3596877b526a0171f9f8a1ea",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "4c4cb00ba952b06ae30ea4fc478d2997324c85814bdd80b6aecb348246501785",
+      "resultSize": 57344,
+      "mode": 420
+    },
+    {
+      "path": "share/metalsharp/dxmt-build-manifest.json",
+      "action": "add",
+      "patch": "share_metalsharp_dxmt-build-manifest_json.bsdiff",
+      "patchSha256": "ec0fa8841ceb1378134f1403d476e9d201f20884cdcfc22f9ddc1b3568c0fb4f",
+      "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resultSha256": "1791f3314e3dd7624e0bffa06eb523ee356346100870e163b2c8e34aecea63d9",
+      "resultSize": 4970,
+      "mode": 420
+    }
+  ],
+  "fixture": {
+    "patch": "x86_64-exit-fixture.bsdiff",
+    "patchSha256": "dc3fac6f9cdef8143904d375081e1bb204fdfdaa7bdbefc01f56aa89581f9550",
+    "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "resultSha256": "6bd63780629daf28abf168765f6b5f92a4b914601cfbc873930234931428c834",
+    "resultSize": 3584
+  }
+}

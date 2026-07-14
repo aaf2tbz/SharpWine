@@ -53,14 +53,14 @@ def main() -> None:
             patch_set.get("base") != policy.get("base"):
         fail("patch set does not match release policy")
     records = patch_set.get("runtimePatches")
-    if not isinstance(records, list) or len(records) != 3:
-        fail("patch set does not contain three runtime patches")
+    if not isinstance(records, list) or not records:
+        fail("patch set contains no runtime patches")
     for record in records:
         path = overlay / record["path"]
         if not path.is_file() or digest(path) != record["resultSha256"]:
             fail(f"overlay output differs from patch record: {record.get('path')}")
     components = lock.get("components")
-    if not isinstance(components, dict) or set(components) != {"wine", "dynarmic", "blink"}:
+    if not isinstance(components, dict) or not {"wine", "dynarmic", "blink", "dxmt"}.issubset(components):
         fail("components lock is incomplete")
     patches = components["wine"].get("patches")
     if not isinstance(patches, list) or not patches:
@@ -73,8 +73,10 @@ def main() -> None:
         symbol = symbol.removeprefix("_")
         if symbol.startswith("gem_wine_"):
             exports.append(symbol)
-    if "gem_wine_process_prepare_x86_64" not in exports:
-        fail("patched bridge lacks the pure x86_64 preparation export")
+    required_exports = {"gem_wine_process_prepare_x86_64", "gem_wine_process_prepare_i386",
+                        "gem_wine_i386_thread_create", "gem_wine_i386_thread_run"}
+    if not required_exports.issubset(exports):
+        fail("patched bridge lacks the required x86_64/i386 preparation exports")
     bridge = dict(base.get("bridge", {}))
     bridge["exports"] = sorted(exports)
     toolchain = dict(base.get("toolchain", {}))

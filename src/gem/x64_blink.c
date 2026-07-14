@@ -57,7 +57,7 @@ bool gem_x64_blink_create(struct gem_x64_runtime *r) {
                                             r->config.engine_mode == GEM_X86_64_ENGINE_JIT
                                                 ? BLINK_GEM_ENGINE_JIT
                                                 : BLINK_GEM_ENGINE_INTERPRETER,
-                                            0};
+                                            BLINK_GEM_GUEST_LONG};
     r->backend = blink_gem_machine_create_with_config(&config, &c, r);
     return r->backend != 0;
 }

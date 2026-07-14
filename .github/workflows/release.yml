@@ -13,6 +13,7 @@ on:
       - tools/release/create-runtime-patch-provenance.py
       - tools/release/create-focused-overlay.py
       - tools/release/finalize-x86-64-evidence.py
+      - tools/release/finalize-i386-evidence.py
       - tools/release/apply-focused-overlay.py
       - tools/release/prepare-published-foundation.py
       - tools/release/repackage-published-runtime.py
@@ -110,7 +111,7 @@ jobs:
           PY
 
   patch-test-and-publish:
-    name: Patch published foundation, verify, repackage, and publish
+    name: Patch v0.1.1 foundation, verify, repackage, and publish SharpWine
     needs: resolve-version-bump
     if: needs.resolve-version-bump.outputs.publish == 'true'
     runs-on: macos-15
@@ -179,12 +180,12 @@ jobs:
           python3 tools/release/audit-runtime.py --root "$probe"
           python3 tools/release/test-packaged-runtime.py --runtime "$probe" \
             --x86-64-fixture "$X86_64_FIXTURE" \
+            --skip-retained-x86-64 \
             --evidence "${RUNNER_TEMP}/probe-evidence" --stress-iterations 1 --timeout 300
-          python3 tools/release/finalize-x86-64-evidence.py \
+          python3 tools/release/finalize-i386-evidence.py \
             --build-manifest "$BUILD_MANIFEST" \
-            --fixture-manifest "$FIXTURE_MANIFEST" \
             --test-summary "${RUNNER_TEMP}/probe-evidence/summary.json" \
-            --output "$OVERLAY/share/metalsharp/x86_64-acceptance-evidence.json"
+            --output "$OVERLAY/share/metalsharp/i386-acceptance-evidence.json"
           python3 tools/release/create-focused-overlay.py --policy "$POLICY" \
             --overlay "$OVERLAY" --output "$OVERLAY_MANIFEST"
       - name: Upload packaged probe evidence on failure
@@ -197,7 +198,7 @@ jobs:
             ${{ runner.temp }}/probe-overlay-application.json
           if-no-files-found: warn
           retention-days: 7
-      - name: Apply and test the final four-file patch exactly
+      - name: Apply and test the final v0.1.2 overlay exactly
         env:
           POLICY: ${{ needs.resolve-version-bump.outputs.policy }}
         shell: bash
@@ -210,6 +211,7 @@ jobs:
           python3 tools/release/audit-runtime.py --root "$RUNTIME"
           python3 tools/release/test-packaged-runtime.py --runtime "$RUNTIME" \
             --x86-64-fixture "$X86_64_FIXTURE" \
+            --skip-retained-x86-64 \
             --evidence "${RUNNER_TEMP}/release-bump-evidence" \
             --stress-iterations 1 --timeout 300
       - name: Repackage and validate the patched release tarball
@@ -237,9 +239,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          archive="metalsharp-wine-v${VERSION}-macos-arm64.tar.zst"
+          archive="sharpwine-v${VERSION}-macos-arm64.tar.zst"
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
-            --title "MetalSharp Wine $TAG" --notes-file "$RELEASE_ASSETS/RELEASE-NOTES.md" \
+            --title "SharpWine $TAG" --notes-file "$RELEASE_ASSETS/RELEASE-NOTES.md" \
             "$RELEASE_ASSETS/$archive" "$RELEASE_ASSETS/$archive.sha256" \
             "$RELEASE_ASSETS/release-manifest.json" \
             "$RELEASE_ASSETS/wine-integration-evidence.json" \

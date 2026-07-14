@@ -210,6 +210,20 @@ class FocusedOverlayTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             PATCHES.apply_bsdiff(old, patch[:-1])
 
+    def test_runtime_patch_parts_are_reassembled_in_order(self) -> None:
+        (self.root / "patch.part00").write_bytes(b"BSDIFF")
+        (self.root / "patch.part01").write_bytes(b"40")
+        self.assertEqual(
+            PATCHES.read_patch(
+                self.root, ["patch.part00", "patch.part01"], "lib/example.so"
+            ),
+            b"BSDIFF40",
+        )
+        with self.assertRaises(SystemExit):
+            PATCHES.read_patch(
+                self.root, ["patch.part00", "patch.part00"], "lib/example.so"
+            )
+
     def test_committed_fixture_patch_reconstructs_exact_fixture(self) -> None:
         patch_root = ROOT / "release/runtime-patches/v0.1.1"
         manifest = json.loads((patch_root / "manifest.json").read_text(encoding="utf-8"))

@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "release": {
+    "version": "0.1.2",
+    "tag": "v0.1.2",
+    "previousTag": "v0.1.1"
+  },
+  "base": {
+    "archive": "metalsharp-wine-v0.1.1-macos-arm64.tar.zst",
+    "sha256": "4abb76bd6515b841d40468e5603e583e3a6c5b009214c8c7ad378d0683b97469"
+  },
+  "allowedChanges": [
+    {"path": "LICENSES/COPYING-MinGW-w64-DirectX-Headers.txt", "action": "add", "reason": "DXMT DirectX headers license"},
+    {"path": "LICENSES/License-NVAPI.txt", "action": "add", "reason": "DXMT NVAPI submodule license"},
+    {"path": "LICENSES/MIT-DXMT.txt", "action": "add", "reason": "DXMT license"},
+    {"path": "bin/.wine-i386-real", "action": "add", "reason": "Native ARM64 Wine loader selected by the packaged i386 route"},
+    {"path": "lib/libmetalsharp-gem-wine.0.1.0.dylib", "action": "replace", "reason": "Four-route GEM bridge with i386/WoW64 entry points"},
+    {"path": "lib/wine/aarch64-unix/ntdll.so", "action": "replace", "reason": "Native ARM64 i386/WoW64 routing boundary"},
+    {"path": "lib/wine/aarch64-unix/winemetal.so", "action": "add", "reason": "Source-built paired DXMT ARM64 Unix bridge"},
+    {"path": "lib/wine/aarch64-unix/xtajit.so", "action": "add", "reason": "Native ARM64 WoW64 translation Unix library"},
+    {"path": "lib/wine/aarch64-windows/wow64.dll", "action": "replace", "reason": "WoW64 guest transition module"},
+    {"path": "lib/wine/aarch64-windows/xtajit.dll", "action": "add", "reason": "WoW64 guest translation builtin"},
+    {"path": "lib/wine/i386-windows/d3d10core.dll", "action": "replace", "reason": "Source-built paired DXMT PE32 module"},
+    {"path": "lib/wine/i386-windows/d3d11.dll", "action": "replace", "reason": "Source-built paired DXMT PE32 module"},
+    {"path": "lib/wine/i386-windows/dxgi.dll", "action": "replace", "reason": "Source-built paired DXMT PE32 module"},
+    {"path": "lib/wine/i386-windows/ntdll.dll", "action": "replace", "reason": "GEM-backed i386 syscall and Unix-call boundary"},
+    {"path": "lib/wine/i386-windows/secur32.dll", "action": "replace", "reason": "i386 WoW64 builtin rebuilt with the upgraded Wine patch queue"},
+    {"path": "lib/wine/i386-windows/sharpwine-i386-acceptance.exe", "action": "add", "reason": "Source-built bounded PE32 release acceptance fixture"},
+    {"path": "lib/wine/i386-windows/ucrtbase.dll", "action": "replace", "reason": "Corrected i386 delay-import contract"},
+    {"path": "lib/wine/i386-windows/winemetal.dll", "action": "add", "reason": "Source-built paired DXMT PE32 Unix-call thunk"},
+    {"path": "share/metalsharp/dxmt-build-manifest.json", "action": "add", "reason": "Pinned and reproducible paired DXMT provenance"},
+    {"path": "share/metalsharp/i386-acceptance-evidence.json", "action": "add", "reason": "Bounded i386/WoW64 native ARM64 acceptance evidence"}
+  ]
+}

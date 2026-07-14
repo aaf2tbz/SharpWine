@@ -113,8 +113,8 @@ def unpack(archive: Path, destination: Path, expected_top: str) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", required=True, type=Path)
-    parser.add_argument("--policy", default="release/v0.1.1-overlay-policy.json", type=Path)
-    parser.add_argument("--repository", default="aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64")
+    parser.add_argument("--policy", default="release/v0.1.2-overlay-policy.json", type=Path)
+    parser.add_argument("--repository", default="aaf2tbz/SharpWine")
     parser.add_argument("--assets", type=Path,
                         help="copy already-downloaded assets instead of invoking gh")
     args = parser.parse_args()
@@ -155,7 +155,11 @@ def main() -> None:
         (assets / "RELEASE-NOTES.md").write_text(notes, encoding="utf-8")
     manifest = load_object(assets / "release-manifest.json")
     release = manifest.get("release")
-    if not isinstance(release, dict) or release.get("repository") != args.repository:
+    foundation_repository = release.get("repository") if isinstance(release, dict) else None
+    accepted_repositories = {args.repository}
+    if previous_tag == "v0.1.1" and args.repository == "aaf2tbz/SharpWine":
+        accepted_repositories.add("aaf2tbz/MetalSharp-Wine-Runtime-MacOS-Arm64")
+    if not isinstance(foundation_repository, str) or foundation_repository not in accepted_repositories:
         fail("foundation manifest repository binding is invalid")
     version = previous_tag.removeprefix("v")
     commit = release.get("commit")
@@ -167,7 +171,7 @@ def main() -> None:
     validator = Path(__file__).with_name("validate-release-assets.py")
     subprocess.run(
         [sys.executable, str(validator), "--directory", str(assets),
-         "--repository", args.repository, "--commit", commit, "--version", version],
+         "--repository", foundation_repository, "--commit", commit, "--version", version],
         check=True,
     )
     runtime = unpack(archive, extracted, archive_name.removesuffix(".tar.zst"))

@@ -97,6 +97,13 @@
       "sha256": "019edf8fddfa0f3bfd7e987a1c14b726382a6634f1856f9d9d540628f688487c",
       "authoringCommit": "e3fd4b86ac067374116e3e93bf963caa0d1101df",
       "purpose": "Classify ordinary AMD64 PE32+ startup separately from ARM64EC, load the shipped x86_64 ntdll, and route its syscall and Unix-call boundaries through native ARM64 GEM_x86_64 without Rosetta."
+    },
+    {
+      "order": 14,
+      "path": "third_party/patches/wine/0014-ntdll-add-gem-backed-i386-wow64-execution-on-arm64.patch",
+      "sha256": "989610f9fb94798c712c36625448ef61f0e41b39ff35451c9125a095c78e25b3",
+      "authoringCommit": "ff715cf7b8bfe079dd1ba5f87a6bd0933e9d0652",
+      "purpose": "Add the i386 xtajit CPU surface backed by GEM, map the 32-bit guest address space through bounded high host shadow windows on Apple Silicon, and preserve context-changing syscall results such as NtContinue."
     }
   ],
   "researchEvidence": {

@@ -90,20 +90,24 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime", required=True, type=pathlib.Path)
     parser.add_argument("--evidence", required=True, type=pathlib.Path)
-    parser.add_argument("--x86-64-fixture", required=True, type=pathlib.Path)
+    parser.add_argument("--x86-64-fixture", type=pathlib.Path)
+    parser.add_argument("--skip-retained-x86-64", action="store_true")
     parser.add_argument("--stress-iterations", type=int, default=8)
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
     runtime = args.runtime.resolve(strict=True)
-    x86_64_fixture = args.x86_64_fixture.resolve(strict=True)
+    x86_64_fixture = args.x86_64_fixture.resolve(strict=True) if args.x86_64_fixture else None
+    if not args.skip_retained_x86_64 and x86_64_fixture is None:
+        fail("the x86_64 fixture is required unless the v0.1.1 gate is retained")
     if args.stress_iterations < 1 or args.timeout < 30:
         fail("invalid stress or timeout bound")
     wine = runtime / "bin/wine"
     wineserver = runtime / "bin/wineserver"
     selftest = runtime / "share/metalsharp/selftest"
+    i386_fixture = runtime / "lib/wine/i386-windows/sharpwine-i386-acceptance.exe"
     for path in (wine, wineserver, selftest / "arm64x_fixture_host.exe",
-                 selftest / "arm64x_fixture.dll", x86_64_fixture,
-                 runtime / "lib/wine/x86_64-windows/cmd.exe"):
+                 selftest / "arm64x_fixture.dll",
+                 runtime / "lib/wine/x86_64-windows/cmd.exe", i386_fixture):
         if not path.exists():
             try:
                 display = path.relative_to(runtime)
@@ -242,15 +246,22 @@ def main() -> None:
                  ("ARM64X linked fixture native execution passed",),
                  timeout=RELEASE_OPERATION_TIMEOUT, trace_gem=True)
         quiesce_wineserver()
-        run_test("x86_64-exception", [str(wine), str(x86_64_fixture)],
-                 ("pure AMD64 routing enabled",), timeout=RELEASE_OPERATION_TIMEOUT,
-                 wine_debug="-all,+gem,+module,+loaddll,+process,+seh")
+        if not args.skip_retained_x86_64:
+            run_test("x86_64-exception", [str(wine), str(x86_64_fixture)],
+                     ("pure AMD64 routing enabled",), timeout=RELEASE_OPERATION_TIMEOUT,
+                     wine_debug="-all,+gem,+module,+loaddll,+process,+seh")
+            quiesce_wineserver()
+            run_test("x86_64-cmd-exit",
+                     [str(wine), str(runtime / "lib/wine/x86_64-windows/cmd.exe"),
+                      "/d", "/c", "exit", "0"],
+                     ("pure AMD64 routing enabled",), timeout=RELEASE_OPERATION_TIMEOUT,
+                     trace_gem=True)
         quiesce_wineserver()
-        run_test("x86_64-cmd-exit",
-                 [str(wine), str(runtime / "lib/wine/x86_64-windows/cmd.exe"),
-                  "/d", "/c", "exit", "0"],
-                 ("pure AMD64 routing enabled",), timeout=RELEASE_OPERATION_TIMEOUT,
-                 trace_gem=True)
+        run_test("i386-gem-acceptance", [str(wine), str(i386_fixture)],
+                 timeout=RELEASE_OPERATION_TIMEOUT, trace_gem=True)
+        marker = prefix / "drive_c/metalsharp-gem-i386-ok.txt"
+        if not marker.is_file() or marker.read_bytes() != b"METALSHARP_GEM_I386_OK\r\n":
+            fail("i386 GEM acceptance marker is missing or invalid")
         for index in range(args.stress_iterations):
             quiesce_wineserver()
             run_test(f"hybrid-stress-{index + 1:03d}",
@@ -285,6 +296,7 @@ def main() -> None:
     if prefix.exists():
         fail("fresh test prefix survived cleanup")
     summary = {"schema": 1, "passed": True, "freshPrefix": True,
+               "retainedX86_64Foundation": args.skip_retained_x86_64,
                "stressIterations": args.stress_iterations, "timeoutSeconds": args.timeout,
                "logLimitBytes": 2 * 1024 * 1024, "tests": results,
                "processAudit": {"allNativeArm64": True, "translatedProcesses": [],
@@ -293,7 +305,8 @@ def main() -> None:
                "teardownClean": True}
     (args.evidence / "summary.json").write_text(
         json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
-    print("packaged Wine native ARM64, ARM64EC, and pure x86_64 tests passed")
+    x86_status = "retained v0.1.1 x86_64" if args.skip_retained_x86_64 else "x86_64"
+    print(f"packaged SharpWine AArch64, ARM64EC/x64, {x86_status}, and i386 gates passed")
 
 
 if __name__ == "__main__":

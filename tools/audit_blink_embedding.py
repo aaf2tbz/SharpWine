@@ -314,14 +314,16 @@ def main():
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--patch", type=Path, required=True)
     parser.add_argument("--jit-patch", type=Path, required=True)
+    parser.add_argument("--i386-patch", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 3, "provenance schema")
+    need(provenance["schemaVersion"] == 4, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
+    need(digest(args.i386_patch) == provenance["i386PatchSha256"], "i386 patch hash")
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
 
@@ -361,6 +363,11 @@ def main():
         "jit_compilations",
         "write_xor_execute",
         "drop_page(g, 0)",
+        "BLINK_GEM_GUEST_LEGACY_32",
+        "XED_MACHINE_MODE_LEGACY_32",
+        "guest_address(g, in->rip)",
+        "m->fs.base = s->fs_base",
+        "memcpy(m->fpu.st, s->x87",
     ):
         need(required in embedding, f"missing bounded JIT embedding invariant {required}")
     need("m->gemembed || opclass == kOpBranching" in machine, "JIT path is not one instruction")

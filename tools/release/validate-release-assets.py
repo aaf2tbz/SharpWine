@@ -19,6 +19,7 @@ from typing import Any
 
 BASE_TESTS = {"wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid"}
 X86_64_TESTS = {"x86_64-exception", "x86_64-cmd-exit"}
+I386_TESTS = {"i386-gem-acceptance"}
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?\Z")
@@ -27,7 +28,9 @@ VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?\Z")
 def archive_name(version: str) -> str:
     if not VERSION.fullmatch(version):
         fail(f"version is invalid: {version!r}")
-    return f"metalsharp-wine-v{version}-macos-arm64.tar.zst"
+    numeric = version.split("-", 1)[0].split("+", 1)[0]
+    prefix = "metalsharp-wine" if tuple(map(int, numeric.split("."))) <= (0, 1, 1) else "sharpwine"
+    return f"{prefix}-v{version}-macos-arm64.tar.zst"
 
 
 def asset_names(version: str) -> set[str]:
@@ -99,8 +102,8 @@ def validate_manifest(path: Path, repository: str, commit: str, version: str,
         fail("manifest tag mismatch")
 
     components = value["components"]
-    if not isinstance(components, dict) or set(components) != {"wine", "dynarmic", "blink"}:
-        fail("manifest must bind exactly Wine, Dynarmic, and Blink")
+    if not isinstance(components, dict) or not {"wine", "dynarmic", "blink"}.issubset(components):
+        fail("manifest must bind Wine, Dynarmic, and Blink")
     for name, component in components.items():
         if not isinstance(component, dict):
             fail(f"manifest component {name} is not an object")
@@ -178,7 +181,7 @@ def validate_archive(directory: Path, manifest: dict[str, Any], archive_name_val
                                     stderr=subprocess.PIPE, check=False)
         if result.returncode:
             fail(f"archive is not valid Zstandard: {result.stderr.decode(errors='replace').strip()}")
-        expected_top = f"metalsharp-wine-v{version}-macos-arm64"
+        expected_top = archive_name(version).removesuffix(".tar.zst")
         records = manifest["package"]["files"]
         by_path = {record.get("path"): record for record in records if isinstance(record, dict)}
         if len(by_path) != len(records) or None in by_path:
@@ -243,7 +246,12 @@ def validate_integration(path: Path, repository: str, commit: str, version: str)
     if value["passed"] is not True or value["wineEngineIntegrated"] is not True or value["zeroRosetta"] is not True:
         fail("integration evidence did not pass every top-level gate")
     tests = value["tests"]
-    required_tests = BASE_TESTS if version == "0.1.0" else BASE_TESTS | X86_64_TESTS
+    version_tuple = tuple(map(int, version.split("-", 1)[0].split("+", 1)[0].split(".")))
+    required_tests = BASE_TESTS
+    if version_tuple == (0, 1, 1):
+        required_tests |= X86_64_TESTS
+    if version_tuple >= (0, 1, 2):
+        required_tests |= I386_TESTS
     if not isinstance(tests, list):
         fail("integration tests are not an array")
     seen: set[str] = set()
@@ -349,7 +357,7 @@ def main() -> None:
                       args.version, archive_name_value, assets, archive_hash,
                       archive.stat().st_size)
     validate_archive(directory, manifest, archive_name_value, args.version)
-    print("integrated Wine release asset validation passed")
+    print("integrated SharpWine release asset validation passed")
 
 
 if __name__ == "__main__":

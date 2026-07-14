@@ -163,8 +163,8 @@ const char *gem_x64_runtime_engine_provenance(const struct gem_x64_runtime *r) {
     return r->config.engine_mode == GEM_X86_64_ENGINE_JIT
                ? "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;bounded-aarch64-jit;"
                  "one-instruction-path;patch-sha256="
-                 "f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807"
+                 "797f92651c17b86cce97a5bc73dd88e0c014e4f7c8664b4ee4d4c431a8175c80"
                : "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;interpreter-oracle;"
                  "patch-sha256="
-                 "f921ab05bc911b8d3d50afd8426eea1e8c99b776e9abdb04434234cf78a91807";
+                 "797f92651c17b86cce97a5bc73dd88e0c014e4f7c8664b4ee4d4c431a8175c80";
 }

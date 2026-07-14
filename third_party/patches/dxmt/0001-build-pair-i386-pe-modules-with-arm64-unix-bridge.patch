@@ -1,0 +1,155 @@
+From 9b003d65a4fe7ea755f32a31f86b1fbcc9322a6b Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Tue, 14 Jul 2026 16:02:31 -0600
+Subject: [PATCH] build: pair i386 pe modules with arm64 unix bridge
+
+---
+ libs/DXBCParser/meson.build    |  5 +++--
+ meson.build                    | 21 ++++++++++++++++++---
+ src/airconv/darwin/meson.build | 13 ++++++++++---
+ src/airconv/meson.build        |  5 +++--
+ src/winemetal/meson.build      |  4 ++--
+ 5 files changed, 36 insertions(+), 12 deletions(-)
+
+diff --git a/libs/DXBCParser/meson.build b/libs/DXBCParser/meson.build
+index 616d59b..4dc8637 100644
+--- a/libs/DXBCParser/meson.build
++++ b/libs/DXBCParser/meson.build
+@@ -19,7 +19,8 @@ dxbc_parser_dep = declare_dependency(
+   include_directories : [ dxmt_include_path ],
+ )
+ 
+-if cpu_family == 'x86_64' or cpu_family == 'aarch64' or not dxmt_crossbuild
++if build_machine.cpu_family() == 'aarch64' or cpu_family == 'x86_64' or \
++   cpu_family == 'aarch64' or not dxmt_crossbuild
+ 
+ dxbc_parser_native_lib = static_library('DXBCParserNative', dxbc_parser_src,
+   include_directories : [ dxmt_native_include_path ],
+@@ -32,4 +33,4 @@ dxbc_parser_native_dep = declare_dependency(
+   include_directories : [ dxmt_native_include_path ],
+ )
+ 
+-endif
+\ No newline at end of file
++endif
+diff --git a/meson.build b/meson.build
+index e10c901..cc58310 100644
+--- a/meson.build
++++ b/meson.build
+@@ -67,6 +67,8 @@ native_compiler_args = [
+   '-Wno-unused-const-variable',
+   '-Wno-missing-braces',
+   '-fblocks',
++  '-ffile-prefix-map=' + source_prefix_path + '/=',
++  '-fmacro-prefix-map=' + source_prefix_path + '/=',
+ ]
+ 
+ link_args = []
+@@ -84,6 +86,7 @@ link_args += [
+   # We need to set the section alignment for debug symbols to
+   # work properly as well as avoiding a memcpy from the Wine loader.
+   '-Wl,--file-alignment=4096',
++  '-Wl,--no-insert-timestamp',
+ ]
+ 
+ # Wine's built-in back traces only work with dwarf4 symbols
+@@ -182,13 +185,21 @@ if dxmt_crossbuild
+     error('invalid cpu family')
+   endif
+ 
+-  unix_install_dir = cpu_family + '-unix'
++  if build_machine.cpu_family() == 'aarch64'
++    unix_install_dir = 'aarch64-unix'
++  else
++    unix_install_dir = cpu_family + '-unix'
++  endif
+ else
+   wine_builtin_dll = false
+   windows_native_install_dir = ''
+ endif
+ 
+-native_compiler_arch = cpu_family == 'aarch64' ? 'arm64' : 'x86_64'
++if build_machine.cpu_family() == 'aarch64'
++  native_compiler_arch = 'arm64'
++else
++  native_compiler_arch = 'x86_64'
++endif
+ 
+ add_project_arguments(cpp.get_supported_arguments(compiler_args), language: 'cpp')
+ add_project_arguments(clangpp.get_supported_arguments(native_compiler_args), language: 'cpp', native: true)
+@@ -199,7 +210,11 @@ add_project_link_arguments(cc.get_supported_link_arguments(link_args), language:
+ if dxmt_crossbuild
+   add_project_arguments(['-arch', native_compiler_arch], language: 'c',  native: true)
+   add_project_arguments(['-arch', native_compiler_arch], language: 'cpp',  native: true)
+-  add_project_link_arguments(['-arch', native_compiler_arch], language: 'cpp',  native: true)
++  add_project_link_arguments(
++    ['-arch', native_compiler_arch, '-Wl,-no_uuid'],
++    language: 'cpp',
++    native: true,
++  )
+ endif
+ 
+ subdir('libs')
+diff --git a/src/airconv/darwin/meson.build b/src/airconv/darwin/meson.build
+index f3e39ec..2c6e06f 100644
+--- a/src/airconv/darwin/meson.build
++++ b/src/airconv/darwin/meson.build
+@@ -14,10 +14,17 @@ llvm_ld_flags_darwin = [
+   '-lm', '-lz', '-lcurses', '-lxml2'
+ ]
+ 
+-if native_llvm_path.startswith('/usr/local/opt')
++if native_llvm_path.startswith('/usr/local/opt') or \
++   native_llvm_path.startswith('/opt/homebrew/opt')
++  if native_llvm_path.startswith('/opt/homebrew/opt')
++    homebrew_prefix = '/opt/homebrew/opt'
++  else
++    homebrew_prefix = '/usr/local/opt'
++  endif
+   llvm_ld_flags_darwin = [
+     llvm_ld_flags_darwin,
+-    '/usr/local/opt/zstd/lib/libzstd.a', '/usr/local/opt/llvm@15/lib/libunwind.a'
++    join_paths(homebrew_prefix, 'zstd/lib/libzstd.a'),
++    join_paths(native_llvm_path, 'lib/libunwind.a')
+   ]
+ endif
+ 
+@@ -41,4 +48,4 @@ executable('airconv', airconv_src + airconv_cli_src,
+   dependencies        : [ dxbc_parser_native_dep ],
+   link_args           : [ llvm_ld_flags_darwin, llvm_deps ],
+   native              : dxmt_crossbuild
+-)
+\ No newline at end of file
++)
+diff --git a/src/airconv/meson.build b/src/airconv/meson.build
+index f5d877a..b603ef5 100644
+--- a/src/airconv/meson.build
++++ b/src/airconv/meson.build
+@@ -99,6 +99,7 @@ executable('airconv', airconv_src + airconv_cli_src,
+ 
+ endif
+ 
+-if cpu_family == 'x86_64' or cpu_family == 'aarch64' or not dxmt_crossbuild
++if build_machine.cpu_family() == 'aarch64' or cpu_family == 'x86_64' or \
++   cpu_family == 'aarch64' or not dxmt_crossbuild
+   subdir('darwin')
+-endif
+\ No newline at end of file
++endif
+diff --git a/src/winemetal/meson.build b/src/winemetal/meson.build
+index 858d4b3..97668f0 100644
+--- a/src/winemetal/meson.build
++++ b/src/winemetal/meson.build
+@@ -57,6 +57,6 @@ custom_target('postprocess_lib',
+   build_by_default : true
+ )
+ 
+-if cpu_family == 'x86_64' or cpu_family == 'aarch64'
++if cpu_family == 'x86' or cpu_family == 'x86_64' or cpu_family == 'aarch64'
+   subdir('unix')
+-endif
+\ No newline at end of file
++endif
+-- 
+2.54.0 (Apple Git-157)
+

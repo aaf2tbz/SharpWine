@@ -92,6 +92,16 @@ is not a release input.
      suspend or externally supplied context;
    - defers an in-flight hybrid suspend until the coordinator reaches an
      ARM64EC boundary that Wine's public context machinery can represent.
+13. `0013-ntdll-route-pure-amd64-guests-through-gem-x86-64.patch`
+   - routes ordinary AMD64 PE32+ startup through the existing GEM x86-64
+     engine without Rosetta.
+14. `0014-ntdll-add-gem-backed-i386-wow64-execution-on-arm64.patch`
+   - adds Wine's i386 `xtajit` CPU surface backed by the existing GEM i386
+     engine while retaining the four-architecture Wine build;
+   - maps 32-bit guest addresses through bounded high host shadow windows on
+     Apple Silicon and preserves 32-bit values in the WoW64 ABI;
+   - refreshes the emulated thread context after context-changing syscalls such
+     as `NtContinue`, so startup resumes at the requested guest state.
 
 ## Current evidence and limitation
 

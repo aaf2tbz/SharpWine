@@ -13,6 +13,8 @@ option(MSWR_ZERO_ROSETTA_AUDIT "Build/run native ARM64 macOS zero-Rosetta audit 
 option(MSWR_FETCH_DYNARMIC "Fetch the pinned Dynarmic dependency when engine support is enabled" ON)
 option(MSWR_ENABLE_X64_ENGINE "Build the pinned Blink GEM_x86_64 adapter" OFF)
 option(MSWR_X64_ENGINE_CONFORMANCE "Build x64 engine conformance tests" OFF)
+option(MSWR_ENABLE_I386_ENGINE "Build the pinned Blink GEM_i386 adapter" OFF)
+option(MSWR_I386_ENGINE_CONFORMANCE "Build i386 engine conformance tests" OFF)
 option(MSWR_BUILD_WINE_BRIDGE "Build the versioned native Wine/GEM bridge dylib" OFF)
 option(MSWR_WINE_BRIDGE_CONFORMANCE "Build Wine/GEM bridge conformance tests" OFF)
 option(MSWR_BUILD_ARM64X_ISSUE11_PROBE "Build the native Windows ARM64 issue #11 probe" OFF)
@@ -65,6 +67,8 @@ add_library(metalsharp_gem STATIC
     src/gem/context.c
     src/gem/context_conversion.c
     src/gem/context_serialization.c
+    src/gem/i386_context.c
+    src/gem/i386_memory.c
     src/gem/memory.c
     src/gem/pe_arm64x.c
     src/gem/pe_arm64x_loader.c)
@@ -139,7 +143,7 @@ if(MSWR_ENABLE_ARM64EC_ENGINE)
     target_link_libraries(metalsharp_gem PRIVATE dynarmic)
 endif()
 
-if(MSWR_ENABLE_X64_ENGINE)
+if(MSWR_ENABLE_X64_ENGINE OR MSWR_ENABLE_I386_ENGINE)
     include(FetchContent)
     FetchContent_Declare(blink_gem
         URL https://github.com/jart/blink/archive/f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580.tar.gz
@@ -155,6 +159,7 @@ if(MSWR_ENABLE_X64_ENGINE)
         --source "${blink_gem_SOURCE_DIR}"
         --patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0001-gem-real-interpreter-embedding.patch"
         --jit-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0002-gem-bounded-jit-embedding.patch"
+        --i386-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0003-gem-i386-legacy-mode.patch"
         --provenance "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/0008-blink-embedding.provenance.json"
         RESULT_VARIABLE blink_audit_result)
     if(NOT blink_audit_result EQUAL 0)
@@ -162,27 +167,45 @@ if(MSWR_ENABLE_X64_ENGINE)
     endif()
     include(cmake/blink-gem-native.cmake)
     mswr_add_blink_gem_library("${blink_gem_SOURCE_DIR}")
-    add_library(GEM_x86_64 OBJECT src/gem/x64_engine.c src/gem/x64_blink.c)
-    target_include_directories(GEM_x86_64 PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/include" "${blink_gem_SOURCE_DIR}")
-    target_compile_features(GEM_x86_64 PRIVATE c_std_11)
-    set_property(TARGET GEM_x86_64 PROPERTY POSITION_INDEPENDENT_CODE ON)
-    mswr_enable_warnings(GEM_x86_64)
-    target_sources(metalsharp_gem PRIVATE $<TARGET_OBJECTS:GEM_x86_64>)
-    if(MSWR_ENABLE_ARM64EC_ENGINE)
-        target_sources(metalsharp_gem PRIVATE src/gem/hybrid_runtime.c)
+    if(MSWR_ENABLE_X64_ENGINE)
+        add_library(GEM_x86_64 OBJECT src/gem/x64_engine.c src/gem/x64_blink.c)
+        target_include_directories(GEM_x86_64 PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include" "${blink_gem_SOURCE_DIR}")
+        target_compile_features(GEM_x86_64 PRIVATE c_std_11)
+        set_property(TARGET GEM_x86_64 PROPERTY POSITION_INDEPENDENT_CODE ON)
+        mswr_enable_warnings(GEM_x86_64)
+        target_sources(metalsharp_gem PRIVATE $<TARGET_OBJECTS:GEM_x86_64>)
+        if(MSWR_ENABLE_ARM64EC_ENGINE)
+            target_sources(metalsharp_gem PRIVATE src/gem/hybrid_runtime.c)
+        endif()
+    endif()
+    if(MSWR_ENABLE_I386_ENGINE)
+        add_library(GEM_i386 OBJECT src/gem/i386_engine.c src/gem/i386_blink.c)
+        target_include_directories(GEM_i386 PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include" "${blink_gem_SOURCE_DIR}")
+        target_compile_features(GEM_i386 PRIVATE c_std_11)
+        set_property(TARGET GEM_i386 PROPERTY POSITION_INDEPENDENT_CODE ON)
+        mswr_enable_warnings(GEM_i386)
+        target_sources(metalsharp_gem PRIVATE $<TARGET_OBJECTS:GEM_i386>)
     endif()
     target_include_directories(metalsharp_gem PRIVATE "${blink_gem_SOURCE_DIR}")
     target_link_libraries(metalsharp_gem PRIVATE blink_gem_archive m)
-elseif(MSWR_X64_ENGINE_CONFORMANCE)
+elseif(MSWR_X64_ENGINE_CONFORMANCE OR MSWR_I386_ENGINE_CONFORMANCE)
+    message(FATAL_ERROR "Blink engine conformance requires its corresponding engine")
+endif()
+if(MSWR_X64_ENGINE_CONFORMANCE AND NOT MSWR_ENABLE_X64_ENGINE)
     message(FATAL_ERROR "MSWR_X64_ENGINE_CONFORMANCE requires MSWR_ENABLE_X64_ENGINE")
+endif()
+if(MSWR_I386_ENGINE_CONFORMANCE AND NOT MSWR_ENABLE_I386_ENGINE)
+    message(FATAL_ERROR "MSWR_I386_ENGINE_CONFORMANCE requires MSWR_ENABLE_I386_ENGINE")
 endif()
 mswr_enable_warnings(metalsharp_gem)
 
 if(MSWR_BUILD_WINE_BRIDGE)
-    if(NOT MSWR_ENABLE_ARM64EC_ENGINE OR NOT MSWR_ENABLE_X64_ENGINE)
+    if(NOT MSWR_ENABLE_ARM64EC_ENGINE OR NOT MSWR_ENABLE_X64_ENGINE OR
+            NOT MSWR_ENABLE_I386_ENGINE)
         message(FATAL_ERROR
-            "MSWR_BUILD_WINE_BRIDGE requires both ARM64EC and GEM_x86_64 engines")
+            "MSWR_BUILD_WINE_BRIDGE requires ARM64EC, GEM_x86_64, and GEM_i386 engines")
     endif()
     set_property(TARGET metalsharp_gem PROPERTY POSITION_INDEPENDENT_CODE ON)
     add_library(metalsharp_gem_wine SHARED src/gem/wine_bridge.c)
@@ -209,6 +232,8 @@ if(MSWR_BUILD_WINE_BRIDGE)
         COMPONENT metalsharp-gem-wine)
     install(FILES
         include/metalsharp/gem/context.h
+        include/metalsharp/gem/i386_context.h
+        include/metalsharp/gem/i386_engine.h
         include/metalsharp/gem/wine_bridge.h
         DESTINATION include/metalsharp/gem
         COMPONENT metalsharp-gem-wine)
@@ -247,6 +272,14 @@ if(BUILD_TESTING)
         target_link_libraries(${test_name} PRIVATE metalsharp_gem)
         mswr_enable_warnings(${test_name})
         add_test(NAME gem.${test_name} COMMAND ${test_name})
+    endforeach()
+
+    foreach(test_name i386_context_test i386_memory_test)
+        add_executable(${test_name} tests/${test_name}.c)
+        target_link_libraries(${test_name} PRIVATE metalsharp_gem)
+        mswr_enable_warnings(${test_name})
+        add_test(NAME gem.${test_name} COMMAND ${test_name})
+        set_tests_properties(gem.${test_name} PROPERTIES LABELS "i386;zero-rosetta")
     endforeach()
 
     add_executable(memory_page_isolation_test tests/memory_page_isolation_test.cpp)
@@ -291,6 +324,13 @@ if(BUILD_TESTING)
         add_test(NAME gem.wine_x86_64_bridge_conformance COMMAND wine_x86_64_bridge_conformance)
         set_tests_properties(gem.wine_x86_64_bridge_conformance PROPERTIES
             LABELS "zero-rosetta;wine-bridge;production-jit;interpreter-oracle")
+
+        add_executable(wine_i386_bridge_conformance tests/wine_i386_bridge_conformance.c)
+        target_link_libraries(wine_i386_bridge_conformance PRIVATE metalsharp_gem_wine)
+        mswr_enable_warnings(wine_i386_bridge_conformance)
+        add_test(NAME gem.wine_i386_bridge_conformance COMMAND wine_i386_bridge_conformance)
+        set_tests_properties(gem.wine_i386_bridge_conformance PROPERTIES
+            LABELS "i386;zero-rosetta;wine-bridge;production-jit")
     endif()
 
     if(MSWR_X64_ENGINE_CONFORMANCE)
@@ -311,6 +351,15 @@ if(BUILD_TESTING)
         add_test(NAME gem.x86_64_jit_conformance COMMAND x86_64_jit_conformance)
         set_tests_properties(gem.x86_64_jit_conformance PROPERTIES
             LABELS "zero-rosetta;gem.engine;production-jit")
+    endif()
+
+    if(MSWR_I386_ENGINE_CONFORMANCE)
+        add_executable(i386_engine_conformance tests/i386_engine_conformance.c)
+        target_link_libraries(i386_engine_conformance PRIVATE metalsharp_gem)
+        mswr_enable_warnings(i386_engine_conformance)
+        add_test(NAME gem.i386_engine_conformance COMMAND i386_engine_conformance)
+        set_tests_properties(gem.i386_engine_conformance PROPERTIES
+            LABELS "i386;zero-rosetta;gem.engine;production-jit;interpreter-oracle")
     endif()
 
     if(MSWR_ARM64X_ROUNDTRIP_ARTIFACT_DIR)
@@ -381,8 +430,10 @@ if(BUILD_TESTING)
     set(mswr_assert_test_targets
         context_test context_layout_test gem_headers_cxx_test
         context_conversion_test context_serialization_test memory_test
+        i386_context_test i386_memory_test i386_engine_conformance
         memory_page_isolation_test macos_tso_api_probe
-        arm64ec_engine_conformance wine_bridge_conformance x64_engine_conformance
+        arm64ec_engine_conformance wine_bridge_conformance wine_i386_bridge_conformance
+        x64_engine_conformance
         x86_64_jit_conformance wine_x86_64_bridge_conformance
         arm64x_roundtrip_conformance wine_arm64x_conformance
         arm64ec_engine_zero_rosetta arm64ec_target_test

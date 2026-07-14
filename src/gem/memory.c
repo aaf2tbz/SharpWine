@@ -374,13 +374,15 @@ static enum gem_memory_error map_identity_locked(struct gem_memory *m, uint64_t 
     }
     return GEM_MEMORY_OK;
 }
-static enum gem_memory_error commit_identity_locked(struct gem_memory *m, uint64_t a, void *h,
-                                                    uint64_t n, uint32_t prot) {
+static enum gem_memory_error commit_external_locked(struct gem_memory *m, uint64_t a, void *h,
+                                                    uint64_t n, uint32_t prot,
+                                                    bool require_identity) {
     uint64_t o;
     struct backing **backings;
     enum gem_memory_error e;
-    if (!h || a < UINT64_C(0x100000000) || a != (uint64_t)(uintptr_t)h || !range_ok(a, n) ||
-        !prot_ok(prot))
+    if (!h || ((uintptr_t)h & (GEM_GUEST_PAGE_SIZE - 1U)) != 0U ||
+        (require_identity && (a < UINT64_C(0x100000000) || a != (uint64_t)(uintptr_t)h)) ||
+        !range_ok(a, n) || !prot_ok(prot))
         return GEM_MEMORY_INVALID_ARGUMENT;
     if ((e = check(m, a, n, false)))
         return e;
@@ -694,12 +696,14 @@ gem_memory_transaction_commit_pages(struct gem_memory_transaction *transaction,
         }
         if ((page->protection & ~(uint32_t)GEM_PAGE_GUARD) == GEM_PAGE_WRITECOPY ||
             (page->protection & ~(uint32_t)GEM_PAGE_GUARD) == GEM_PAGE_EXECUTE_WRITECOPY) {
-            copies[i] = new_backing(NULL, false);
-            if (copies[i] == NULL) {
-                error = GEM_MEMORY_NO_MEMORY;
-                goto Rollback;
+            if (!page->backing->external) {
+                copies[i] = new_backing(NULL, false);
+                if (copies[i] == NULL) {
+                    error = GEM_MEMORY_NO_MEMORY;
+                    goto Rollback;
+                }
+                memcpy(copies[i]->data, page->backing->data, 4096U);
             }
-            memcpy(copies[i]->data, page->backing->data, 4096U);
         }
     }
     for (i = 0; i < count; ++i) {
@@ -708,6 +712,12 @@ gem_memory_transaction_commit_pages(struct gem_memory_transaction *transaction,
             drop(page->backing);
             page->backing = copies[i];
             copies[i] = NULL;
+            page->protection = (page->protection & ~(uint32_t)GEM_PAGE_GUARD) == GEM_PAGE_WRITECOPY
+                                   ? GEM_PAGE_READWRITE
+                                   : GEM_PAGE_EXECUTE_READWRITE;
+        } else if (page->backing->external &&
+                   ((page->protection & ~(uint32_t)GEM_PAGE_GUARD) == GEM_PAGE_WRITECOPY ||
+                    (page->protection & ~(uint32_t)GEM_PAGE_GUARD) == GEM_PAGE_EXECUTE_WRITECOPY)) {
             page->protection = (page->protection & ~(uint32_t)GEM_PAGE_GUARD) == GEM_PAGE_WRITECOPY
                                    ? GEM_PAGE_READWRITE
                                    : GEM_PAGE_EXECUTE_READWRITE;
@@ -791,7 +801,17 @@ enum gem_memory_error gem_memory_commit_identity(struct gem_memory *m, uint64_t 
     if (!m)
         return GEM_MEMORY_INVALID_ARGUMENT;
     gem_lock_acquire(&m->lock);
-    e = commit_identity_locked(m, a, h, n, prot);
+    e = commit_external_locked(m, a, h, n, prot, true);
+    gem_lock_release(&m->lock);
+    return e;
+}
+enum gem_memory_error gem_memory_commit_external(struct gem_memory *m, uint64_t a, void *h,
+                                                 uint64_t n, uint32_t prot) {
+    enum gem_memory_error e;
+    if (!m)
+        return GEM_MEMORY_INVALID_ARGUMENT;
+    gem_lock_acquire(&m->lock);
+    e = commit_external_locked(m, a, h, n, prot, false);
     gem_lock_release(&m->lock);
     return e;
 }

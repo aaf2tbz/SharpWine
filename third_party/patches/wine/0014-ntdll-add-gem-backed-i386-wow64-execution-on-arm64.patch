@@ -1,0 +1,1426 @@
+From ff715cf7b8bfe079dd1ba5f87a6bd0933e9d0652 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Tue, 14 Jul 2026 15:36:13 -0600
+Subject: [PATCH 14/14] ntdll: add GEM-backed i386 WoW64 execution on ARM64
+
+---
+ configure                  |   6 +-
+ configure.ac               |   3 +
+ dlls/ntdll/unix/thread.c   |   9 +
+ dlls/ntdll/unix/virtual.c  |  68 +++-
+ dlls/wow64/virtual.c       |  16 +-
+ dlls/wow64/wow64_private.h |  38 +++
+ dlls/xtajit/Makefile.in    |  11 +
+ dlls/xtajit/cpu.c          | 292 +++++++++++++++++
+ dlls/xtajit/unixlib.c      | 626 +++++++++++++++++++++++++++++++++++++
+ dlls/xtajit/unixlib.h      |  61 ++++
+ dlls/xtajit/xtajit.spec    |  22 ++
+ 11 files changed, 1139 insertions(+), 13 deletions(-)
+ create mode 100644 dlls/xtajit/Makefile.in
+ create mode 100644 dlls/xtajit/cpu.c
+ create mode 100644 dlls/xtajit/unixlib.c
+ create mode 100644 dlls/xtajit/unixlib.h
+ create mode 100644 dlls/xtajit/xtajit.spec
+
+diff --git a/configure b/configure
+index cf34f2f234..ea4dd29ed6 100755
+--- a/configure
++++ b/configure
+@@ -1675,6 +1675,7 @@ enable_xolehlp
+ enable_xpsprint
+ enable_xpssvcs
+ enable_xtajit64
++enable_xtajit
+ enable_fonts
+ enable_include
+ enable_adsiid
+@@ -22216,11 +22217,13 @@ then
+     enable_wow64=${enable_wow64:-aarch64,x86_64}
+     enable_wow64win=${enable_wow64win:-aarch64,x86_64}
+     enable_wow64cpu=${enable_wow64cpu:-x86_64}
++    enable_xtajit=${enable_xtajit:-aarch64}
+     enable_xtajit64=${enable_xtajit64:-arm64ec}
+ else
+     enable_wow64=${enable_wow64:-no}
+     enable_wow64win=${enable_wow64win:-no}
+     enable_wow64cpu=${enable_wow64cpu:-no}
++    enable_xtajit=${enable_xtajit:-no}
+     enable_xtajit64=${enable_xtajit64:-no}
+     enable_compiler_rt=${enable_compiler_rt:-no}
+ fi
+@@ -23344,6 +23347,7 @@ wine_fn_config_makefile dlls/xolehlp enable_xolehlp
+ wine_fn_config_makefile dlls/xpsprint enable_xpsprint
+ wine_fn_config_makefile dlls/xpssvcs enable_xpssvcs
+ wine_fn_config_makefile dlls/xtajit64 enable_xtajit64
++wine_fn_config_makefile dlls/xtajit enable_xtajit
+ wine_fn_config_makefile fonts enable_fonts
+ wine_fn_config_makefile include enable_include
+ wine_fn_config_makefile libs/adsiid enable_adsiid
+@@ -24993,5 +24997,3 @@ IFS="$ac_save_IFS"
+ printf '%s\n' "
+ $as_me: Finished.  Do '${MAKE-make}' to compile Wine.
+ " >&6
+-
+-
+diff --git a/configure.ac b/configure.ac
+index 0c4a2511f6..f41675948f 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -2426,11 +2426,13 @@ then
+     enable_wow64=${enable_wow64:-aarch64,x86_64}
+     enable_wow64win=${enable_wow64win:-aarch64,x86_64}
+     enable_wow64cpu=${enable_wow64cpu:-x86_64}
++    enable_xtajit=${enable_xtajit:-aarch64}
+     enable_xtajit64=${enable_xtajit64:-arm64ec}
+ else
+     enable_wow64=${enable_wow64:-no}
+     enable_wow64win=${enable_wow64win:-no}
+     enable_wow64cpu=${enable_wow64cpu:-no}
++    enable_xtajit=${enable_xtajit:-no}
+     enable_xtajit64=${enable_xtajit64:-no}
+     enable_compiler_rt=${enable_compiler_rt:-no}
+ fi
+@@ -3560,6 +3562,7 @@ WINE_CONFIG_MAKEFILE(dlls/xolehlp)
+ WINE_CONFIG_MAKEFILE(dlls/xpsprint)
+ WINE_CONFIG_MAKEFILE(dlls/xpssvcs)
+ WINE_CONFIG_MAKEFILE(dlls/xtajit64)
++WINE_CONFIG_MAKEFILE(dlls/xtajit)
+ WINE_CONFIG_MAKEFILE(fonts)
+ WINE_CONFIG_MAKEFILE(include)
+ WINE_CONFIG_MAKEFILE(libs/adsiid)
+diff --git a/dlls/ntdll/unix/thread.c b/dlls/ntdll/unix/thread.c
+index b08f2e1877..a5b9db57b6 100644
+--- a/dlls/ntdll/unix/thread.c
++++ b/dlls/ntdll/unix/thread.c
+@@ -1201,7 +1201,23 @@ NTSTATUS init_thread_stack( TEB *teb, ULONG_PTR limit, SIZE_T reserve_size, SIZE
+
+         /* 32-bit stack */
+         if (!limit || limit > user_space_wow_limit) limit = user_space_wow_limit;
++#if defined(__APPLE__) && defined(__aarch64__)
++        if (main_image_info.Machine == IMAGE_FILE_MACHINE_I386)
++        {
++            /* Keep the stack below the 2 GiB guest boundary even for large-address-
++             * aware images.  A StackBase at exactly 4 GiB wraps to zero in TEB32. */
++            if (limit > limit_2g) limit = limit_2g;
++            status = virtual_alloc_thread_stack( &stack, 0x10000000000ull,
++                                                  0x10000000000ull + limit,
++                                                  reserve_size, commit_size, TRUE );
++        }
++        else
++            status = virtual_alloc_thread_stack( &stack, 0, limit, reserve_size,
++                                                  commit_size, TRUE );
++        if (status)
++#else
+         if ((status = virtual_alloc_thread_stack( &stack, 0, limit, reserve_size, commit_size, TRUE )))
++#endif
+             return status;
+         wow_teb->Tib.StackBase = PtrToUlong( stack.StackBase );
+         wow_teb->Tib.StackLimit = PtrToUlong( stack.StackLimit );
+diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
+index 649f45f418..e952e9f4da 100644
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -219,6 +219,26 @@ static void **next_free_teb;
+ static int teb_block_pos;
+ static struct list teb_list = LIST_INIT( teb_list );
+
++static inline BOOL use_i386_shadow(void)
++{
++#if defined(__APPLE__) && defined(__aarch64__)
++    return is_wow64() && user_space_wow_limit &&
++           main_image_info.Machine == IMAGE_FILE_MACHINE_I386;
++#else
++    return FALSE;
++#endif
++}
++
++static inline ULONG_PTR i386_shadow_addr( ULONG_PTR addr )
++{
++    return addr ? 128 * limit_4g + addr : 0;
++}
++
++static inline ULONG_PTR i386_shadow_start(void)
++{
++    return 128 * limit_4g + 0x10000;
++}
++
+ #define ROUND_ADDR(addr,mask) ((void *)((UINT_PTR)(addr) & ~(UINT_PTR)(mask)))
+ #define ROUND_SIZE(addr,size,mask) (((SIZE_T)(size) + ((UINT_PTR)(addr) & (mask)) + (mask)) & ~(UINT_PTR)(mask))
+
+@@ -2021,6 +2040,7 @@ static BOOL set_vprot( struct file_view *view, void *base, size_t size, BYTE vpr
+ {
+     const BOOL was_committed = !!(get_page_vprot( base ) & VPROT_COMMITTED);
+     NTSTATUS status;
++    if (!size) return TRUE;
+     if (!use_kernel_writewatch && view->protect & VPROT_WRITEWATCH)
+     {
+         /* each page may need different protections depending on write watch flag */
+@@ -3538,6 +3558,9 @@ static NTSTATUS virtual_map_image( HANDLE mapping, void **addr_ptr, SIZE_T *size
+     struct file_view *view;
+     unsigned int status;
+     sigset_t sigset;
++#if defined(__APPLE__) && defined(__aarch64__)
++    struct pe_image_info shadow_image;
++#endif
+
+     if (offset >= size)
+         return STATUS_INVALID_PARAMETER;
+@@ -3567,7 +3590,19 @@ static NTSTATUS virtual_map_image( HANDLE mapping, void **addr_ptr, SIZE_T *size
+
+     server_enter_uninterrupted_section( &virtual_mutex, &sigset );
+
+-    status = map_image_view( &view, &pe_mapping->image, size, limit_low, limit_high, alloc_type );
++#if defined(__APPLE__) && defined(__aarch64__)
++    if (pe_mapping->image.machine == IMAGE_FILE_MACHINE_I386)
++    {
++        shadow_image = pe_mapping->image;
++        shadow_image.base = i386_shadow_addr( shadow_image.base );
++        shadow_image.map_addr = i386_shadow_addr( shadow_image.map_addr );
++        limit_low = i386_shadow_addr( limit_low );
++        limit_high = limit_high ? i386_shadow_addr( limit_high ) : 129 * limit_4g - 1;
++        status = map_image_view( &view, &shadow_image, size, limit_low, limit_high, alloc_type );
++    }
++    else
++#endif
++        status = map_image_view( &view, &pe_mapping->image, size, limit_low, limit_high, alloc_type );
+     if (status) goto done;
+
+     status = map_image_into_view( view, &pe_mapping->nt_name, unix_fd, &pe_mapping->image,
+@@ -4560,6 +4595,7 @@ NTSTATUS virtual_alloc_thread_stack( INITIAL_TEB *stack, ULONG_PTR limit_low, UL
+                                      SIZE_T reserve_size, SIZE_T commit_size, BOOL guard_page )
+ {
+     struct file_view *view;
++    void *base = NULL;
+     NTSTATUS status;
+     sigset_t sigset;
+     SIZE_T size;
+@@ -4571,9 +4607,18 @@ NTSTATUS virtual_alloc_thread_stack( INITIAL_TEB *stack, ULONG_PTR limit_low, UL
+     if (size < 1024 * 1024) size = 1024 * 1024;  /* Xlib needs a large stack */
+     size = ROUND_SIZE( 0, size, granularity_mask );
+
++#if defined(__APPLE__) && defined(__aarch64__)
++    /* The i386 address space is represented above 4 GiB on Apple Silicon.  The
++     * canonical TEB/KUSER window lives outside user_space_limit, so request the
++     * WoW64 stack at its fixed high host address instead of letting map_view()
++     * clamp the search back into the ordinary i386 shadow window. */
++    if (is_wow64() && limit_low == 0x10000000000ull)
++        base = (void *)((limit_high - size) & ~granularity_mask);
++#endif
++
+     server_enter_uninterrupted_section( &virtual_mutex, &sigset );
+
+-    status = map_view( &view, NULL, size, 0, VPROT_READ | VPROT_WRITE | VPROT_COMMITTED,
++    status = map_view( &view, base, size, 0, VPROT_READ | VPROT_WRITE | VPROT_COMMITTED,
+                        limit_low, limit_high, 0 );
+     if (status != STATUS_SUCCESS) goto done;
+
+@@ -5478,7 +5523,12 @@ NTSTATUS WINAPI NtAllocateVirtualMemory( HANDLE process, PVOID *ret, ULONG_PTR z
+     }
+
+     if (!*ret)
++    {
+         limit = get_zero_bits_limit( zero_bits );
++        if (use_i386_shadow() && limit)
++            return allocate_virtual_memory( ret, size_ptr, type, protect, i386_shadow_start(),
++                                            i386_shadow_addr( limit ), 0, 0 );
++    }
+     else
+         limit = 0;
+
+@@ -5507,7 +5557,8 @@ static NTSTATUS get_extended_params( const MEM_EXTENDED_PARAMETER *parameters, U
+             MEM_ADDRESS_REQUIREMENTS *r = parameters[i].Pointer;
+             ULONG_PTR limit;
+
+-            if (is_wow64()) limit = get_wow_user_space_limit();
++            if (use_i386_shadow()) limit = i386_shadow_addr( get_wow_user_space_limit() );
++            else if (is_wow64()) limit = get_wow_user_space_limit();
+             else limit = (ULONG_PTR)user_space_limit;
+
+             if (r->Alignment)
+@@ -5620,6 +5671,9 @@ NTSTATUS WINAPI NtAllocateVirtualMemoryEx( HANDLE process, PVOID *ret, SIZE_T *s
+         return result.virtual_alloc_ex.status;
+     }
+
++    if (use_i386_shadow() && !*ret && limit_high && !limit_low)
++        limit_low = i386_shadow_start();
++
+     return allocate_virtual_memory( ret, size_ptr, type, protect,
+                                     limit_low, limit_high, align, attributes );
+ }
+@@ -6563,6 +6617,11 @@ NTSTATUS WINAPI NtMapViewOfSection( HANDLE handle, HANDLE process, PVOID *addr_p
+         return result.map_view.status;
+     }
+
++    if (use_i386_shadow() && !*addr_ptr && zero_bits)
++        return virtual_map_section( handle, addr_ptr, i386_shadow_start(),
++                                    i386_shadow_addr( get_zero_bits_limit( zero_bits ) ), commit_size,
++                                    offset_ptr, size_ptr, alloc_type, protect, 0 );
++
+     return virtual_map_section( handle, addr_ptr, 0, get_zero_bits_limit( zero_bits ), commit_size,
+                                 offset_ptr, size_ptr, alloc_type, protect, 0 );
+ }
+@@ -6639,6 +6698,9 @@ NTSTATUS WINAPI NtMapViewOfSectionEx( HANDLE handle, HANDLE process, PVOID *addr
+         return result.map_view_ex.status;
+     }
+
++    if (use_i386_shadow() && !*addr_ptr && limit_high && !limit_low)
++        limit_low = i386_shadow_start();
++
+     return virtual_map_section( handle, addr_ptr, limit_low, limit_high, 0,
+                                 offset_ptr, size_ptr, alloc_type, protect, machine );
+ }
+diff --git a/dlls/wow64/virtual.c b/dlls/wow64/virtual.c
+index b22e9010f2..e1ee6abd08 100644
+--- a/dlls/wow64/virtual.c
++++ b/dlls/wow64/virtual.c
+@@ -123,7 +123,7 @@ static NTSTATUS mem_extended_parameters_32to64( MEM_EXTENDED_PARAMETER **ret_par
+     else if (set_limit)
+     {
+         req->LowestStartingAddress = NULL;
+-        req->HighestEndingAddress  = (void *)highest_user_address;
++        req->HighestEndingAddress  = ULongToPtr( highest_user_address );
+         req->Alignment             = 0;
+
+         params[i].Type = MemExtendedParameterAddressRequirements;
+@@ -582,7 +582,7 @@ NTSTATUS WINAPI wow64_NtQueryVirtualMemory( UINT *args )
+     case MemoryBasicInformation:  /* MEMORY_BASIC_INFORMATION */
+         if (len < sizeof(MEMORY_BASIC_INFORMATION32))
+             status = STATUS_INFO_LENGTH_MISMATCH;
+-        else if ((ULONG_PTR)addr > highest_user_address)
++        else if (PtrToUlong( addr ) > highest_user_address)
+             status = STATUS_INVALID_PARAMETER;
+         else
+         {
+@@ -598,8 +598,8 @@ NTSTATUS WINAPI wow64_NtQueryVirtualMemory( UINT *args )
+                 info32->State = info.State;
+                 info32->Protect = info.Protect;
+                 info32->Type = info.Type;
+-                if ((ULONG_PTR)info.BaseAddress + info.RegionSize > highest_user_address)
+-                    info32->RegionSize = highest_user_address - (ULONG_PTR)info.BaseAddress + 1;
++                if ((ULONG64)info32->BaseAddress + info.RegionSize > highest_user_address)
++                    info32->RegionSize = highest_user_address - info32->BaseAddress + 1;
+             }
+         }
+         res_len = sizeof(MEMORY_BASIC_INFORMATION32);
+@@ -627,7 +627,7 @@ NTSTATUS WINAPI wow64_NtQueryVirtualMemory( UINT *args )
+     {
+         if (len < sizeof(MEMORY_REGION_INFORMATION32))
+             status = STATUS_INFO_LENGTH_MISMATCH;
+-        else if ((ULONG_PTR)addr > highest_user_address)
++        else if (PtrToUlong( addr ) > highest_user_address)
+             status = STATUS_INVALID_PARAMETER;
+         else
+         {
+@@ -643,8 +643,8 @@ NTSTATUS WINAPI wow64_NtQueryVirtualMemory( UINT *args )
+                 info32->CommitSize = info.CommitSize;
+                 info32->PartitionId = info.PartitionId;
+                 info32->NodePreference = info.NodePreference;
+-                if ((ULONG_PTR)info.AllocationBase + info.RegionSize > highest_user_address)
+-                    info32->RegionSize = highest_user_address - (ULONG_PTR)info.AllocationBase + 1;
++                if ((ULONG64)info32->AllocationBase + info.RegionSize > highest_user_address)
++                    info32->RegionSize = highest_user_address - info32->AllocationBase + 1;
+             }
+         }
+         res_len = sizeof(MEMORY_REGION_INFORMATION32);
+@@ -674,7 +674,7 @@ NTSTATUS WINAPI wow64_NtQueryVirtualMemory( UINT *args )
+     {
+         if (len < sizeof(MEMORY_IMAGE_INFORMATION32)) return STATUS_INFO_LENGTH_MISMATCH;
+
+-        if ((ULONG_PTR)addr > highest_user_address) status = STATUS_INVALID_PARAMETER;
++        if (PtrToUlong( addr ) > highest_user_address) status = STATUS_INVALID_PARAMETER;
+         else
+         {
+             MEMORY_IMAGE_INFORMATION info;
+diff --git a/dlls/wow64/wow64_private.h b/dlls/wow64/wow64_private.h
+index 2ac3e51f1f..e7e9fa2ce3 100644
+--- a/dlls/wow64/wow64_private.h
++++ b/dlls/wow64/wow64_private.h
+@@ -39,6 +39,44 @@ extern ULONG_PTR highest_user_address;
+ extern ULONG_PTR default_zero_bits;
+ extern SYSTEM_DLL_INIT_BLOCK *pLdrSystemDllInitBlock;
+
++/* Apple Silicon reserves the low 4 GiB in the native Mach-O process.  Keep
++ * 32-bit Windows addresses unchanged in guest state, but dereference them
++ * through the corresponding high host shadow window. */
++static inline void *wow64_guest_ptr( ULONG addr )
++{
++    MEMORY_BASIC_INFORMATION primary_info, alternate_info;
++    void *primary, *alternate;
++    SIZE_T ret_len;
++
++    if (!addr) return NULL;
++    if (current_machine == IMAGE_FILE_MACHINE_I386 && native_machine == IMAGE_FILE_MACHINE_ARM64)
++    {
++        if (addr >= 0x7f000000)
++        {
++            primary = (void *)((ULONG_PTR)0x10000000000ull + addr);
++            alternate = (void *)((ULONG_PTR)0x8000000000ull + addr);
++        }
++        else
++        {
++            primary = (void *)((ULONG_PTR)0x8000000000ull + addr);
++            alternate = (void *)((ULONG_PTR)0x10000000000ull + addr);
++        }
++        if (!NtQueryVirtualMemory( NtCurrentProcess(), primary, MemoryBasicInformation,
++                                   &primary_info, sizeof(primary_info), &ret_len ) &&
++            primary_info.State != MEM_FREE)
++            return primary;
++        if (!NtQueryVirtualMemory( NtCurrentProcess(), alternate, MemoryBasicInformation,
++                                   &alternate_info, sizeof(alternate_info), &ret_len ) &&
++            alternate_info.State != MEM_FREE)
++            return alternate;
++        return primary;
++    }
++    return (void *)(ULONG_PTR)addr;
++}
++
++#undef ULongToPtr
++#define ULongToPtr(addr) wow64_guest_ptr( addr )
++
+ extern void     (WINAPI *pBTCpuFlushInstructionCache2)( const void *, SIZE_T );
+ extern void     (WINAPI *pBTCpuFlushInstructionCacheHeavy)( const void *, SIZE_T );
+ extern NTSTATUS (WINAPI *pBTCpuNotifyMapViewOfSection)( void *, void *, void *, SIZE_T, ULONG, ULONG );
+diff --git a/dlls/xtajit/Makefile.in b/dlls/xtajit/Makefile.in
+new file mode 100644
+index 0000000000..8d40a98d95
+--- /dev/null
++++ b/dlls/xtajit/Makefile.in
+@@ -0,0 +1,11 @@
++MODULE    = xtajit.dll
++UNIXLIB   = xtajit.so
++IMPORTS   = wow64 ntdll
++UNIX_CFLAGS = $(METALSHARP_GEM_CFLAGS)
++UNIX_LIBS = $(METALSHARP_GEM_LIBS) $(PTHREAD_LIBS)
++EXTRADEFS = -D_CRTIMP=
++EXTRADLLFLAGS = -nodefaultlibs
++
++SOURCES = \
++	cpu.c \
++	unixlib.c
+diff --git a/dlls/xtajit/cpu.c b/dlls/xtajit/cpu.c
+new file mode 100644
+index 0000000000..79ef5f0a3f
+--- /dev/null
++++ b/dlls/xtajit/cpu.c
+@@ -0,0 +1,292 @@
++/* Wine WoW64 i386 execution through the native ARM64 GEM bridge. */
++
++#include <stdarg.h>
++
++#include "ntstatus.h"
++#define WIN32_NO_STATUS
++#include "windef.h"
++#include "winbase.h"
++#include "winternl.h"
++#include "wine/debug.h"
++#include "wine/unixlib.h"
++#include "unixlib.h"
++
++WINE_DEFAULT_DEBUG_CHANNEL(xtajit);
++
++extern NTSTATUS WINAPI Wow64SystemServiceEx( UINT num, UINT *args );
++extern NTSTATUS WINAPI Wow64RaiseException( int code, EXCEPTION_RECORD *rec );
++extern void WINAPI Wow64ProcessPendingCrossProcessItems(void);
++
++static ULONG syscall_boundary;
++static ULONG unix_boundary;
++
++static inline void *i386_guest_ptr( ULONG address )
++{
++    if (address >= 0x7f000000) return (void *)((ULONG_PTR)0x10000000000ull + address);
++    return (void *)((ULONG_PTR)0x8000000000ull + address);
++}
++
++BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
++{
++    if (reason == DLL_PROCESS_ATTACH)
++    {
++        LdrDisableThreadCalloutsForDll( instance );
++        if (__wine_init_unix_call()) return FALSE;
++    }
++    return TRUE;
++}
++
++static ULONG page_protection( ULONG protection )
++{
++    return protection & 0x1ff;
++}
++
++NTSTATUS WINAPI BTCpuProcessInit(void)
++{
++    struct xtajit_process_init_params params = {0};
++    static const WCHAR ntdllW[] = L"ntdll.dll";
++    SYSTEM_DLL_INIT_BLOCK *init_block;
++    UNICODE_STRING name = RTL_CONSTANT_STRING( ntdllW );
++    HMODULE module;
++    const IMAGE_DOS_HEADER *dos;
++    const IMAGE_NT_HEADERS32 *nt;
++    ULONG_PTR ntdll_host;
++    TRACE("process init start\n");
++    if (LdrGetDllHandle( NULL, 0, &name, &module )) return STATUS_DLL_NOT_FOUND;
++    if (!(init_block = RtlFindExportedRoutineByName( module, "LdrSystemDllInitBlock" )))
++        return STATUS_PROCEDURE_NOT_FOUND;
++    ntdll_host = (ULONG_PTR)init_block->ntdll_handle;
++    params.ntdll_base = PtrToUlong( (void *)ntdll_host );
++    if (ntdll_host <= MAXDWORD) ntdll_host += (ULONG_PTR)0x8000000000ull;
++    dos = (const IMAGE_DOS_HEADER *)ntdll_host;
++    TRACE("i386 ntdll guest=%08lx host=%p\n", params.ntdll_base, dos);
++    if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE) return STATUS_INVALID_IMAGE_FORMAT;
++    nt = (const IMAGE_NT_HEADERS32 *)((const char *)dos + dos->e_lfanew);
++    if (nt->Signature != IMAGE_NT_SIGNATURE || nt->FileHeader.Machine != IMAGE_FILE_MACHINE_I386)
++        return STATUS_INVALID_IMAGE_FORMAT;
++    params.syscall_boundary = 0x7ffe1000;
++    params.unix_boundary = 0x7ffe1010;
++    params.ntdll_size = nt->OptionalHeader.SizeOfImage;
++    params.ntdll_host = (ULONG_PTR)dos;
++    syscall_boundary = params.syscall_boundary;
++    unix_boundary = params.unix_boundary;
++    TRACE("calling unix process init image_size=%08lx\n", params.ntdll_size);
++    return WINE_UNIX_CALL( unix_process_init, &params );
++}
++
++void WINAPI BTCpuProcessTerm( HANDLE process, BOOL post, NTSTATUS status )
++{
++    if (post) WINE_UNIX_CALL( unix_process_term, NULL );
++}
++
++NTSTATUS WINAPI BTCpuThreadInit(void)
++{
++    I386_CONTEXT context = { CONTEXT_I386_CONTROL };
++    TEB32 *teb = (TEB32 *)((char *)NtCurrentTeb() + NtCurrentTeb()->WowTebOffset);
++    NTSTATUS status;
++
++    TRACE("thread init\n");
++    if ((status = WINE_UNIX_CALL( unix_thread_init, NULL ))) return status;
++
++    /* The ARM64 signal context is initialized before the high i386 stack has
++     * been installed on Apple Silicon.  Refresh a stale bootstrap ESP now that
++     * the canonical WoW64 stack exists; wow64!thread_init will build the real
++     * startup frame immediately after this callback. */
++    status = RtlWow64GetThreadContext( GetCurrentThread(), &context );
++    TRACE("thread context status=%08lx esp=%08lx stack=%08lx-%08lx\n", status, context.Esp,
++          teb->DeallocationStack, teb->Tib.StackBase);
++    if (!status &&
++        (context.Esp < teb->DeallocationStack || context.Esp > teb->Tib.StackBase))
++    {
++        context.Esp = teb->Tib.StackBase - 16;
++        status = RtlWow64SetThreadContext( GetCurrentThread(), &context );
++        TRACE("refreshed thread esp=%08lx status=%08lx\n", context.Esp, status);
++    }
++    return status;
++}
++
++void WINAPI BTCpuThreadTerm( HANDLE thread, LONG exit_code )
++{
++    WINE_UNIX_CALL( unix_thread_term, NULL );
++}
++
++void * WINAPI BTCpuGetBopCode(void)
++{
++    return ULongToPtr( syscall_boundary );
++}
++
++void * WINAPI __wine_get_unix_opcode(void)
++{
++    return ULongToPtr( unix_boundary );
++}
++
++NTSTATUS WINAPI BTCpuGetContext( HANDLE thread, HANDLE process, void *unknown, I386_CONTEXT *context )
++{
++    return RtlWow64GetThreadContext( thread, context );
++}
++
++NTSTATUS WINAPI BTCpuSetContext( HANDLE thread, HANDLE process, void *unknown,
++                                 I386_CONTEXT *context )
++{
++    return RtlWow64SetThreadContext( thread, context );
++}
++
++void WINAPI BTCpuSimulate(void)
++{
++    struct xtajit_run_params params = {{0}};
++    params.context.ContextFlags = CONTEXT_I386_ALL;
++    if (RtlWow64GetThreadContext( GetCurrentThread(), &params.context ))
++        RtlRaiseStatus( STATUS_UNSUCCESSFUL );
++    for (;;)
++    {
++        UINT *stack;
++        TEB *native_teb = NtCurrentTeb();
++        params.teb = (ULONG)(ULONG_PTR)((char *)native_teb + native_teb->WowTebOffset);
++        params.status = params.outcome = params.event = 0;
++        if (WINE_UNIX_CALL( unix_run, &params )) RtlRaiseStatus( STATUS_UNSUCCESSFUL );
++        RtlWow64SetThreadContext( GetCurrentThread(), &params.context );
++        if (params.status == STATUS_TIMEOUT)
++        {
++            NtYieldExecution();
++            continue;
++        }
++        if (params.status) RtlRaiseStatus( params.status );
++        if (params.outcome == 1) return;
++        stack = i386_guest_ptr( params.context.Esp );
++        if (params.event == 1)
++        {
++            I386_CONTEXT continued = {0};
++            NTSTATUS syscall_status;
++            TRACE("syscall num=%08lx eip=%08lx esp=%08lx stack=%08x,%08x,%08x\n",
++                  params.context.Eax, params.context.Eip, params.context.Esp,
++                  stack[0], stack[1], stack[2]);
++            /* The BOP CALL pushes the CPU-stub return address in front of the
++             * caller return address; syscall arguments start two words in. */
++            syscall_status = Wow64SystemServiceEx( params.context.Eax, stack + 2 );
++            continued.ContextFlags = CONTEXT_I386_ALL;
++            if (!RtlWow64GetThreadContext( GetCurrentThread(), &continued ) &&
++                (continued.Eip != params.context.Eip || continued.Esp != params.context.Esp))
++            {
++                params.context = continued;
++                continue;
++            }
++            params.context.Eax = syscall_status;
++            TRACE("syscall result=%08lx return=%08x\n", params.context.Eax, *stack);
++            params.context.Eip = *stack;
++            params.context.Esp += sizeof(*stack);
++            continue;
++        }
++        if (params.event == 2)
++        {
++            ULONG64 handle;
++            memcpy( &handle, stack + 1, sizeof(handle) );
++            params.context.Eax = __wine_unix_call_dispatcher( handle, stack[3], i386_guest_ptr(stack[4]) );
++            params.context.Eip = *stack;
++            params.context.Esp += 5 * sizeof(*stack);
++            continue;
++        }
++        if (params.event == 6)
++        {
++            Wow64ProcessPendingCrossProcessItems();
++            continue;
++        }
++        {
++            EXCEPTION_RECORD rec = {0};
++            rec.ExceptionAddress = i386_guest_ptr( params.context.Eip );
++            if (params.event == 3)
++            {
++                rec.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
++                rec.NumberParameters = 2;
++                rec.ExceptionInformation[0] = params.fault_access == 3 ? 1 :
++                                              params.fault_access == 1 ? 8 : 0;
++                rec.ExceptionInformation[1] = params.fault_address;
++                Wow64RaiseException( -1, &rec );
++            }
++            else if (params.event == 4) Wow64RaiseException( 3, &rec );
++            else Wow64RaiseException( 6, &rec );
++            if (RtlWow64GetThreadContext( GetCurrentThread(), &params.context ))
++                RtlRaiseStatus( STATUS_UNSUCCESSFUL );
++        }
++    }
++}
++
++BOOLEAN WINAPI BTCpuIsProcessorFeaturePresent( UINT feature )
++{
++    static const ULONGLONG features = (1ull << PF_MMX_INSTRUCTIONS_AVAILABLE) |
++        (1ull << PF_XMMI_INSTRUCTIONS_AVAILABLE) | (1ull << PF_XMMI64_INSTRUCTIONS_AVAILABLE) |
++        (1ull << PF_SSE3_INSTRUCTIONS_AVAILABLE) | (1ull << PF_NX_ENABLED);
++    return feature < 64 && (features & (1ull << feature));
++}
++
++void WINAPI BTCpuNotifyMemoryAlloc( void *addr, SIZE_T size, ULONG type, ULONG protection,
++                                    BOOL post, NTSTATUS status )
++{
++    struct xtajit_memory_params params = {0};
++    if (!post || status || !(type & (MEM_RESERVE | MEM_COMMIT))) return;
++    params.address = PtrToUlong( addr );
++    params.size = size;
++    params.protection = page_protection( protection );
++    params.operation = (type & MEM_COMMIT) ? xtajit_memory_commit : xtajit_memory_reserve;
++    params.host = (ULONG_PTR)addr;
++    WINE_UNIX_CALL( unix_map, &params );
++}
++
++NTSTATUS WINAPI BTCpuNotifyMapViewOfSection( void *unk1, void *addr, void *unk2, SIZE_T size,
++                                             ULONG type, ULONG protection )
++{
++    struct xtajit_memory_params params = {0};
++    params.address = PtrToUlong( addr );
++    params.size = size;
++    params.protection = page_protection( protection );
++    params.operation = xtajit_memory_map_section;
++    params.host = (ULONG_PTR)addr;
++    return WINE_UNIX_CALL( unix_map, &params );
++}
++
++void WINAPI BTCpuNotifyMemoryFree( void *addr, SIZE_T size, ULONG type, BOOL post, NTSTATUS status )
++{
++    struct xtajit_memory_params params = {PtrToUlong(addr), size};
++    if (!post || status) return;
++    WINE_UNIX_CALL( (type & MEM_RELEASE) ? unix_release : unix_decommit, &params );
++}
++
++void WINAPI BTCpuNotifyUnmapViewOfSection( void *addr, BOOL post, NTSTATUS status )
++{
++    struct xtajit_memory_params params = {PtrToUlong(addr)};
++    if (!post || status) return;
++    WINE_UNIX_CALL( unix_release, &params );
++}
++
++void WINAPI BTCpuNotifyMemoryProtect( void *addr, SIZE_T size, ULONG protection,
++                                      BOOL post, NTSTATUS status )
++{
++    struct xtajit_memory_params params = {PtrToUlong(addr), size, page_protection(protection)};
++    if (!post || status) return;
++    WINE_UNIX_CALL( unix_protect, &params );
++}
++
++void WINAPI BTCpuFlushInstructionCache2( const void *addr, SIZE_T size )
++{
++    struct xtajit_memory_params params = {PtrToUlong(addr), size};
++    WINE_UNIX_CALL( unix_invalidate, &params );
++}
++void WINAPI BTCpuFlushInstructionCacheHeavy( const void *addr, SIZE_T size )
++{
++    BTCpuFlushInstructionCache2( addr, size );
++}
++void WINAPI BTCpuNotifyMemoryDirty( void *addr, SIZE_T size )
++{
++    BTCpuFlushInstructionCache2( addr, size );
++}
++void WINAPI BTCpuNotifyReadFile( HANDLE handle, void *addr, SIZE_T size, BOOL post, NTSTATUS status )
++{
++    if (post && !status) BTCpuFlushInstructionCache2( addr, size );
++}
++NTSTATUS WINAPI BTCpuResetToConsistentState( EXCEPTION_POINTERS *ptrs ) { return STATUS_SUCCESS; }
++NTSTATUS WINAPI BTCpuTurboThunkControl( ULONG enable ) { return enable ? STATUS_NOT_SUPPORTED : STATUS_SUCCESS; }
++void WINAPI BTCpuUpdateProcessorInformation( SYSTEM_CPU_INFORMATION *info )
++{
++    info->ProcessorArchitecture = PROCESSOR_ARCHITECTURE_INTEL;
++    info->ProcessorLevel = 6;
++    info->ProcessorRevision = 0x3a09;
++}
+diff --git a/dlls/xtajit/unixlib.c b/dlls/xtajit/unixlib.c
+new file mode 100644
+index 0000000000..2708e0eb99
+--- /dev/null
++++ b/dlls/xtajit/unixlib.c
+@@ -0,0 +1,626 @@
++/* Native ARM64 half of the Wine WoW64 GEM_i386 CPU backend. */
++
++#if 0
++#pragma makedep unix
++#endif
++
++#include <pthread.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++#include "ntstatus.h"
++#define WIN32_NO_STATUS
++#include "windef.h"
++#include "winnt.h"
++#include "winternl.h"
++#include "wine/unixlib.h"
++#include "wine/debug.h"
++#include <metalsharp/gem/wine_bridge.h>
++#include "unixlib.h"
++
++WINE_DEFAULT_DEBUG_CHANNEL(xtajit);
++
++static struct gem_wine_process *process;
++static pthread_mutex_t process_lock = PTHREAD_MUTEX_INITIALIZER;
++
++struct thread_entry
++{
++    struct thread_entry *next;
++    TEB32 *teb;
++    struct gem_wine_thread *thread;
++};
++static struct thread_entry *threads;
++static pthread_mutex_t thread_lock = PTHREAD_MUTEX_INITIALIZER;
++static struct gem_wine_thread *primary_thread;
++static void *canonical_ntdll_guard;
++static SIZE_T canonical_ntdll_guard_size;
++
++struct reservation
++{
++    struct reservation *next;
++    ULONG address;
++    ULONG size;
++};
++
++static struct reservation *reservations;
++static pthread_mutex_t memory_lock = PTHREAD_MUTEX_INITIALIZER;
++
++static struct reservation *find_reservation( ULONG address, ULONG size )
++{
++    struct reservation *entry;
++    uint64_t end = (uint64_t)address + size;
++    for (entry = reservations; entry; entry = entry->next)
++        if (address >= entry->address && end <= (uint64_t)entry->address + entry->size) return entry;
++    return NULL;
++}
++
++static NTSTATUS add_reservation( ULONG address, ULONG size )
++{
++    struct reservation *entry;
++    enum gem_wine_status status;
++    if (!size || (uint64_t)address + size > UINT64_C(0x100000000)) return STATUS_INVALID_PARAMETER;
++    if (find_reservation( address, size )) return STATUS_SUCCESS;
++    status = gem_wine_process_reserve( process, address, size );
++    if (status != GEM_WINE_OK) return status == GEM_WINE_CONFLICT ? STATUS_CONFLICTING_ADDRESSES : STATUS_UNSUCCESSFUL;
++    if (!(entry = malloc( sizeof(*entry) )))
++    {
++        gem_wine_process_release( process, address, size );
++        return STATUS_NO_MEMORY;
++    }
++    entry->address = address;
++    entry->size = size;
++    entry->next = reservations;
++    reservations = entry;
++    return STATUS_SUCCESS;
++}
++
++static void free_reservations(void)
++{
++    struct reservation *entry;
++    while ((entry = reservations))
++    {
++        reservations = entry->next;
++        free( entry );
++    }
++}
++
++static TEB32 *current_teb32(void)
++{
++    TEB *teb = NtCurrentTeb();
++    return (TEB32 *)((char *)teb + teb->WowTebOffset);
++}
++
++static ULONG protection_to_gem( ULONG protection )
++{
++    return protection & 0x1ff;
++}
++
++static NTSTATUS seed_i386_shadow(void)
++{
++    const ULONG_PTR shadow = 0x8000000000ull;
++    const ULONG_PTR shadow_end = shadow + 0x100000000ull;
++    ULONG_PTR cursor = shadow;
++
++    while (cursor < shadow_end)
++    {
++        MEMORY_BASIC_INFORMATION mbi;
++        SIZE_T ret_len;
++        ULONG_PTR allocation, allocation_end, scan;
++        NTSTATUS status = NtQueryVirtualMemory( NtCurrentProcess(), (void *)cursor,
++                                                MemoryBasicInformation, &mbi, sizeof(mbi), &ret_len );
++        if (status) return status;
++        if (!mbi.RegionSize) return STATUS_UNSUCCESSFUL;
++        if (mbi.State == MEM_FREE)
++        {
++            cursor = (ULONG_PTR)mbi.BaseAddress + mbi.RegionSize;
++            continue;
++        }
++
++        allocation = (ULONG_PTR)mbi.AllocationBase;
++        allocation_end = (ULONG_PTR)mbi.BaseAddress + mbi.RegionSize;
++        scan = allocation_end;
++        while (scan < shadow_end)
++        {
++            MEMORY_BASIC_INFORMATION next;
++            if (NtQueryVirtualMemory( NtCurrentProcess(), (void *)scan, MemoryBasicInformation,
++                                      &next, sizeof(next), &ret_len ) ||
++                (ULONG_PTR)next.AllocationBase != allocation || !next.RegionSize) break;
++            allocation_end = (ULONG_PTR)next.BaseAddress + next.RegionSize;
++            scan = allocation_end;
++        }
++
++        if (!find_reservation( (ULONG)(allocation - shadow), allocation_end - allocation ))
++        {
++            status = add_reservation( (ULONG)(allocation - shadow), allocation_end - allocation );
++            if (status) return status;
++            for (scan = allocation; scan < allocation_end; )
++            {
++                MEMORY_BASIC_INFORMATION region;
++                status = NtQueryVirtualMemory( NtCurrentProcess(), (void *)scan,
++                                               MemoryBasicInformation, &region, sizeof(region), &ret_len );
++                if (status || !region.RegionSize) return status ? status : STATUS_UNSUCCESSFUL;
++                if (region.State == MEM_COMMIT &&
++                    gem_wine_process_commit_i386_host( process, (ULONG)(scan - shadow),
++                                                       (void *)scan, region.RegionSize,
++                                                       protection_to_gem( region.Protect ) ) != GEM_WINE_OK)
++                    return STATUS_UNSUCCESSFUL;
++                scan = (ULONG_PTR)region.BaseAddress + region.RegionSize;
++            }
++        }
++        cursor = allocation_end;
++    }
++    return STATUS_SUCCESS;
++}
++
++static USHORT fpux_tag_to_full( const XSAVE_FORMAT *xsave )
++{
++    USHORT full = 0;
++    unsigned int i, tag, top = (xsave->StatusWord >> 11) & 7;
++    for (i = 0; i < 8; ++i)
++    {
++        const M128A *reg = &xsave->FloatRegisters[(i - top) & 7];
++        if (!(xsave->TagWord & (1u << i))) tag = 3;
++        else if ((reg->High & 0x7fff) == 0x7fff) tag = 2;
++        else if (!(reg->High & 0x7fff)) tag = reg->Low ? 2 : 1;
++        else tag = reg->Low >> 63 ? 0 : 2;
++        full |= tag << (2 * i);
++    }
++    return full;
++}
++
++static BYTE full_tag_to_fpux( USHORT full )
++{
++    BYTE abridged = 0;
++    unsigned int i;
++    for (i = 0; i < 8; ++i) if (((full >> (2 * i)) & 3) != 3) abridged |= 1u << i;
++    return abridged;
++}
++
++static void context_to_gem( struct gem_i386_context *dst, const I386_CONTEXT *src, ULONG teb )
++{
++    memset( dst, 0, sizeof(*dst) );
++    dst->layout_version = GEM_I386_CONTEXT_LAYOUT_VERSION;
++    dst->context_size = sizeof(*dst);
++    dst->teb = teb;
++    dst->mxcsr = 0x1f80;
++    dst->fcw = 0x37f;
++    dst->gpr[GEM_I386_EAX] = src->Eax; dst->gpr[GEM_I386_ECX] = src->Ecx;
++    dst->gpr[GEM_I386_EDX] = src->Edx; dst->gpr[GEM_I386_EBX] = src->Ebx;
++    dst->gpr[GEM_I386_ESP] = src->Esp; dst->gpr[GEM_I386_EBP] = src->Ebp;
++    dst->gpr[GEM_I386_ESI] = src->Esi; dst->gpr[GEM_I386_EDI] = src->Edi;
++    dst->eip = src->Eip; dst->eflags = src->EFlags | GEM_I386_EFLAGS_REQUIRED;
++    dst->segment[GEM_I386_ES] = src->SegEs; dst->segment[GEM_I386_CS] = src->SegCs;
++    dst->segment[GEM_I386_SS] = src->SegSs; dst->segment[GEM_I386_DS] = src->SegDs;
++    dst->segment[GEM_I386_FS] = src->SegFs; dst->segment[GEM_I386_GS] = src->SegGs;
++    dst->segment_base[GEM_I386_FS] = dst->teb;
++    dst->segment_limit[GEM_I386_ES] = dst->segment_limit[GEM_I386_CS] = 0xffffffff;
++    dst->segment_limit[GEM_I386_SS] = dst->segment_limit[GEM_I386_DS] = 0xffffffff;
++    dst->segment_limit[GEM_I386_FS] = dst->segment_limit[GEM_I386_GS] = 0xffffffff;
++    {
++        const XSAVE_FORMAT *xsave = (const XSAVE_FORMAT *)src->ExtendedRegisters;
++        unsigned int i;
++        dst->mxcsr = xsave->MxCsr;
++        dst->fcw = xsave->ControlWord;
++        dst->fsw = xsave->StatusWord;
++        dst->ftw = fpux_tag_to_full( xsave );
++        memcpy( dst->xmm, xsave->XmmRegisters, sizeof(dst->xmm) );
++        for (i = 0; i < 8; ++i) memcpy( &dst->x87[i], &xsave->FloatRegisters[i], 10 );
++    }
++}
++
++static void context_from_gem( I386_CONTEXT *dst, const struct gem_i386_context *src )
++{
++    dst->Eax = src->gpr[GEM_I386_EAX]; dst->Ecx = src->gpr[GEM_I386_ECX];
++    dst->Edx = src->gpr[GEM_I386_EDX]; dst->Ebx = src->gpr[GEM_I386_EBX];
++    dst->Esp = src->gpr[GEM_I386_ESP]; dst->Ebp = src->gpr[GEM_I386_EBP];
++    dst->Esi = src->gpr[GEM_I386_ESI]; dst->Edi = src->gpr[GEM_I386_EDI];
++    dst->Eip = src->eip; dst->EFlags = src->eflags;
++    dst->SegEs = src->segment[GEM_I386_ES]; dst->SegCs = src->segment[GEM_I386_CS];
++    dst->SegSs = src->segment[GEM_I386_SS]; dst->SegDs = src->segment[GEM_I386_DS];
++    dst->SegFs = src->segment[GEM_I386_FS]; dst->SegGs = src->segment[GEM_I386_GS];
++    {
++        XSAVE_FORMAT *xsave = (XSAVE_FORMAT *)dst->ExtendedRegisters;
++        unsigned int i;
++        xsave->MxCsr = src->mxcsr;
++        xsave->ControlWord = src->fcw;
++        xsave->StatusWord = src->fsw;
++        xsave->TagWord = full_tag_to_fpux( src->ftw );
++        memcpy( xsave->XmmRegisters, src->xmm, sizeof(src->xmm) );
++        for (i = 0; i < 8; ++i) memcpy( &xsave->FloatRegisters[i], &src->x87[i], 10 );
++    }
++}
++
++static NTSTATUS process_init( void *args )
++{
++    const struct xtajit_process_init_params *params = args;
++    struct gem_wine_process_config config = {0};
++    enum gem_wine_status status;
++    NTSTATUS guard_status;
++    TRACE("unix process init guest=%08x host=%p size=%08x\n", params->ntdll_base,
++          (void *)(ULONG_PTR)params->ntdll_host, params->ntdll_size);
++    pthread_mutex_lock( &process_lock );
++    if (process) { pthread_mutex_unlock( &process_lock ); return STATUS_OBJECT_NAME_COLLISION; }
++    canonical_ntdll_guard = (void *)(UINT64_C(0x10000000000) + params->ntdll_base);
++    canonical_ntdll_guard_size = params->ntdll_size;
++    if ((guard_status = NtAllocateVirtualMemory( NtCurrentProcess(), &canonical_ntdll_guard, 0,
++                                                 &canonical_ntdll_guard_size, MEM_RESERVE,
++                                                 PAGE_NOACCESS )))
++    {
++        canonical_ntdll_guard = NULL;
++        canonical_ntdll_guard_size = 0;
++        pthread_mutex_unlock( &process_lock );
++        return guard_status;
++    }
++    config.version = GEM_WINE_PROCESS_CONFIG_VERSION;
++    config.struct_size = sizeof(config);
++    config.segment_instruction_budget = 100000;
++    config.total_instruction_budget = 1000000;
++    config.max_boundary_callbacks = 1;
++    config.host_return_sentinel = 0xfffffff0;
++    status = gem_wine_process_create( &config, &process );
++    if (status == GEM_WINE_OK)
++    {
++        struct gem_wine_i386_config i386 = {0};
++        NTSTATUS ntstatus;
++        pthread_mutex_lock( &memory_lock );
++        ntstatus = add_reservation( params->ntdll_base, params->ntdll_size );
++        if (!ntstatus && gem_wine_process_bind_kuser( process,
++                                                       (void *)UINT64_C(0x1007ffe0000) ) != GEM_WINE_OK)
++            ntstatus = STATUS_UNSUCCESSFUL;
++        if (!ntstatus && gem_wine_process_commit_i386_host( process, params->ntdll_base,
++                                                            (void *)(ULONG_PTR)params->ntdll_host,
++                                                            params->ntdll_size,
++                                                            GEM_WINE_PAGE_EXECUTE_READWRITE ) != GEM_WINE_OK)
++            ntstatus = STATUS_UNSUCCESSFUL;
++        pthread_mutex_unlock( &memory_lock );
++        i386.version = GEM_WINE_I386_CONFIG_VERSION;
++        i386.struct_size = sizeof(i386);
++        i386.loaded_base = params->ntdll_base;
++        i386.image_size = params->ntdll_size;
++        i386.windows_syscall_boundary = params->syscall_boundary;
++        i386.unix_call_boundary = params->unix_boundary;
++        i386.host_return_sentinel = 0xfffffff0;
++        i386.flags = 0;
++        if (!ntstatus && gem_wine_process_prepare_i386( process, &i386 ) != GEM_WINE_OK)
++            ntstatus = STATUS_INVALID_IMAGE_FORMAT;
++        if (!ntstatus) ntstatus = seed_i386_shadow();
++        if (ntstatus)
++        {
++            gem_wine_process_destroy( process );
++            process = NULL;
++            pthread_mutex_lock( &memory_lock );
++            free_reservations();
++            pthread_mutex_unlock( &memory_lock );
++            status = GEM_WINE_ENGINE_ERROR;
++        }
++    }
++    pthread_mutex_unlock( &process_lock );
++    return status == GEM_WINE_OK ? STATUS_SUCCESS : STATUS_DLL_INIT_FAILED;
++}
++
++static NTSTATUS process_term( void *args )
++{
++    enum gem_wine_status status;
++    pthread_mutex_lock( &process_lock );
++    status = process ? gem_wine_process_destroy( process ) : GEM_WINE_OK;
++    if (status == GEM_WINE_OK)
++    {
++        process = NULL;
++        pthread_mutex_lock( &memory_lock );
++        free_reservations();
++        pthread_mutex_unlock( &memory_lock );
++    }
++    pthread_mutex_unlock( &process_lock );
++    if (canonical_ntdll_guard)
++    {
++        SIZE_T size = 0;
++        NtFreeVirtualMemory( NtCurrentProcess(), &canonical_ntdll_guard, &size, MEM_RELEASE );
++        canonical_ntdll_guard = NULL;
++        canonical_ntdll_guard_size = 0;
++    }
++    return status == GEM_WINE_OK ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
++}
++
++static NTSTATUS thread_init( void *args )
++{
++    struct gem_wine_i386_thread_config config = {0};
++    struct gem_wine_thread *thread;
++    TEB32 *teb;
++    ULONG stack_base, stack_limit, stack_reserve, teb_base;
++    enum gem_wine_status status;
++    NTSTATUS ntstatus;
++    struct thread_entry *entry;
++    teb = current_teb32();
++    TRACE("unix thread init teb=%p guest=%08x\n", teb, (ULONG)(ULONG_PTR)teb);
++    pthread_mutex_lock( &thread_lock );
++    if (primary_thread)
++    {
++        pthread_mutex_unlock( &thread_lock );
++        return STATUS_SUCCESS;
++    }
++    for (entry = threads; entry; entry = entry->next)
++        if (entry->teb == teb) break;
++    if (entry)
++    {
++        pthread_mutex_unlock( &thread_lock );
++        return STATUS_SUCCESS;
++    }
++    pthread_mutex_unlock( &thread_lock );
++
++    /* The initial WoW64 thread reaches the CPU DLL before Wine has populated
++     * its TEB32 stack fields on this host.  Install a canonical high-host
++     * stack whose low 32 bits remain valid guest addresses. */
++    if (!teb->Tib.StackBase)
++    {
++        void *host_stack = (void *)UINT64_C(0x1007fe00000);
++        SIZE_T host_stack_size = 0x100000;
++        ntstatus = NtAllocateVirtualMemory( NtCurrentProcess(), &host_stack, 0, &host_stack_size,
++                                            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE );
++        if (ntstatus) return ntstatus;
++        teb->DeallocationStack = 0x7fe00000;
++        teb->Tib.StackLimit = 0x7fe00000;
++        teb->Tib.StackBase = 0x7ff00000;
++    }
++    {
++        PEB32 *peb32 = NULL;
++        ntstatus = NtQueryInformationProcess( NtCurrentProcess(), ProcessWow64Information,
++                                              &peb32, sizeof(peb32), NULL );
++        if (ntstatus || !peb32) return ntstatus ? ntstatus : STATUS_UNSUCCESSFUL;
++        if (!teb->Peb) teb->Peb = (ULONG)(ULONG_PTR)peb32;
++    }
++    teb_base = (ULONG)(ULONG_PTR)teb & ~0x3fff;
++    stack_base = (ULONG)(ULONG_PTR)teb->Tib.StackBase;
++    stack_limit = (ULONG)(ULONG_PTR)teb->Tib.StackLimit;
++    stack_reserve = (ULONG)(ULONG_PTR)teb->DeallocationStack;
++    TRACE("i386 stack guest=%08x-%08x commit=%08x peb=%08x\n",
++          stack_reserve, stack_base, stack_limit, teb->Peb);
++    pthread_mutex_lock( &memory_lock );
++    ntstatus = add_reservation( teb_base, 0x8000 );
++    if (!ntstatus && gem_wine_process_commit_i386_host( process, teb_base,
++                                                        (void *)((ULONG_PTR)teb & ~0x3fffull),
++                                                        0x8000, GEM_WINE_PAGE_READWRITE ) != GEM_WINE_OK)
++        ntstatus = STATUS_UNSUCCESSFUL;
++    if (!ntstatus) ntstatus = add_reservation( stack_reserve, stack_base - stack_reserve );
++    if (!ntstatus && gem_wine_process_commit_i386_host( process, stack_limit,
++                                                        (void *)(0x10000000000ull + stack_limit),
++                                                        stack_base - stack_limit,
++                                                        GEM_WINE_PAGE_READWRITE ) != GEM_WINE_OK)
++        ntstatus = STATUS_UNSUCCESSFUL;
++    pthread_mutex_unlock( &memory_lock );
++    if (ntstatus)
++    {
++        TRACE("thread memory import failed status=%08x\n", ntstatus);
++        return ntstatus;
++    }
++    config.version = GEM_WINE_I386_THREAD_CONFIG_VERSION;
++    config.struct_size = sizeof(config);
++    config.teb = (ULONG)(ULONG_PTR)current_teb32();
++    status = gem_wine_i386_thread_create( process, &config, &thread );
++    TRACE("i386 thread create status=%u thread=%p\n", status, thread);
++    if (status == GEM_WINE_OK)
++    {
++        if (!(entry = malloc( sizeof(*entry) ))) return STATUS_NO_MEMORY;
++        entry->teb = teb;
++        entry->thread = thread;
++        pthread_mutex_lock( &thread_lock );
++        entry->next = threads;
++        threads = entry;
++        if (!primary_thread) primary_thread = thread;
++        pthread_mutex_unlock( &thread_lock );
++    }
++    return status == GEM_WINE_OK ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
++}
++
++static NTSTATUS thread_term( void *args )
++{
++    struct thread_entry **cursor, *entry;
++    struct gem_wine_thread *thread = NULL;
++    TRACE("unix thread term teb=%p primary=%p\n", current_teb32(), primary_thread);
++    pthread_mutex_lock( &thread_lock );
++    for (cursor = &threads; (entry = *cursor); cursor = &entry->next)
++        if (entry->teb == current_teb32()) break;
++    if (entry)
++    {
++        *cursor = entry->next;
++        thread = entry->thread;
++        free( entry );
++    }
++    pthread_mutex_unlock( &thread_lock );
++    if (thread && gem_wine_thread_destroy( thread ) != GEM_WINE_OK) return STATUS_UNSUCCESSFUL;
++    return STATUS_SUCCESS;
++}
++
++static BOOL protection_allows( ULONG protection, ULONG access )
++{
++    protection &= 0xff;
++    if (access == GEM_WINE_ACCESS_FETCH)
++        return protection == PAGE_EXECUTE || protection == PAGE_EXECUTE_READ ||
++               protection == PAGE_EXECUTE_READWRITE || protection == PAGE_EXECUTE_WRITECOPY;
++    if (access == GEM_WINE_ACCESS_WRITE)
++        return protection == PAGE_READWRITE || protection == PAGE_WRITECOPY ||
++               protection == PAGE_EXECUTE_READWRITE || protection == PAGE_EXECUTE_WRITECOPY;
++    return protection != PAGE_NOACCESS && protection != PAGE_EXECUTE;
++}
++
++static NTSTATUS sync_shadow_fault( ULONG address, ULONG access )
++{
++    ULONG_PTR shadow = address >= 0x7f000000 ? 0x10000000000ull : 0x8000000000ull;
++    const ULONG page = address & ~0xfffU;
++    MEMORY_BASIC_INFORMATION mbi;
++    SIZE_T ret_len;
++    enum gem_wine_status status;
++    uint32_t old_protection;
++    NTSTATUS ntstatus;
++
++    ntstatus = NtQueryVirtualMemory( NtCurrentProcess(), (void *)(shadow + page),
++                                     MemoryBasicInformation, &mbi, sizeof(mbi), &ret_len );
++    if (!ntstatus && mbi.State != MEM_COMMIT)
++    {
++        ULONG_PTR alternate = shadow == 0x8000000000ull ? 0x10000000000ull : 0x8000000000ull;
++        MEMORY_BASIC_INFORMATION alternate_mbi;
++        if (!NtQueryVirtualMemory( NtCurrentProcess(), (void *)(alternate + page),
++                                   MemoryBasicInformation, &alternate_mbi,
++                                   sizeof(alternate_mbi), &ret_len ) &&
++            alternate_mbi.State == MEM_COMMIT)
++        {
++            shadow = alternate;
++            mbi = alternate_mbi;
++        }
++    }
++    if (ntstatus || mbi.State != MEM_COMMIT || !protection_allows( mbi.Protect, access ))
++        return STATUS_ACCESS_VIOLATION;
++    pthread_mutex_lock( &memory_lock );
++    status = gem_wine_process_protect( process, page, 0x1000,
++                                       protection_to_gem( mbi.Protect ), &old_protection );
++    if (status != GEM_WINE_OK)
++    {
++        if (!find_reservation( page, 0x1000 ))
++        {
++            ntstatus = add_reservation( page, 0x1000 );
++            if (ntstatus)
++            {
++                pthread_mutex_unlock( &memory_lock );
++                return ntstatus;
++            }
++        }
++        status = gem_wine_process_commit_i386_host( process, page, (void *)(shadow + page),
++                                                     0x1000, protection_to_gem( mbi.Protect ) );
++    }
++    if (status == GEM_WINE_OK)
++        status = gem_wine_process_invalidate_code( process, page, 0x1000 );
++    pthread_mutex_unlock( &memory_lock );
++    return status == GEM_WINE_OK ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
++}
++
++static NTSTATUS run( void *args )
++{
++    struct xtajit_run_params *params = args;
++    struct gem_wine_thread *thread = NULL;
++    struct thread_entry *entry;
++    struct gem_i386_context input, output;
++    struct gem_wine_run_result result;
++    enum gem_wine_status status;
++    unsigned int retry;
++    pthread_mutex_lock( &thread_lock );
++    thread = primary_thread;
++    for (entry = threads; entry; entry = entry->next)
++        if (entry->teb == current_teb32()) { thread = entry->thread; break; }
++    pthread_mutex_unlock( &thread_lock );
++    if (!thread && thread_init( NULL )) return STATUS_UNSUCCESSFUL;
++    if (!thread)
++    {
++        pthread_mutex_lock( &thread_lock );
++        for (entry = threads; entry; entry = entry->next)
++            if (entry->teb == current_teb32()) { thread = entry->thread; break; }
++        pthread_mutex_unlock( &thread_lock );
++    }
++    context_to_gem( &input, &params->context, params->teb );
++    TRACE("run input layout=%u size=%u teb=%08x eip=%08x esp=%08x flags=%08x stop=%u thread=%p\n",
++          input.layout_version, input.context_size, input.teb, input.eip,
++          input.gpr[GEM_I386_ESP], input.eflags, input.stop_reason, thread);
++    for (retry = 0; ; ++retry)
++    {
++        status = gem_wine_i386_thread_run( thread, &input, &output, &result );
++        if (retry >= 255 || status != GEM_WINE_STOPPED ||
++            result.last_event != GEM_WINE_EVENT_MEMORY_FAULT ||
++            sync_shadow_fault( result.stop.fault_address, result.stop.access ))
++            break;
++        input = output;
++        input.stop_reason = GEM_STOP_NONE;
++    }
++    TRACE("run status=%u outcome=%u event=%u eip=%08x fault=%08llx access=%u\n",
++          status, result.outcome, result.last_event, output.eip,
++          (unsigned long long)result.stop.fault_address, result.stop.access);
++    context_from_gem( &params->context, &output );
++    params->status = status == GEM_WINE_OK || status == GEM_WINE_STOPPED ? STATUS_SUCCESS :
++                     status == GEM_WINE_BUDGET_EXPIRED ? STATUS_TIMEOUT : STATUS_UNSUCCESSFUL;
++    params->outcome = result.outcome;
++    params->event = result.last_event;
++    params->engine_status = result.stop.engine_status;
++    params->fault_address = result.stop.fault_address;
++    params->fault_access = result.stop.access;
++    return STATUS_SUCCESS;
++}
++
++static NTSTATUS map( void *args )
++{
++    struct xtajit_memory_params *params = args;
++    enum gem_wine_status status;
++    NTSTATUS ntstatus;
++    pthread_mutex_lock( &memory_lock );
++    ntstatus = add_reservation( params->address, params->size );
++    if (ntstatus || params->operation == xtajit_memory_reserve)
++    {
++        pthread_mutex_unlock( &memory_lock );
++        return ntstatus;
++    }
++    status = gem_wine_process_commit_i386_host( process, params->address,
++                                                (void *)(ULONG_PTR)params->host, params->size,
++                                                protection_to_gem(params->protection) );
++    if (status != GEM_WINE_OK)
++    {
++        pthread_mutex_unlock( &memory_lock );
++        return STATUS_UNSUCCESSFUL;
++    }
++    pthread_mutex_unlock( &memory_lock );
++    return STATUS_SUCCESS;
++}
++
++static NTSTATUS decommit( void *args )
++{
++    struct xtajit_memory_params *p = args;
++    if (gem_wine_process_invalidate_code( process, p->address, p->size ) != GEM_WINE_OK)
++        return STATUS_UNSUCCESSFUL;
++    return gem_wine_process_decommit(process, p->address, p->size) == GEM_WINE_OK ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
++}
++static NTSTATUS release( void *args )
++{
++    struct xtajit_memory_params *p = args;
++    struct reservation **cursor, *entry;
++    enum gem_wine_status status;
++    pthread_mutex_lock( &memory_lock );
++    for (cursor = &reservations; (entry = *cursor); cursor = &entry->next)
++        if (entry->address == p->address) break;
++    if (!entry)
++    {
++        pthread_mutex_unlock( &memory_lock );
++        return STATUS_MEMORY_NOT_ALLOCATED;
++    }
++    if (gem_wine_process_invalidate_code( process, entry->address, entry->size ) != GEM_WINE_OK)
++    {
++        pthread_mutex_unlock( &memory_lock );
++        return STATUS_UNSUCCESSFUL;
++    }
++    status = gem_wine_process_release( process, entry->address, entry->size );
++    if (status == GEM_WINE_OK)
++    {
++        *cursor = entry->next;
++        free( entry );
++    }
++    pthread_mutex_unlock( &memory_lock );
++    return status == GEM_WINE_OK ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
++}
++static NTSTATUS protect( void *args )
++{
++    struct xtajit_memory_params *p = args;
++    NTSTATUS status;
++    if (gem_wine_process_invalidate_code( process, p->address, p->size ) != GEM_WINE_OK)
++        return STATUS_UNSUCCESSFUL;
++    status = gem_wine_process_protect(process, p->address, p->size,
++                                      protection_to_gem(p->protection), &p->old_protection) ==
++                     GEM_WINE_OK
++                 ? STATUS_SUCCESS
++                 : STATUS_UNSUCCESSFUL;
++    return status;
++}
++static NTSTATUS invalidate( void *args )
++{
++    struct xtajit_memory_params *p = args;
++    return gem_wine_process_invalidate_code(process, p->address, p->size) == GEM_WINE_OK ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
++}
++
++const unixlib_entry_t __wine_unix_call_funcs[] =
++{
++    process_init, process_term, thread_init, thread_term, run, map, decommit, release, protect, invalidate
++};
++C_ASSERT( ARRAY_SIZE(__wine_unix_call_funcs) == unix_funcs_count );
+diff --git a/dlls/xtajit/unixlib.h b/dlls/xtajit/unixlib.h
+new file mode 100644
+index 0000000000..effe88a61b
+--- /dev/null
++++ b/dlls/xtajit/unixlib.h
+@@ -0,0 +1,61 @@
++/* Native ARM64 GEM_i386 Unix-call contract. */
++#ifndef __WINE_XTAJIT_UNIXLIB_H
++#define __WINE_XTAJIT_UNIXLIB_H
++
++#include "windef.h"
++#include "winnt.h"
++
++enum xtajit_unix_call
++{
++    unix_process_init,
++    unix_process_term,
++    unix_thread_init,
++    unix_thread_term,
++    unix_run,
++    unix_map,
++    unix_decommit,
++    unix_release,
++    unix_protect,
++    unix_invalidate,
++    unix_funcs_count
++};
++
++enum xtajit_memory_operation
++{
++    xtajit_memory_reserve = 1,
++    xtajit_memory_commit,
++    xtajit_memory_map_section
++};
++
++struct xtajit_process_init_params
++{
++    ULONG syscall_boundary;
++    ULONG unix_boundary;
++    ULONG ntdll_base;
++    ULONG ntdll_size;
++    ULONG_PTR ntdll_host;
++};
++
++struct xtajit_run_params
++{
++    I386_CONTEXT context;
++    ULONG teb;
++    ULONG status;
++    ULONG outcome;
++    ULONG event;
++    ULONG engine_status;
++    ULONG fault_address;
++    ULONG fault_access;
++};
++
++struct xtajit_memory_params
++{
++    ULONG address;
++    ULONG size;
++    ULONG protection;
++    ULONG old_protection;
++    ULONG operation;
++    ULONG_PTR host;
++};
++
++#endif
+diff --git a/dlls/xtajit/xtajit.spec b/dlls/xtajit/xtajit.spec
+new file mode 100644
+index 0000000000..23f5b9da70
+--- /dev/null
++++ b/dlls/xtajit/xtajit.spec
+@@ -0,0 +1,22 @@
++@ stdcall BTCpuFlushInstructionCache2(ptr long)
++@ stdcall BTCpuGetBopCode()
++@ stdcall BTCpuGetContext(long long ptr ptr)
++@ stdcall BTCpuIsProcessorFeaturePresent(long)
++@ stdcall BTCpuNotifyMapViewOfSection(ptr ptr ptr long long long)
++@ stdcall BTCpuNotifyMemoryAlloc(ptr long long long long long)
++@ stdcall BTCpuNotifyMemoryDirty(ptr long)
++@ stdcall BTCpuNotifyMemoryFree(ptr long long long long)
++@ stdcall BTCpuNotifyMemoryProtect(ptr long long long long)
++@ stdcall BTCpuNotifyReadFile(long ptr long long long)
++@ stdcall BTCpuNotifyUnmapViewOfSection(ptr long long)
++@ stdcall BTCpuProcessInit()
++@ stdcall BTCpuProcessTerm(long long long)
++@ stdcall BTCpuResetToConsistentState(ptr)
++@ stdcall BTCpuSetContext(long long ptr ptr)
++@ stdcall -norelay BTCpuSimulate()
++@ stdcall BTCpuThreadInit()
++@ stdcall BTCpuThreadTerm(long long)
++@ stdcall BTCpuTurboThunkControl(long)
++@ stdcall BTCpuUpdateProcessorInformation(ptr)
++@ stdcall BTCpuFlushInstructionCacheHeavy(ptr long)
++@ stdcall __wine_get_unix_opcode()
+--
+2.54.0 (Apple Git-157)
