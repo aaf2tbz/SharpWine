@@ -78,25 +78,31 @@ jobs:
           --source tests/fixtures/wine_x86_64_acceptance.c
           --output "${{ runner.temp }}/x86_64-fixture"
           --manifest "${{ runner.temp }}/x86_64-fixture/manifest.json"
-      - name: Install and pin the native Intel reference
+      - name: Fetch and verify the native Intel Wine reference
+        env:
+          WINE_REFERENCE_RELEASE: "11.10"
+          WINE_REFERENCE_SHA256: "6d0637c3526fbe7051a5f8968dbde68fbc3ac417717648b9331c46642b52173b"
         run: |
-          brew install --cask wine-stable
-          # The pinned upstream macOS bundle is currently unsigned and Homebrew
-          # marks the cask accordingly.  Remove only its quarantine attribute on
-          # this ephemeral Intel oracle before executing the verified bundle.
-          wine_app="/Applications/Wine Stable.app"
+          archive="${{ runner.temp }}/wine-reference.tar.xz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/Gcenx/macOS_Wine_builds/releases/download/${WINE_REFERENCE_RELEASE}/wine-devel-${WINE_REFERENCE_RELEASE}-osx64.tar.xz" \
+            --output "$archive"
+          printf '%s  %s\n' "$WINE_REFERENCE_SHA256" "$archive" | shasum -a 256 -c -
+          mkdir "${{ runner.temp }}/wine-reference"
+          tar -xf "$archive" -C "${{ runner.temp }}/wine-reference"
+          wine_app="${{ runner.temp }}/wine-reference/Wine Devel.app"
           test -d "$wine_app"
           xattr -dr com.apple.quarantine "$wine_app" 2>/dev/null || true
           if xattr -lr "$wine_app" | grep -q 'com.apple.quarantine'; then
             echo "Wine reference remains quarantined" >&2
             exit 1
           fi
-          wine --version | grep -F 'wine-11.0'
-          test "$(brew info --cask --json=v2 wine-stable | python3 -c 'import json,sys; print(json.load(sys.stdin)["casks"][0]["version"])')" = "11.0_1"
+          "$wine_app/Contents/Resources/wine/bin/wine" --version | grep -Fx 'wine-11.10'
       - name: Run the native Intel semantic oracle
         run: >-
           python3 tools/ci/run-x86_64-wine-fixture.py
-          --wine "$(command -v wine)" --wineserver "$(command -v wineserver)"
+          --wine "${{ runner.temp }}/wine-reference/Wine Devel.app/Contents/Resources/wine/bin/wine"
+          --wineserver "${{ runner.temp }}/wine-reference/Wine Devel.app/Contents/Resources/wine/bin/wineserver"
           --fixture "${{ runner.temp }}/x86_64-fixture/wine_x86_64_acceptance-a.exe"
           --mode intel-native --output "${{ runner.temp }}/x86_64-fixture/intel-native.json"
           --timeout 120
