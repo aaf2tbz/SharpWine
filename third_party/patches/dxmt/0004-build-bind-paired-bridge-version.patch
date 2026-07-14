@@ -1,0 +1,47 @@
+From c42f26c416440af23c580b44be60e8ea5cb0806f Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Tue, 14 Jul 2026 16:26:19 -0600
+Subject: [PATCH] build: bind paired bridge version
+
+---
+ meson.build          | 7 +++++--
+ src/dxmt/meson.build | 2 +-
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index dfd53b0..8c7e2d6 100644
+--- a/meson.build
++++ b/meson.build
+@@ -155,11 +155,14 @@ endif
+ 
+ add_project_arguments('-DDXMT_PAGE_SIZE=4096', language: 'cpp')
+ 
+-dxmt_version = vcs_tag(
+-  command: ['git', 'describe', '--always'],
++dxmt_version_config = configuration_data()
++dxmt_version_config.set('VCS_TAG', 'v0.80-metalsharp.1')
++dxmt_version = configure_file(
+   input:  'version.h.in',
+   output: 'version.h',
++  configuration: dxmt_version_config,
+ )
++dxmt_version_include_path = include_directories('.')
+ 
+ if dxmt_crossbuild
+   wine_builtin_dll = get_option('wine_builtin_dll')
+diff --git a/src/dxmt/meson.build b/src/dxmt/meson.build
+index 6b8902d..ca04403 100644
+--- a/src/dxmt/meson.build
++++ b/src/dxmt/meson.build
+@@ -34,7 +34,7 @@ dxmt_shaders_header = hexdump_generator.process(dxmt_shaders_lib)
+ 
+ dxmt_lib = static_library('dxmt', dxmt_src, dxmt_shaders_header, dxmt_version,
+   dependencies        : [ util_dep, airconv_forward_dep, winemetal_dep ],
+-  include_directories : [ dxmt_include_path ],
++  include_directories : [ dxmt_include_path, dxmt_version_include_path ],
+ )
+ 
+ dxmt_dep = declare_dependency(
+-- 
+2.54.0 (Apple Git-157)
+

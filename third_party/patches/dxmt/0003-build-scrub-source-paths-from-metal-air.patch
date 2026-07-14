@@ -1,0 +1,125 @@
+From c81a5bb7bc847bbfb5d0a0d8488a6c7544c541a7 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Tue, 14 Jul 2026 16:20:58 -0600
+Subject: [PATCH 3/3] build: scrub source paths from metal air
+
+---
+ build-aux/canonicalize_metal_air.py | 75 +++++++++++++++++++++++++++++
+ meson.build                         | 17 ++++++-
+ 2 files changed, 90 insertions(+), 2 deletions(-)
+ create mode 100644 build-aux/canonicalize_metal_air.py
+
+diff --git a/build-aux/canonicalize_metal_air.py b/build-aux/canonicalize_metal_air.py
+new file mode 100644
+index 0000000..75a573c
+--- /dev/null
++++ b/build-aux/canonicalize_metal_air.py
+@@ -0,0 +1,75 @@
++#!/usr/bin/env python3
++"""Compile Metal AIR and canonicalize source paths in its LLVM bitcode."""
++
++from __future__ import annotations
++
++import argparse
++import re
++import subprocess
++import tempfile
++from pathlib import Path
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--xcrun", required=True)
++    parser.add_argument("--llvm-dis", required=True)
++    parser.add_argument("--llvm-as", required=True)
++    parser.add_argument("--source-root", type=Path, required=True)
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--input", type=Path, required=True)
++    parser.add_argument("metal_args", nargs=argparse.REMAINDER)
++    args = parser.parse_args()
++
++    source_root = args.source_root.resolve(strict=True)
++    source = args.input.resolve(strict=True)
++    relative_source = source.relative_to(source_root).as_posix()
++    canonical_source = f"dxmt/{relative_source}"
++    metal_args = args.metal_args
++    if metal_args and metal_args[0] == "--":
++        metal_args = metal_args[1:]
++
++    args.output.parent.mkdir(parents=True, exist_ok=True)
++    with tempfile.TemporaryDirectory(prefix="dxmt-metal-air-") as temporary:
++        temporary_path = Path(temporary)
++        raw_air = temporary_path / "raw.air"
++        llvm_ir = temporary_path / "canonical.ll"
++        subprocess.run(
++            [
++                args.xcrun,
++                "-sdk",
++                "macosx",
++                "metal",
++                "-o",
++                str(raw_air),
++                "-c",
++                str(source),
++                *metal_args,
++            ],
++            check=True,
++        )
++        subprocess.run(
++            [args.llvm_dis, str(raw_air), "-o", str(llvm_ir)], check=True
++        )
++        text = llvm_ir.read_text(encoding="utf-8")
++        quoted_source = re.compile(
++            r'(?<=")[^"\n]*' + re.escape(relative_source) + r'(?=")'
++        )
++        text, replacements = quoted_source.subn(canonical_source, text)
++        if replacements < 2:
++            raise RuntimeError(
++                f"expected at least two Metal source-path records, found {replacements}"
++            )
++        forbidden = (str(source_root), "/Users/", "/private/tmp/", "../")
++        leaked = [value for value in forbidden if value in text]
++        if leaked:
++            raise RuntimeError(f"Metal AIR path canonicalization failed: {leaked}")
++        llvm_ir.write_text(text, encoding="utf-8", newline="\n")
++        subprocess.run(
++            [args.llvm_as, str(llvm_ir), "-o", str(args.output)], check=True
++        )
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/meson.build b/meson.build
+index cc58310..dfd53b0 100644
+--- a/meson.build
++++ b/meson.build
+@@ -116,10 +116,23 @@ else
+ endif
+ 
+ xcrun = find_program('xcrun')
++python3 = find_program('python3')
++metal_air_wrapper = join_paths(
++  meson.project_source_root(),
++  'build-aux/canonicalize_metal_air.py',
++)
++native_llvm_path = get_option('native_llvm_path')
+ 
+-metalir_generator = generator(xcrun,
++metalir_generator = generator(python3,
+   output    : [ '@BASENAME@.air'],
+-  arguments : [ '-sdk', 'macosx', 'metal', '-o', '@OUTPUT@', '-c', '@INPUT@', '@EXTRA_ARGS@'],
++  arguments : [ metal_air_wrapper,
++                '--xcrun', xcrun.full_path(),
++                '--llvm-dis', '@0@/bin/llvm-dis'.format(native_llvm_path),
++                '--llvm-as', '@0@/bin/llvm-as'.format(native_llvm_path),
++                '--source-root', meson.project_source_root(),
++                '--output', '@OUTPUT@',
++                '--input', '@INPUT@',
++                '--', '@EXTRA_ARGS@' ],
+ )
+ 
+ metallib_generator = generator(xcrun,
+-- 
+2.54.0 (Apple Git-157)
+

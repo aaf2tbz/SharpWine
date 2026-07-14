@@ -8,6 +8,8 @@ python3 "$root/tools/ci/check-repository.py"
 python3 "$root/tools/ci/test-check-repository.py"
 python3 "$root/tools/release/validate-wine-patches.py"
 python3 "$root/tools/release/test-wine-patches.py"
+python3 "$root/tools/release/validate-dxmt-patches.py"
+python3 "$root/tools/release/test-dxmt-patches.py"
 "$root/tools/ci/check-format.sh"
 cmake -S "$root" -B "$build_dir" -DCMAKE_BUILD_TYPE=Debug -DMSWR_WARNINGS_AS_ERRORS=ON
 cmake --build "$build_dir" --parallel

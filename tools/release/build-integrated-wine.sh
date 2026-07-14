@@ -64,8 +64,8 @@ if [[ -z "$brew_prefix" ]] && command -v brew >/dev/null; then brew_prefix=$(bre
     echo "Homebrew prefix is required for the pinned native dependency set" >&2; exit 1;
 }
 brew_opt="$brew_prefix/opt"
-for required in bison boost freetype libpng libx11 libxau libxcb libxdmcp llvm mesa molten-vk \
-    sdl2-compat sdl3 spirv-tools vulkan-headers vulkan-loader z3 zstd; do
+for required in bison boost freetype libpng libx11 libxau libxcb libxdmcp llvm llvm@15 mesa \
+    meson molten-vk ninja sdl2-compat sdl3 spirv-tools vulkan-headers vulkan-loader z3 zstd; do
     [[ -d "$brew_opt/$required" ]] || { echo "missing Homebrew dependency: $required" >&2; exit 1; }
     expected=$(python3 - "$lock" "$required" <<'PY'
 import json, sys
@@ -199,6 +199,16 @@ configure=("$source_dir/configure" "--host=aarch64-apple-darwin"
     make install DESTDIR="$stage" 2>&1 | tee "$work/install.log"
 )
 
+dxmt_output="$work/dxmt-pair"
+"$root/tools/release/build-dxmt-pair.sh" --wine-build "$build_dir" \
+    --output "$dxmt_output" --llvm-mingw "$llvm_mingw" \
+    --llvm15 "$brew_opt/llvm@15" --jobs "$jobs"
+for name in d3d10core.dll d3d11.dll dxgi.dll winemetal.dll; do
+    install -m 644 "$dxmt_output/i386-windows/$name" "$prefix/lib/wine/i386-windows/$name"
+done
+install -m 755 "$dxmt_output/aarch64-unix/winemetal.so" \
+    "$prefix/lib/wine/aarch64-unix/winemetal.so"
+
 # The i386 ucrtbase delay imports are part of the WoW64 loader contract.  If
 # advapi32 or user32 becomes an eager import, process attachment can recurse
 # through secur32 into ucrtbase before its heap has been initialized.
@@ -301,6 +311,7 @@ acceptance_prefix="$work/acceptance-prefix"
 acceptance_dir="$work/acceptance-evidence"
 mkdir -p "$acceptance_dir"
 cp "$i386_ucrt_imports" "$acceptance_dir/i386-ucrt-imports.txt"
+cp "$dxmt_output/dxmt-build-manifest.json" "$acceptance_dir/dxmt-build-manifest.json"
 python3 - "$prefix" "$acceptance_prefix" "$acceptance_dir" <<'PY'
 import ctypes
 import datetime
@@ -490,6 +501,10 @@ install -m 644 "$gem_build/_deps/dynarmic-src/externals/fmt/LICENSE.rst" "$outpu
 install -m 644 "$gem_build/_deps/dynarmic-src/externals/oaknut/LICENSE" "$output/licenses/MIT-oaknut.txt"
 install -m 644 "$gem_build/_deps/dynarmic-src/externals/robin-map/LICENSE" "$output/licenses/MIT-robin-map.txt"
 install -m 644 "$llvm_mingw/LICENSE.TXT" "$output/licenses/Apache-2.0-WITH-LLVM-exception-LLVM-MinGW.txt"
+install -m 644 "$dxmt_output/licenses/MIT-DXMT.txt" "$output/licenses/MIT-DXMT.txt"
+install -m 644 "$dxmt_output/licenses/License-NVAPI.txt" "$output/licenses/License-NVAPI.txt"
+install -m 644 "$dxmt_output/licenses/COPYING-MinGW-w64-DirectX-Headers.txt" \
+    "$output/licenses/COPYING-MinGW-w64-DirectX-Headers.txt"
 install -m 644 "$brew_opt/boost/LICENSE_1_0.txt" "$output/licenses/BSL-1.0-Boost.txt"
 clang --version > "$work/clang-version.txt"
 make --version > "$work/make-version.txt"

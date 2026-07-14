@@ -1,0 +1,25 @@
+From f872e62ec39b41178fba588a77cd220e39a8ef05 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Tue, 14 Jul 2026 16:33:37 -0600
+Subject: [PATCH] build: require reproducible native link layout
+
+---
+ meson.build | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/meson.build b/meson.build
+index 8c7e2d6..027de69 100644
+--- a/meson.build
++++ b/meson.build
+@@ -227,7 +227,7 @@ if dxmt_crossbuild
+   add_project_arguments(['-arch', native_compiler_arch], language: 'c',  native: true)
+   add_project_arguments(['-arch', native_compiler_arch], language: 'cpp',  native: true)
+   add_project_link_arguments(
+-    ['-arch', native_compiler_arch, '-Wl,-no_uuid'],
++    ['-arch', native_compiler_arch, '-Wl,-no_uuid', '-Wl,-reproducible'],
+     language: 'cpp',
+     native: true,
+   )
+-- 
+2.54.0 (Apple Git-157)
+

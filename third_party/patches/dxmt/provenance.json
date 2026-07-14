@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "component": "dxmt",
+  "repository": "https://github.com/3Shain/dxmt.git",
+  "baseRevision": "589adb780354b461645b29999cefaf533594ee99",
+  "baseVersion": "v0.80",
+  "license": "MIT",
+  "sourceArchiveSha256": "f1a5522c3cbe46a7784bdcc7be6152c4c246e40ecb98f51816fabfa642eedc39",
+  "referenceBinaryArchiveSha256": "8f260e36b5739e68f3bad613381441385c4dc7b85b78ba8de653d5a6a264529d",
+  "seriesFile": "third_party/patches/dxmt/series",
+  "submodules": [
+    {
+      "path": "external/nvapi",
+      "repository": "https://github.com/NVIDIA/nvapi.git",
+      "revision": "d08488fcc82eef313b0464db37d2955709691e94",
+      "sourceArchiveSha256": "436936c965f711f743c8606cb7c2621736cecf41e0fd6557555b2f1903b0350f"
+    },
+    {
+      "path": "include/native/directx",
+      "repository": "https://github.com/misyltoad/mingw-directx-headers",
+      "revision": "9df86f2341616ef1888ae59919feaa6d4fad693d",
+      "sourceArchiveSha256": "9c1b8bbfd2d6c758fac4d93c2808a46bc1eee429fe656b4f21b29e02615aa8aa"
+    }
+  ],
+  "patches": [
+    {
+      "order": 1,
+      "path": "third_party/patches/dxmt/0001-build-pair-i386-pe-modules-with-arm64-unix-bridge.patch",
+      "sha256": "b5b211e7ed563759a2f73dd1d4c483cf34926770283ebbd61eed98edaef72a2c",
+      "authoringCommit": "9b003d65a4fe7ea755f32a31f86b1fbcc9322a6b",
+      "purpose": "Pair the i386 PE modules with an ARM64-only Unix bridge and deterministic link settings in one cross-build graph."
+    },
+    {
+      "order": 2,
+      "path": "third_party/patches/dxmt/0002-fix-airconv-fix-compile-metal-shader-with-toolchain-from-XCode-27-beta-1.patch",
+      "sha256": "abfbba6d30009cb8e380d972532cb682abda23eca20c15c0a57b4e981ecb2ad6",
+      "authoringCommit": "95bc04971de00636556b620e4822a6de790332c6",
+      "upstreamCommit": "06065754af91352caaf8db87d4566fecc4124552",
+      "purpose": "Use the public Metal atomic builtin accepted by Xcode 27's Metal compiler."
+    },
+    {
+      "order": 3,
+      "path": "third_party/patches/dxmt/0003-build-scrub-source-paths-from-metal-air.patch",
+      "sha256": "18cc56a34ed339b12d7355535a27c98917f2178bebb48701eec67bba83d97a51",
+      "authoringCommit": "c81a5bb7bc847bbfb5d0a0d8488a6c7544c541a7",
+      "purpose": "Canonicalize embedded Metal AIR source paths before native linkage."
+    },
+    {
+      "order": 4,
+      "path": "third_party/patches/dxmt/0004-build-bind-paired-bridge-version.patch",
+      "sha256": "01fb27e1d157fc16ad46264e347a149ea6a112519f3169be4bb9d164a9340475",
+      "authoringCommit": "c42f26c416440af23c580b44be60e8ea5cb0806f",
+      "purpose": "Bind the paired modules to a stable reviewed version rather than a transient patched Git head."
+    },
+    {
+      "order": 5,
+      "path": "third_party/patches/dxmt/0005-build-require-reproducible-native-link-layout.patch",
+      "sha256": "c0be7f7bb19abc2e56b9f55fe2083408dff3d988a8865efdbd53e2759f15e3af",
+      "authoringCommit": "f872e62ec39b41178fba588a77cd220e39a8ef05",
+      "purpose": "Use ld64's reproducible layout algorithm so independent build roots emit identical native bridge bytes."
+    }
+  ]
+}
