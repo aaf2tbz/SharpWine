@@ -46,34 +46,40 @@ def main() -> None:
     if args.mode != "intel-native":
         env["METALSHARP_GEM_X64_ENGINE"] = args.mode
     started = time.monotonic()
-    try:
-        result = subprocess.run([str(args.wine.resolve()), str(args.fixture.resolve()),
-                                 "mswr-argument"], env=env, text=True,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                timeout=args.timeout, check=False)
-    except subprocess.TimeoutExpired as error:
-        fail(f"execution timed out; partial output={error.stdout!r}")
-    finally:
-        if args.wineserver and args.wineserver.exists():
-            subprocess.run([str(args.wineserver.resolve()), "-k"], env=env,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=30, check=False)
-        shutil.rmtree(prefix, ignore_errors=True)
-    if len(result.stdout.encode(errors="replace")) > 2 * 1024 * 1024:
+    timed_out = False
+    with tempfile.TemporaryFile() as log:
+        try:
+            result = subprocess.run([str(args.wine.resolve()), str(args.fixture.resolve()),
+                                     "mswr-argument"], env=env, stdout=log,
+                                    stderr=subprocess.STDOUT, timeout=args.timeout, check=False)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+        finally:
+            if args.wineserver and args.wineserver.exists():
+                subprocess.run([str(args.wineserver.resolve()), "-k"], env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=30, check=False)
+            shutil.rmtree(prefix, ignore_errors=True)
+        log.seek(0)
+        raw_output = log.read(2 * 1024 * 1024 + 1)
+    output = raw_output.decode(errors="replace")
+    if len(raw_output) > 2 * 1024 * 1024:
         fail("execution exceeded the 2 MiB log bound")
-    lines = [line for line in result.stdout.splitlines() if line.startswith(MARKER)]
+    if timed_out:
+        fail(f"execution timed out; partial output={output!r}")
+    lines = [line for line in output.splitlines() if line.startswith(MARKER)]
     if result.returncode or len(lines) != 1:
-        fail(f"rc={result.returncode}, semantic result count={len(lines)}\n{result.stdout}")
+        fail(f"rc={result.returncode}, semantic result count={len(lines)}\n{output}")
     semantic = json.loads(lines[0][len(MARKER):])
     if semantic.get("passed") is not True:
         fail(f"semantic fixture failure: {semantic}")
     required_trace = None if args.mode == "intel-native" else f"x64-engine={args.mode} host=aarch64"
-    if required_trace and required_trace not in result.stdout:
+    if required_trace and required_trace not in output:
         fail(f"selected engine was not evidenced: {required_trace}")
     evidence = {"schema": 1, "mode": args.mode, "hostArchitecture": host,
                 "fixtureSha256": hashlib.sha256(args.fixture.read_bytes()).hexdigest(),
                 "returnCode": result.returncode, "durationSeconds": round(time.monotonic() - started, 3),
-                "bounded": True, "engineTraceObserved": required_trace is None or required_trace in result.stdout,
+                "bounded": True, "engineTraceObserved": required_trace is None or required_trace in output,
                 "semantic": semantic}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n",
