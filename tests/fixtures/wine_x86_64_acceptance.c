@@ -42,11 +42,18 @@ static int run_child(void) {
     return value && !strcmp(value, "1") ? 37 : 38;
 }
 
+/* Clang cannot catch an asynchronous SEH exception generated in the same
+ * function as the __try scope. Keep the raise in a distinct non-inlined frame
+ * so the fixture exercises a valid Windows x64 unwind across a call boundary. */
+__declspec(noinline) static void raise_test_exception(void) {
+    RaiseException(0xe0454d47U, 0, 0, NULL);
+}
+
 static int check_exception(void) {
     int caught = 0;
 
     __try {
-        RaiseException(0xe0454d47U, 0, 0, NULL);
+        raise_test_exception();
     } __except (GetExceptionCode() == 0xe0454d47U ? EXCEPTION_EXECUTE_HANDLER
                                                   : EXCEPTION_CONTINUE_SEARCH) {
         caught = 1;
