@@ -8,7 +8,7 @@ on:
       tag:
         description: Published release tag to verify
         required: true
-        default: v0.1.0
+        default: v0.1.1
 
 permissions:
   contents: read
@@ -19,14 +19,16 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
     runs-on: macos-15
     timeout-minutes: 30
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
           persist-credentials: false
       - name: Download and validate the published release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -47,6 +49,18 @@ jobs:
           python3 tools/release/verify-published-release.py --directory "$assets" \
             --repository "$GITHUB_REPOSITORY" --tag "$TAG" --commit "$commit" \
             --no-expect-draft
+      - name: Reconstruct the exact hash-bound x86_64 exception fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+          fixture="${RUNNER_TEMP}/x86_64_exit.exe"
+          patch_set=$(python3 -c \
+            'import json; print(json.load(open("release/current.json"))["runtimePatchSet"])')
+          python3 tools/release/reconstruct-x86-64-fixture.py \
+            --patch-set "$patch_set" --output "$fixture"
+          printf 'X86_64_FIXTURE=%s\n' "$fixture" >> "$GITHUB_ENV"
       - name: Unpack and run bounded fresh-prefix smoke tests
         shell: bash
         run: |
@@ -62,5 +76,6 @@ jobs:
           runtime="$root/metalsharp-wine-v${version}-macos-arm64"
           python3 tools/release/audit-runtime.py --root "$runtime"
           python3 tools/release/test-packaged-runtime.py --runtime "$runtime" \
+            --x86-64-fixture "$X86_64_FIXTURE" \
             --evidence "${RUNNER_TEMP}/published-release-evidence" \
             --stress-iterations 1 --timeout 300

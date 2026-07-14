@@ -44,6 +44,11 @@ jobs:
           tools/release/repackage-published-runtime.py
           tools/release/prepare-published-foundation.py
           tools/release/apply-focused-overlay.py
+          tools/release/apply-runtime-patches.py
+          tools/release/create-focused-overlay.py
+          tools/release/create-runtime-patch-provenance.py
+          tools/release/finalize-x86-64-evidence.py
+          tools/release/reconstruct-x86-64-fixture.py
           tools/release/validate-release-assets.py
           tools/release/validate-readiness.py
           tools/release/validate-wine-patches.py

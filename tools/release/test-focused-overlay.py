@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import bz2
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 APPLY = ROOT / "tools/release/apply-focused-overlay.py"
+CREATE = ROOT / "tools/release/create-focused-overlay.py"
+FINALIZE = ROOT / "tools/release/finalize-x86-64-evidence.py"
 
 PREPARE_SPEC = importlib.util.spec_from_file_location(
     "prepare_foundation", ROOT / "tools/release/prepare-published-foundation.py"
@@ -23,6 +26,14 @@ if PREPARE_SPEC is None or PREPARE_SPEC.loader is None:
 PREPARE = importlib.util.module_from_spec(PREPARE_SPEC)
 PREPARE_SPEC.loader.exec_module(PREPARE)
 
+PATCH_SPEC = importlib.util.spec_from_file_location(
+    "runtime_patches", ROOT / "tools/release/apply-runtime-patches.py"
+)
+if PATCH_SPEC is None or PATCH_SPEC.loader is None:
+    raise RuntimeError("could not load runtime patch applier")
+PATCHES = importlib.util.module_from_spec(PATCH_SPEC)
+PATCH_SPEC.loader.exec_module(PATCHES)
+
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -31,6 +42,17 @@ def sha256(data: bytes) -> str:
 def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n",
                     encoding="utf-8")
+
+
+def bsdiff_number(value: int) -> bytes:
+    magnitude = abs(value)
+    result = bytearray(8)
+    for index in range(8):
+        result[index] = magnitude & 0xff
+        magnitude >>= 8
+    if value < 0:
+        result[7] |= 0x80
+    return bytes(result)
 
 
 class FocusedOverlayTests(unittest.TestCase):
@@ -126,6 +148,77 @@ class FocusedOverlayTests(unittest.TestCase):
         policy["unexpected"] = True
         with self.assertRaises(SystemExit):
             PREPARE.validate_policy(policy)
+
+    def test_creator_binds_exact_policy_payloads(self) -> None:
+        replacement = b"replacement\n"
+        evidence = b"{}\n"
+        (self.overlay / "bin").mkdir()
+        (self.overlay / "bin/base").write_bytes(replacement)
+        (self.overlay / "bin/base").chmod(0o755)
+        (self.overlay / "share").mkdir()
+        (self.overlay / "share/evidence.json").write_bytes(evidence)
+        output = self.root / "created-overlay.json"
+        result = subprocess.run(
+            [sys.executable, str(CREATE), "--policy", str(self.policy),
+             "--overlay", str(self.overlay), "--output", str(output)],
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual([item["path"] for item in manifest["changes"]],
+                         ["bin/base", "share/evidence.json"])
+        self.assertEqual(manifest["changes"][0]["sha256"], sha256(replacement))
+
+    def test_finalizer_requires_both_pure_x86_64_probes(self) -> None:
+        build = self.root / "build.json"
+        fixture = self.root / "fixture.json"
+        summary = self.root / "summary.json"
+        output = self.root / "acceptance.json"
+        write_json(build, {"schema": 1, "kind": "published-runtime-patch-set",
+                           "repositoryCommit": "a" * 40, "fullWineRebuild": False,
+                           "runtimePatches": [{"path": "native"}, {"path": "guest"}]})
+        write_json(fixture, {"schema": 1, "byteIdentical": True,
+                             "host": {"architecture": "arm64"},
+                             "fixture": {"sha256": "b" * 64}})
+        write_json(summary, {"passed": True, "freshPrefix": True, "teardownClean": True,
+                             "tests": [
+                                 {"name": name, "passed": True, "logSha256": "c" * 64}
+                                 for name in ("x86_64-exception", "x86_64-cmd-exit")
+                             ],
+                             "processAudit": {"allNativeArm64": True,
+                                              "translatedProcesses": []}})
+        result = subprocess.run(
+            [sys.executable, str(FINALIZE), "--build-manifest", str(build),
+             "--fixture-manifest", str(fixture), "--test-summary", str(summary),
+             "--output", str(output)], text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        evidence = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual([item["name"] for item in evidence["tests"]],
+                         ["x86_64-cmd-exit", "x86_64-exception"])
+
+    def test_bsdiff40_applier_checks_and_reconstructs_bytes(self) -> None:
+        old = b"abc"
+        differences = bytes((0, (ord("x") - ord("b")) & 0xff, 0))
+        control = bsdiff_number(3) + bsdiff_number(1) + bsdiff_number(0)
+        compressed_control = bz2.compress(control)
+        compressed_diff = bz2.compress(differences)
+        patch = (b"BSDIFF40" + bsdiff_number(len(compressed_control)) +
+                 bsdiff_number(len(compressed_diff)) + bsdiff_number(4) +
+                 compressed_control + compressed_diff + bz2.compress(b"!"))
+        self.assertEqual(PATCHES.apply_bsdiff(old, patch), b"axc!")
+        with self.assertRaises(SystemExit):
+            PATCHES.apply_bsdiff(old, patch[:-1])
+
+    def test_committed_fixture_patch_reconstructs_exact_fixture(self) -> None:
+        patch_root = ROOT / "release/runtime-patches/v0.1.1"
+        manifest = json.loads((patch_root / "manifest.json").read_text(encoding="utf-8"))
+        fixture = manifest["fixture"]
+        patch = (patch_root / fixture["patch"]).read_bytes()
+        self.assertEqual(hashlib.sha256(patch).hexdigest(), fixture["patchSha256"])
+        output = PATCHES.apply_bsdiff(b"", patch)
+        self.assertEqual(len(output), fixture["resultSize"])
+        self.assertEqual(hashlib.sha256(output).hexdigest(), fixture["resultSha256"])
 
 
 if __name__ == "__main__":

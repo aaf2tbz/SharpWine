@@ -17,7 +17,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-REQUIRED_TESTS = {"wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid"}
+BASE_TESTS = {"wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid"}
+X86_64_TESTS = {"x86_64-exception", "x86_64-cmd-exit"}
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?\Z")
@@ -242,6 +243,7 @@ def validate_integration(path: Path, repository: str, commit: str, version: str)
     if value["passed"] is not True or value["wineEngineIntegrated"] is not True or value["zeroRosetta"] is not True:
         fail("integration evidence did not pass every top-level gate")
     tests = value["tests"]
+    required_tests = BASE_TESTS if version == "0.1.0" else BASE_TESTS | X86_64_TESTS
     if not isinstance(tests, list):
         fail("integration tests are not an array")
     seen: set[str] = set()
@@ -249,12 +251,12 @@ def validate_integration(path: Path, repository: str, commit: str, version: str)
         if not isinstance(test, dict) or set(test) != {"name", "passed", "bounded", "evidence"}:
             fail("integration test record is invalid")
         name = test["name"]
-        if name in seen or name not in REQUIRED_TESTS:
+        if name in seen or name not in required_tests:
             fail(f"unknown or duplicate integration test {name!r}")
         seen.add(name)
         if test["passed"] is not True or test["bounded"] is not True or not isinstance(test["evidence"], dict):
             fail(f"integration test {name} did not pass bounded execution")
-    if seen != REQUIRED_TESTS:
+    if seen != required_tests:
         fail("required integration tests are missing")
     audit = value["processAudit"]
     if not isinstance(audit, dict) or audit.get("allNativeArm64") is not True or audit.get("translatedProcesses") != []:

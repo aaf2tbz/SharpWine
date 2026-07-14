@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "format": "BSDIFF40",
+  "release": {
+    "version": "0.1.1",
+    "tag": "v0.1.1",
+    "previousTag": "v0.1.0"
+  },
+  "base": {
+    "archive": "metalsharp-wine-v0.1.0-macos-arm64.tar.zst",
+    "sha256": "294130ff359353f4b8224508fd8956ee314a8ceab5cf6ea9ddc39094b08bbdc4"
+  },
+  "runtimePatches": [
+    {
+      "path": "lib/libmetalsharp-gem-wine.0.1.0.dylib",
+      "patch": "bridge.bsdiff",
+      "patchSha256": "e4fb7903a773797dffbcea984db557b8df167af9d8456448f11ff0c2b6322c50",
+      "baseSha256": "8c326d2c30cd2f2617c1a3087183d3d3df50dab1ac0108e41356008cd38ce35c",
+      "resultSha256": "282a16c2878c184b0d8cff1b289d3f997846b6cba223787d4bfa7a76bc00a5d6",
+      "resultSize": 4413648,
+      "mode": 493
+    },
+    {
+      "path": "lib/wine/aarch64-unix/ntdll.so",
+      "patch": "native-ntdll.bsdiff",
+      "patchSha256": "41a8a2a15020f6b6bb598f29878990f3b335a23570b80af6729cd20e80514ffe",
+      "baseSha256": "bb8cc6de65091224e466585d9f51de52e0c4fd598652a0a75dc5071a6397749f",
+      "resultSha256": "b267a5823d9d9cb77c609245aff91347372f6d6546b3bfc8d3834258de247a35",
+      "resultSize": 604200,
+      "mode": 493
+    },
+    {
+      "path": "lib/wine/x86_64-windows/ntdll.dll",
+      "patch": "guest-ntdll.bsdiff",
+      "patchSha256": "fc693c300e9012539259ee6a00da1a8dc03987d3fee215c429092e6234b239f6",
+      "baseSha256": "d50f19c386a5a4b6a02160b471daa46abc5c6e381e93fffe804ddd3e1198765d",
+      "resultSha256": "624ce168fea8fae2010417f33aa52a125cb9293a83aed3c4aa2d81fdfb8d9bf7",
+      "resultSize": 3387392,
+      "mode": 420
+    }
+  ],
+  "fixture": {
+    "patch": "x86_64-exit-fixture.bsdiff",
+    "patchSha256": "dc3fac6f9cdef8143904d375081e1bb204fdfdaa7bdbefc01f56aa89581f9550",
+    "baseSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "resultSha256": "6bd63780629daf28abf168765f6b5f92a4b914601cfbc873930234931428c834",
+    "resultSize": 3584
+  }
+}

@@ -85,7 +85,10 @@ def make_candidate(directory: Path, version: str = VERSION) -> None:
         "zeroRosetta": True,
         "tests": [
             {"name": name, "passed": True, "bounded": True, "evidence": {"log": f"{name}.log"}}
-            for name in ("wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid")
+            for name in (("wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid")
+                         if version == "0.1.0" else
+                         ("wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid",
+                          "x86_64-exception", "x86_64-cmd-exit"))
         ],
         "processAudit": {"allNativeArm64": True, "translatedProcesses": []},
     }

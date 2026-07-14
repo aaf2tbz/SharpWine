@@ -73,6 +73,9 @@ foundation_b="$work/foundation-b"
 
 runtime_a="$work/runtime-a"
 runtime_b="$work/runtime-b"
+fixture="$work/x86-64-fixture"
+python3 "$root/tools/ci/build-x86-64-exit-fixture.py" --toolchain "$llvm_mingw" \
+    --output "$fixture" --commit "$commit"
 python3 "$root/tools/release/stage-runtime.py" --foundation "$foundation_a" --output "$runtime_a" \
     --arm64x-bundle "$bundle" --fixture-commit "$commit" --llvm-mingw "$llvm_mingw" \
     --deps "$deps" --source-date-epoch "$SOURCE_DATE_EPOCH"
@@ -85,7 +88,8 @@ python3 "$root/tools/release/audit-runtime.py" --root "$runtime_b" --inventory "
     --forbid-prefix "$root" --forbid-prefix "$foundation_a" --forbid-prefix "$foundation_b"
 
 python3 "$root/tools/release/test-packaged-runtime.py" --runtime "$runtime_a" \
-    --evidence "$work/package-evidence" --stress-iterations 8 --timeout 300
+    --evidence "$work/package-evidence" --x86-64-fixture "$fixture/x86_64_exit.exe" \
+    --stress-iterations 8 --timeout 300
 python3 - "$work/quality.json" <<'PY'
 import json, pathlib, sys
 pathlib.Path(sys.argv[1]).write_text(json.dumps(
@@ -124,7 +128,8 @@ pathlib.Path(sys.argv[1]).write_text("(version 1)\n(allow default)\n" + "".join(
 PY
 sandbox-exec -f "$profile" python3 "$tester" \
     --runtime "$post/metalsharp-wine-v0.1.0-macos-arm64" \
-    --evidence "$work/post-release-evidence" --stress-iterations 1 --timeout 300
+    --evidence "$work/post-release-evidence" --x86-64-fixture "$fixture/x86_64_exit.exe" \
+    --stress-iterations 1 --timeout 300
 
 mkdir -p "$output"
 cp "$assets_a"/* "$output"/

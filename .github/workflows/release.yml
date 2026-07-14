@@ -1,12 +1,22 @@
-name: Publish release from a protected-main version bump
+name: Publish patched runtime from a protected-main version bump
 
 on:
   push:
     branches: [main]
     paths:
       - release/current.json
-      - release/runtime-overlay/**
+      - release/*-overlay-policy.json
+      - release/runtime-patches/**
+      - components.lock.json
+      - third_party/patches/wine/**
+      - tools/release/apply-runtime-patches.py
+      - tools/release/create-runtime-patch-provenance.py
+      - tools/release/create-focused-overlay.py
+      - tools/release/finalize-x86-64-evidence.py
+      - tools/release/apply-focused-overlay.py
+      - tools/release/prepare-published-foundation.py
       - tools/release/repackage-published-runtime.py
+      - tools/release/test-packaged-runtime.py
       - tools/release/validate-release-assets.py
       - tools/release/verify-published-release.py
       - .github/workflows/release.yml
@@ -14,7 +24,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
   group: release-publish-${{ github.ref }}
@@ -29,6 +38,8 @@ jobs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
       previous_tag: ${{ steps.resolve.outputs.previous_tag }}
+      policy: ${{ steps.resolve.outputs.policy }}
+      patch_set: ${{ steps.resolve.outputs.patch_set }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -45,30 +56,46 @@ jobs:
           import os
           import re
           import subprocess
+          from pathlib import Path
 
           output = os.environ["GITHUB_OUTPUT"]
           current = json.load(open("release/current.json", encoding="utf-8"))
-          required = {"schema", "version", "tag", "previousTag", "runtimeOverlay"}
+          required = {"schema", "version", "tag", "previousTag", "overlayPolicy",
+                      "runtimePatchSet"}
           version = current.get("version")
           tag = current.get("tag")
-          if (set(current) != required or current.get("schema") != 1 or
+          policy_path = current.get("overlayPolicy")
+          patch_set_path = current.get("runtimePatchSet")
+          paths = (policy_path, patch_set_path)
+          if (set(current) != required or current.get("schema") != 2 or
                   not isinstance(version, str) or
                   not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?", version) or
-                  tag != f"v{version}" or not isinstance(current.get("runtimeOverlay"), str)):
-              raise SystemExit("release/current.json is not a valid release specification")
+                  tag != f"v{version}" or any(not isinstance(path, str) or path.startswith("/") or
+                                               ".." in Path(path).parts for path in paths)):
+              raise SystemExit("release/current.json is not a valid patched release specification")
+          policy = json.load(open(policy_path, encoding="utf-8"))
+          patch_set = json.load(open(patch_set_path, encoding="utf-8"))
+          identity = {"version": version, "tag": tag, "previousTag": current.get("previousTag")}
+          if policy.get("schema") != 1 or policy.get("release") != identity or \
+                  patch_set.get("schema") != 1 or patch_set.get("release") != identity or \
+                  patch_set.get("base") != policy.get("base"):
+              raise SystemExit("policy or runtime patch set does not match release/current.json")
           try:
               previous = json.loads(subprocess.check_output(
                   ["git", "show", "HEAD^:release/current.json"], text=True))
           except subprocess.CalledProcessError:
               previous = None
-          values = {"publish": "false", "tag": tag, "version": version, "previous_tag": ""}
+          values = {"publish": "false", "tag": tag, "version": version,
+                    "previous_tag": "", "policy": policy_path, "patch_set": patch_set_path}
           if previous is not None:
               old_tag = previous.get("tag")
               if tag != old_tag:
                   if current.get("previousTag") != old_tag:
                       raise SystemExit("a version bump must name the immediately previous release tag")
-                  if subprocess.run(["gh", "release", "view", tag, "--repo", os.environ["GITHUB_REPOSITORY"]],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                  if subprocess.run(["gh", "release", "view", tag, "--repo",
+                                     os.environ["GITHUB_REPOSITORY"]],
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL).returncode == 0:
                       raise SystemExit(f"refusing to overwrite immutable published release {tag}")
                   values.update({"publish": "true", "previous_tag": old_tag})
           with open(output, "a", encoding="utf-8") as stream:
@@ -76,8 +103,8 @@ jobs:
                   print(f"{key}={value}", file=stream)
           PY
 
-  repackage-and-publish:
-    name: Verify, repackage, and publish the bumped release
+  patch-test-and-publish:
+    name: Patch published foundation, verify, repackage, and publish
     needs: resolve-version-bump
     if: needs.resolve-version-bump.outputs.publish == 'true'
     runs-on: macos-15
@@ -87,71 +114,89 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - name: Download and verify the previous published bundle
+      - name: Require native Apple Silicon and install the package codec
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+          brew install zstd
+      - name: Download, verify, and extract the published foundation tarball
         env:
           GH_TOKEN: ${{ github.token }}
-          PREVIOUS_TAG: ${{ needs.resolve-version-bump.outputs.previous_tag }}
+          POLICY: ${{ needs.resolve-version-bump.outputs.policy }}
         shell: bash
         run: |
           set -euo pipefail
-          previous_version="${PREVIOUS_TAG#v}"
-          archive="metalsharp-wine-v${previous_version}-macos-arm64.tar.zst"
-          base="${RUNNER_TEMP}/previous-release-assets"
-          mkdir -p "$base"
-          gh release download "$PREVIOUS_TAG" --repo "$GITHUB_REPOSITORY" --dir "$base"
-          gh release view "$PREVIOUS_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
-            > "$base/RELEASE-NOTES.md"
-          previous_commit="$(gh release view "$PREVIOUS_TAG" --repo "$GITHUB_REPOSITORY" \
-            --json targetCommitish --jq .targetCommitish)"
-          (
-            cd "$base"
-            shasum -a 256 -c "$archive.sha256"
-          )
-          python3 tools/release/validate-release-assets.py --directory "$base" \
-            --repository "$GITHUB_REPOSITORY" --commit "$previous_commit" --version "$previous_version"
-      - name: Unpack and apply the reviewed runtime overlay
-        env:
-          PREVIOUS_TAG: ${{ needs.resolve-version-bump.outputs.previous_tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew install zstd
-          previous_version="${PREVIOUS_TAG#v}"
-          archive="metalsharp-wine-v${previous_version}-macos-arm64.tar.zst"
-          base="${RUNNER_TEMP}/previous-release-assets"
-          root="${RUNNER_TEMP}/published-runtime"
-          mkdir -p "$root"
-          "$(brew --prefix zstd)/bin/zstd" -d --stdout "$base/$archive" | tar -xf - -C "$root"
-          runtime="$root/metalsharp-wine-v${previous_version}-macos-arm64"
-          overlay="$GITHUB_WORKSPACE/$(python3 -c 'import json; print(json.load(open("release/current.json"))["runtimeOverlay"])')"
-          if [[ -d "$overlay" ]]; then
-            python3 - "$overlay" <<'PY'
-          import os
-          import sys
-          from pathlib import Path
-
-          root = Path(sys.argv[1])
-          for path in root.rglob("*"):
-              relative = path.relative_to(root)
-              if ".." in relative.parts:
-                  raise SystemExit(f"unsafe overlay path: {relative}")
-              if path.is_symlink():
-                  target = os.readlink(path)
-                  if os.path.isabs(target) or ".." in Path(target).parts:
-                      raise SystemExit(f"unsafe overlay symlink: {relative}")
-          PY
-            rsync -a --safe-links "$overlay/" "$runtime/"
-          fi
+          workspace="${RUNNER_TEMP}/published-foundation"
+          python3 tools/release/prepare-published-foundation.py --workspace "$workspace" \
+            --policy "$POLICY" --repository "$GITHUB_REPOSITORY"
+          runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime"])' \
+            "$workspace/foundation.json")
           printf 'RUNTIME=%s\n' "$runtime" >> "$GITHUB_ENV"
-          printf 'BASE_ASSETS=%s\n' "$base" >> "$GITHUB_ENV"
-      - name: Audit and smoke-test the updated runtime
+          printf 'BASE_ASSETS=%s\n' "$workspace/assets" >> "$GITHUB_ENV"
+      - name: Apply and verify the reviewed runtime patch set
+        env:
+          POLICY: ${{ needs.resolve-version-bump.outputs.policy }}
+          PATCH_SET: ${{ needs.resolve-version-bump.outputs.patch_set }}
         shell: bash
         run: |
           set -euo pipefail
+          output="${RUNNER_TEMP}/patched-overlay"
+          fixture="${RUNNER_TEMP}/x86_64_exit.exe"
+          python3 tools/release/apply-runtime-patches.py --runtime "$RUNTIME" \
+            --patch-set "$PATCH_SET" --policy "$POLICY" --output "$output" \
+            --fixture-output "$fixture" --commit "$GITHUB_SHA"
+          python3 tools/release/create-runtime-patch-provenance.py --overlay "$output" \
+            --patch-set "$PATCH_SET" --policy "$POLICY" \
+            --base-manifest "$BASE_ASSETS/release-manifest.json" \
+            --commit "$GITHUB_SHA" --output "${RUNNER_TEMP}/runtime-patch-provenance.json"
+          python3 tools/release/create-focused-overlay.py --policy "$POLICY" \
+            --overlay "$output" --output "${RUNNER_TEMP}/overlay-manifest.json"
+          printf 'OVERLAY=%s\n' "$output" >> "$GITHUB_ENV"
+          printf 'X86_64_FIXTURE=%s\n' "$fixture" >> "$GITHUB_ENV"
+          printf 'BUILD_MANIFEST=%s\n' "${RUNNER_TEMP}/runtime-patch-provenance.json" >> "$GITHUB_ENV"
+          printf 'OVERLAY_MANIFEST=%s\n' "${RUNNER_TEMP}/overlay-manifest.json" >> "$GITHUB_ENV"
+          printf 'FIXTURE_MANIFEST=%s\n' "$(dirname "$PATCH_SET")/fixture-manifest.json" >> "$GITHUB_ENV"
+      - name: Probe the patched runtime and seal acceptance evidence
+        env:
+          POLICY: ${{ needs.resolve-version-bump.outputs.policy }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="${RUNNER_TEMP}/probe-runtime"
+          ditto "$RUNTIME" "$probe"
+          python3 tools/release/apply-focused-overlay.py --runtime "$probe" \
+            --base-manifest "$BASE_ASSETS/release-manifest.json" --policy "$POLICY" \
+            --overlay "$OVERLAY" --overlay-manifest "$OVERLAY_MANIFEST" \
+            --evidence "${RUNNER_TEMP}/probe-overlay-application.json"
+          python3 tools/release/audit-runtime.py --root "$probe"
+          python3 tools/release/test-packaged-runtime.py --runtime "$probe" \
+            --x86-64-fixture "$X86_64_FIXTURE" \
+            --evidence "${RUNNER_TEMP}/probe-evidence" --stress-iterations 1 --timeout 300
+          python3 tools/release/finalize-x86-64-evidence.py \
+            --build-manifest "$BUILD_MANIFEST" \
+            --fixture-manifest "$FIXTURE_MANIFEST" \
+            --test-summary "${RUNNER_TEMP}/probe-evidence/summary.json" \
+            --output "$OVERLAY/share/metalsharp/x86_64-acceptance-evidence.json"
+          python3 tools/release/create-focused-overlay.py --policy "$POLICY" \
+            --overlay "$OVERLAY" --output "$OVERLAY_MANIFEST"
+      - name: Apply and test the final four-file patch exactly
+        env:
+          POLICY: ${{ needs.resolve-version-bump.outputs.policy }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/release/apply-focused-overlay.py --runtime "$RUNTIME" \
+            --base-manifest "$BASE_ASSETS/release-manifest.json" --policy "$POLICY" \
+            --overlay "$OVERLAY" --overlay-manifest "$OVERLAY_MANIFEST" \
+            --evidence "${RUNNER_TEMP}/final-overlay-application.json"
           python3 tools/release/audit-runtime.py --root "$RUNTIME"
           python3 tools/release/test-packaged-runtime.py --runtime "$RUNTIME" \
-            --evidence "${RUNNER_TEMP}/release-bump-evidence" --stress-iterations 1 --timeout 300
-      - name: Create and validate immutable release assets
+            --x86-64-fixture "$X86_64_FIXTURE" \
+            --evidence "${RUNNER_TEMP}/release-bump-evidence" \
+            --stress-iterations 1 --timeout 300
+      - name: Repackage and validate the patched release tarball
         env:
           VERSION: ${{ needs.resolve-version-bump.outputs.version }}
           PREVIOUS_TAG: ${{ needs.resolve-version-bump.outputs.previous_tag }}
@@ -159,15 +204,16 @@ jobs:
         run: |
           set -euo pipefail
           assets="${RUNNER_TEMP}/new-release-assets"
-          epoch="$(git log -1 --format=%ct "$GITHUB_SHA")"
+          epoch=$(git log -1 --format=%ct "$GITHUB_SHA")
           python3 tools/release/repackage-published-runtime.py --runtime "$RUNTIME" \
-            --base-assets "$BASE_ASSETS" --test-summary "${RUNNER_TEMP}/release-bump-evidence/summary.json" \
+            --base-assets "$BASE_ASSETS" --build-manifest "$BUILD_MANIFEST" \
+            --test-summary "${RUNNER_TEMP}/release-bump-evidence/summary.json" \
             --output "$assets" --repository "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" \
             --version "$VERSION" --previous-tag "$PREVIOUS_TAG" --source-date-epoch "$epoch"
           python3 tools/release/validate-release-assets.py --directory "$assets" \
             --repository "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" --version "$VERSION"
           printf 'RELEASE_ASSETS=%s\n' "$assets" >> "$GITHUB_ENV"
-      - name: Publish the immutable release and dispatch its fresh-download verifier
+      - name: Upload the immutable assets to a draft release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve-version-bump.outputs.tag }}
@@ -176,10 +222,20 @@ jobs:
         run: |
           set -euo pipefail
           archive="metalsharp-wine-v${VERSION}-macos-arm64.tar.zst"
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
             --title "MetalSharp Wine $TAG" --notes-file "$RELEASE_ASSETS/RELEASE-NOTES.md" \
             "$RELEASE_ASSETS/$archive" "$RELEASE_ASSETS/$archive.sha256" \
-            "$RELEASE_ASSETS/release-manifest.json" "$RELEASE_ASSETS/wine-integration-evidence.json" \
+            "$RELEASE_ASSETS/release-manifest.json" \
+            "$RELEASE_ASSETS/wine-integration-evidence.json" \
             "$RELEASE_ASSETS/sbom.spdx.json" "$RELEASE_ASSETS/evidence-index.json" \
             "$RELEASE_ASSETS/KNOWN-LIMITATIONS.md"
-          gh workflow run release-verify.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
+      - name: Verify uploaded asset digests, then publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve-version-bump.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/release/verify-published-release.py --directory "$RELEASE_ASSETS" \
+            --repository "$GITHUB_REPOSITORY" --tag "$TAG" --commit "$GITHUB_SHA"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

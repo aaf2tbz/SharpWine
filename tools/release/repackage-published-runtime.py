@@ -105,7 +105,8 @@ def make_tar(runtime: Path, output: Path, top: str, epoch: int) -> None:
 
 def integration_evidence(summary: dict[str, Any], repository: str, commit: str,
                          version: str) -> dict[str, Any]:
-    required = {"wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid"}
+    required = {"wineboot-init", "arm64-cmd-exit", "arm64ec-x64-hybrid",
+                "x86_64-exception", "x86_64-cmd-exit"}
     if (summary.get("passed") is not True or summary.get("freshPrefix") is not True or
             summary.get("teardownClean") is not True or not isinstance(summary.get("tests"), list)):
         fail("smoke-test summary did not pass required lifecycle gates")
@@ -133,6 +134,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime", required=True, type=Path)
     parser.add_argument("--base-assets", required=True, type=Path)
+    parser.add_argument("--build-manifest", required=True, type=Path)
     parser.add_argument("--test-summary", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--repository", required=True)
@@ -150,11 +152,19 @@ def main() -> None:
     archive = archive_name(args.version)
     top = archive.removesuffix(".tar.zst")
     summary = load_json(args.test_summary)
-    base_manifest = load_json(args.base_assets / "release-manifest.json")
+    build_manifest = load_json(args.build_manifest)
     base_sbom = load_json(args.base_assets / "sbom.spdx.json")
     base_index = load_json(args.base_assets / "evidence-index.json")
     args.output.mkdir(parents=True, exist_ok=True)
 
+    if (build_manifest.get("schema") != 1 or
+            build_manifest.get("kind") != "published-runtime-patch-set" or
+            build_manifest.get("repositoryCommit") != args.commit or
+            build_manifest.get("fullWineRebuild") is not False):
+        fail("focused overlay build manifest is invalid")
+    for field in ("components", "winePatches", "bridge", "toolchain"):
+        if field not in build_manifest:
+            fail(f"focused overlay build manifest lacks {field}")
     integration = integration_evidence(summary, args.repository, args.commit, args.version)
     canonical(args.output / "wine-integration-evidence.json", integration)
     sbom = dict(base_sbom)
@@ -173,23 +183,34 @@ def main() -> None:
     criteria = list(index.get("criteria", []))
     criteria.append({"id": "published-bundle-overlay-repackage", "passed": True,
                      "evidence": ["wine-integration-evidence.json", "release-manifest.json"]})
+    criteria.append({"id": "pure-x86-64-exception-and-cmd", "passed": True,
+                     "evidence": ["wine-integration-evidence.json"]})
     index["criteria"] = criteria
     canonical(args.output / "evidence-index.json", index)
-    limitations = (args.base_assets / "KNOWN-LIMITATIONS.md").read_text(encoding="utf-8")
-    previous_version = args.previous_tag.removeprefix("v")
     (args.output / "KNOWN-LIMITATIONS.md").write_text(
-        limitations.replace(f"v{previous_version}", f"v{args.version}"), encoding="utf-8")
+        f"# Known limitations for MetalSharp Wine v{args.version}\n\n"
+        "This release claims the bounded pure x86_64 PE32+ path proven by the packaged "
+        "exception fixture and x86_64 cmd.exe smoke test on Apple Silicon through the native "
+        "ARM64 GEM/Blink JIT. It does not claim i386/WoW64, Intel macOS hosting, Rosetta, or "
+        "blanket compatibility with arbitrary x86_64 applications.\n\n"
+        "The existing native AArch64 and accepted ARM64EC/x64 paths remain supported. Optional "
+        f"host integrations not present in the {args.previous_tag} foundation remain outside "
+        "the release. "
+        "Apple frameworks and operating-system services remain external by design.\n",
+        encoding="utf-8")
     notes = (f"# MetalSharp Wine v{args.version}\n\n"
              f"This immutable release is derived from {args.previous_tag}, with the reviewed "
-             "runtime overlay applied on protected main. The previous bundle was validated, "
-             "the resulting runtime passed a fresh-prefix native smoke test, and the final "
-             "archive was validated before publication.\n")
+             "four-file, hash-bound runtime patch applied to the published bundle on native "
+             "Apple Silicon. CI verified every base, patch, and result digest, then proved the "
+             "pure x86_64 exception and cmd paths alongside the retained AArch64 and ARM64EC "
+             "gates without Rosetta.\n")
     (args.output / "RELEASE-NOTES.md").write_text(notes, encoding="utf-8")
 
     metadata = args.runtime / "share/metalsharp"
     runtime_manifest = load_json(metadata / "runtime-manifest.json")
     runtime_manifest["release"] = {"version": args.version, "tag": f"v{args.version}",
                                    "repository": args.repository, "commit": args.commit}
+    runtime_manifest["components"] = build_manifest["components"]
     packaging = dict(runtime_manifest.get("packaging", {}))
     packaging["sourceDateEpoch"] = args.source_date_epoch
     runtime_manifest["packaging"] = packaging
@@ -207,10 +228,10 @@ def main() -> None:
     manifest = {"schema": 1,
                 "release": {"version": args.version, "tag": f"v{args.version}",
                             "repository": args.repository, "commit": args.commit},
-                "components": base_manifest["components"],
-                "winePatches": base_manifest["winePatches"],
-                "bridge": base_manifest["bridge"],
-                "toolchain": base_manifest["toolchain"],
+                "components": build_manifest["components"],
+                "winePatches": build_manifest["winePatches"],
+                "bridge": build_manifest["bridge"],
+                "toolchain": build_manifest["toolchain"],
                 "package": {"name": archive, "sha256": archive_hash,
                             "size": archive_path.stat().st_size,
                             "sourceDateEpoch": args.source_date_epoch,
