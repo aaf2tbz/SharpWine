@@ -186,6 +186,26 @@ static void test_explicit_jit_mode() {
            GEM_MEMORY_OK);
     assert(interpreted_output == input && compiled_output == interpreted_output);
 
+    /* A cached RIP-relative indirect CALL must retain the complete decoded
+     * length. This is the ordinary PE32+ import-call form used by MinGW. */
+    const uint8_t indirect_call[] = {0xff, 0x15, 0xfa, 0x00, 0x00, 0x00};
+    const uint64_t indirect_target = CODE + 0x200U;
+    for (gem_memory *memory : {interpreter_memory, jit_memory}) {
+        assert(gem_memory_write(memory, CODE, indirect_call, sizeof(indirect_call)) ==
+               GEM_MEMORY_OK);
+        assert(gem_memory_write(memory, CODE + 0x100U, &indirect_target, sizeof(indirect_target)) ==
+               GEM_MEMORY_OK);
+    }
+    gem_x64_runtime_invalidate_code(interpreter, CODE, sizeof(indirect_call));
+    gem_x64_runtime_invalidate_code(jit, CODE, sizeof(indirect_call));
+    init(interpreted);
+    assert(gem_x64_runtime_run(interpreter, &interpreted, 1) == GEM_STOP_BUDGET_EXPIRED);
+    for (unsigned pass = 0; pass < 2U; ++pass) {
+        init(compiled);
+        assert(gem_x64_runtime_run(jit, &compiled, 1) == GEM_STOP_BUDGET_EXPIRED);
+        assert(!memcmp(&interpreted, &compiled, sizeof(interpreted)));
+    }
+
     /* Fault and unsupported outcomes must be identical and transactional. */
     const uint8_t unsupported = 0x9c; /* PUSHFQ remains outside the reviewed set. */
     for (gem_memory *memory : {interpreter_memory, jit_memory})

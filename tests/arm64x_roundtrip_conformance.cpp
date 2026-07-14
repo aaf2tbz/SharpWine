@@ -1057,7 +1057,7 @@ int main(int argc, char **argv) {
                                authentic_inner.size()) == GEM_MEMORY_OK);
         assert(gem_memory_protect(harness.memory, inner_page, GEM_GUEST_PAGE_SIZE,
                                   GEM_PAGE_EXECUTE_READWRITE, &old_protection) == GEM_MEMORY_OK);
-        const std::uint8_t unsupported = 0x50;
+        const std::uint8_t unsupported = 0x9C; /* PUSHFQ remains outside the reviewed set. */
         assert(gem_memory_write(harness.memory, control.inner_x64_target_va, &unsupported,
                                 sizeof(unsupported)) == GEM_MEMORY_OK);
         auto unsupported_context = initial_context(control.requested_start_va);
@@ -1629,8 +1629,9 @@ int main(int argc, char **argv) {
             std::uint64_t expected;
             std::uint32_t expected_depth;
         };
-        const std::array<GenericCase, 2> cases{{
+        const std::array<GenericCase, 3> cases{{
             {"direct", native.direct_result, 1U},
+            {"callbackResume", native.callback_resume_result, 1U},
             {"boundedNested", native.nested_result, 2U},
         }};
         for (const auto &test : cases) {
