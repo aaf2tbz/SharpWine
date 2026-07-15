@@ -1,0 +1,105 @@
+name: Diagnose packaged wineboot on macOS 15 ARM64
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/diagnose-wineboot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  trace-wineboot:
+    name: Trace fresh-prefix wineboot on hosted M1
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Record hosted runner identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          sw_vers
+          uname -a
+          sysctl -n hw.model hw.ncpu hw.logicalcpu hw.memsize hw.pagesize
+          test "$(uname -m)" = arm64
+          test "$(sysctl -in sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+      - name: Install package codec
+        run: brew install zstd
+      - name: Reconstruct the exact unpublished v0.1.2 candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          foundation="${RUNNER_TEMP}/published-foundation"
+          policy=release/v0.1.2-overlay-policy.json
+          patch_set=release/runtime-patches/v0.1.2/manifest.json
+          overlay="${RUNNER_TEMP}/patched-overlay"
+          fixture="${RUNNER_TEMP}/x86_64_exit.exe"
+          overlay_manifest="${RUNNER_TEMP}/overlay-manifest.json"
+          probe="${RUNNER_TEMP}/probe-runtime"
+          python3 tools/release/prepare-published-foundation.py \
+            --workspace "$foundation" --policy "$policy" \
+            --repository "$GITHUB_REPOSITORY"
+          runtime=$(python3 -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["runtime"])' \
+            "$foundation/foundation.json")
+          python3 tools/release/apply-runtime-patches.py --runtime "$runtime" \
+            --patch-set "$patch_set" --policy "$policy" --output "$overlay" \
+            --fixture-output "$fixture" --commit "$GITHUB_SHA"
+          python3 tools/release/create-focused-overlay.py --policy "$policy" \
+            --overlay "$overlay" --output "$overlay_manifest"
+          ditto "$runtime" "$probe"
+          python3 tools/release/apply-focused-overlay.py --runtime "$probe" \
+            --base-manifest "$foundation/assets/release-manifest.json" \
+            --policy "$policy" --overlay "$overlay" \
+            --overlay-manifest "$overlay_manifest" \
+            --evidence "${RUNNER_TEMP}/overlay-application.json"
+          python3 tools/release/audit-runtime.py --root "$probe"
+          printf 'PROBE=%s\n' "$probe" >> "$GITHUB_ENV"
+      - name: Trace three isolated fresh-prefix launches
+        shell: bash
+        run: |
+          set -uo pipefail
+          evidence="${RUNNER_TEMP}/wineboot-diagnostics"
+          mkdir -p "$evidence"
+          failed=0
+          for attempt in 1 2 3; do
+            prefix="${RUNNER_TEMP}/wine-prefix-${attempt}"
+            boot_log="$evidence/wineboot-${attempt}.log"
+            cmd_log="$evidence/cmd-${attempt}.log"
+            rm -rf "$prefix"
+            env WINEPREFIX="$prefix" WINE_GEM_LAUNCH_TRACE=1 \
+              WINEDEBUG=-all,+module,+loaddll,+process,+gem \
+              "$PROBE/bin/wineboot" --init >"$boot_log" 2>&1
+            boot_rc=$?
+            kernel32="$prefix/drive_c/windows/system32/kernel32.dll"
+            env WINEPREFIX="$prefix" WINE_GEM_LAUNCH_TRACE=1 \
+              WINEDEBUG=-all,+module,+loaddll,+process,+gem \
+              "$PROBE/bin/wine" cmd.exe /d /c exit 0 >"$cmd_log" 2>&1
+            cmd_rc=$?
+            if [ "$boot_rc" -ne 0 ] || [ "$cmd_rc" -ne 0 ] || \
+               [ ! -s "$kernel32" ] || \
+               grep -Eq 'could not load|status c0000135' "$boot_log" "$cmd_log"; then
+              failed=1
+            fi
+            env WINEPREFIX="$prefix" "$PROBE/bin/wineserver" -k >/dev/null 2>&1 || true
+            env WINEPREFIX="$prefix" "$PROBE/bin/wineserver" -w >/dev/null 2>&1 || true
+            printf 'attempt=%d wineboot_rc=%d cmd_rc=%d kernel32=%s\n' \
+              "$attempt" "$boot_rc" "$cmd_rc" "$([ -s "$kernel32" ] && echo present || echo missing)" \
+              | tee -a "$evidence/summary.txt"
+          done
+          exit "$failed"
+      - name: Upload complete loader diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wineboot-macos15-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/wineboot-diagnostics
+            ${{ runner.temp }}/overlay-application.json
+          if-no-files-found: error
+          retention-days: 7
