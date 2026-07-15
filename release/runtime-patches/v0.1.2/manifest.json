@@ -65,10 +65,10 @@
       "path": "lib/wine/aarch64-unix/ntdll.so",
       "action": "replace",
       "patch": "lib_wine_aarch64-unix_ntdll_so.bsdiff",
-      "patchSha256": "e9553bb17de94a457725cc06cddd425c78bb940e2cdb99a269bc8c4cf2b60e39",
+      "patchSha256": "dffa533ac4d600243d878ca864f6490e4979dec57142aaa1f8fc10da4998eb45",
       "baseSha256": "b267a5823d9d9cb77c609245aff91347372f6d6546b3bfc8d3834258de247a35",
-      "resultSha256": "1aee496aa38996af86e3e12f8752833466f5cd1309485bfae879277e43d686a1",
-      "resultSize": 604520,
+      "resultSha256": "ef5f7df3979afecd294a71270d34823acfde86bd33558fc820c4c9ec7449fb71",
+      "resultSize": 601152,
       "mode": 493
     },
     {

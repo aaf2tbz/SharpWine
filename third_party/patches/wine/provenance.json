@@ -104,6 +104,13 @@
       "sha256": "989610f9fb94798c712c36625448ef61f0e41b39ff35451c9125a095c78e25b3",
       "authoringCommit": "ff715cf7b8bfe079dd1ba5f87a6bd0933e9d0652",
       "purpose": "Add the i386 xtajit CPU surface backed by GEM, map the 32-bit guest address space through bounded high host shadow windows on Apple Silicon, and preserve context-changing syscall results such as NtContinue."
+    },
+    {
+      "order": 15,
+      "path": "third_party/patches/wine/0015-ntdll-accept-relocated-initial-process-images.patch",
+      "sha256": "9b5f93f617ba2ab08e6aa111094d44330d2094d2872d6cf7d35bb8e21984f982",
+      "authoringCommit": "f7fe3ef2f02761b6b9500ec20cae6590290474cd",
+      "purpose": "Treat nonzero NT success statuses from initial executable mapping as successful so ASLR-relocated wineboot images do not incorrectly fall back to start.exe and trigger a secondary kernel32 bootstrap failure."
     }
   ],
   "researchEvidence": {

@@ -15,7 +15,7 @@
     {"path": "LICENSES/MIT-DXMT.txt", "action": "add", "reason": "DXMT license"},
     {"path": "bin/.wine-i386-real", "action": "add", "reason": "Native ARM64 Wine loader selected by the packaged i386 route"},
     {"path": "lib/libmetalsharp-gem-wine.0.1.0.dylib", "action": "replace", "reason": "Four-route GEM bridge with i386/WoW64 entry points"},
-    {"path": "lib/wine/aarch64-unix/ntdll.so", "action": "replace", "reason": "Native ARM64 i386/WoW64 routing boundary"},
+    {"path": "lib/wine/aarch64-unix/ntdll.so", "action": "replace", "reason": "Native ARM64 i386/WoW64 routing and relocated-bootstrap boundary"},
     {"path": "lib/wine/aarch64-unix/winemetal.so", "action": "add", "reason": "Source-built paired DXMT ARM64 Unix bridge"},
     {"path": "lib/wine/aarch64-unix/xtajit.so", "action": "add", "reason": "Native ARM64 WoW64 translation Unix library"},
     {"path": "lib/wine/aarch64-windows/wow64.dll", "action": "replace", "reason": "WoW64 guest transition module"},

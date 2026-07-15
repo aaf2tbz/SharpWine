@@ -102,6 +102,11 @@ is not a release input.
      Apple Silicon and preserves 32-bit values in the WoW64 ABI;
    - refreshes the emulated thread context after context-changing syscalls such
      as `NtContinue`, so startup resumes at the requested guest state.
+15. `0015-ntdll-accept-relocated-initial-process-images.patch`
+   - treats nonzero NT success statuses from initial executable mapping as
+     successful instead of incorrectly falling back to `start.exe`;
+   - prevents an ASLR-relocated `wineboot.exe` from causing a secondary
+     `kernel32.dll` bootstrap failure.
 
 ## Current evidence and limitation
 

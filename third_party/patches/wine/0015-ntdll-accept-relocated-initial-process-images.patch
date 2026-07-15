@@ -1,0 +1,32 @@
+From f7fe3ef2f02761b6b9500ec20cae6590290474cd Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@users.noreply.github.com>
+Date: Tue, 14 Jul 2026 18:30:37 -0600
+Subject: [PATCH 15/15] ntdll: accept relocated initial process images
+
+A successfully mapped initial executable may return a nonzero NT success
+status such as STATUS_IMAGE_NOT_AT_BASE. Do not route those images through
+start.exe; reserve that fallback for actual NT failures. This prevents an
+ASLR-dependent prefix bootstrap from discarding a valid relocated wineboot.exe
+and subsequently failing to load kernel32.dll.
+
+This patch is distributed under Wine's LGPL-2.1-or-later terms.
+---
+ dlls/ntdll/unix/env.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/dlls/ntdll/unix/env.c b/dlls/ntdll/unix/env.c
+index bdd3e51a66..bb33deb4cf 100644
+--- a/dlls/ntdll/unix/env.c
++++ b/dlls/ntdll/unix/env.c
+@@ -1950,7 +1950,7 @@ static RTL_USER_PROCESS_PARAMETERS *build_initial_params( void **module )
+         }
+     }
+ 
+-    if (status)  /* try launching it through start.exe */
++    if (!NT_SUCCESS(status))  /* try launching it through start.exe */
+     {
+         static const char *args[] = { "start.exe", "/exec" };
+         free( nt_name.Buffer );
+-- 
+2.54.0 (Apple Git-157)
+
