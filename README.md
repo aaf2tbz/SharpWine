@@ -8,7 +8,7 @@ Updated July 14, 2026
 
 [![CI](https://img.shields.io/github/actions/workflow/status/aaf2tbz/SharpWine/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/aaf2tbz/SharpWine/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/aaf2tbz/SharpWine?style=for-the-badge)](https://github.com/aaf2tbz/SharpWine/releases)
-[![License](https://img.shields.io/github/license/aaf2tbz/SharpWine?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/github/license/aaf2tbz/SharpWine?style=for-the-badge)](https://github.com/aaf2tbz/SharpWine?tab=License-1-ov-file)
 
 </div>
 
