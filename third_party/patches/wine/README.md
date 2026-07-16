@@ -177,3 +177,9 @@ wrapper and rejects loader re-exec or `start.exe` fallback evidence. The
 resulting `wine-build-manifest.json` records those results, evidence hashes,
 configure flags, toolchain, dependency roots, installed files, and Mach-O audit
 output. It is integration evidence, not a final release package.
+
+Patch `0018` preserves the existing xtajit Unix-call ABI and maps stable GEM
+i386 exception identities to Windows exception records. Access violations
+retain exact read/write/execute information and the faulting address;
+breakpoint, divide, overflow, stack, and illegal-instruction stops no longer
+collapse into one fallback exception.

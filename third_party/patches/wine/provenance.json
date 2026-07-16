@@ -125,6 +125,13 @@
       "sha256": "cb9e07b6b2606b5d7f32e7a9a45d99786be1019a9079fb502e01e779fad6691e",
       "authoringCommit": "eb43df5ad300bdfed83f6501af9d98fe15df6c39",
       "purpose": "Canonicalize Darwin ARM64 WoW64 pointers across user callbacks, messages, GDI initialization, macdrv parameters, printing, and code-page tables so translated 32-bit GUI applications can create sustained interactive native windows."
+    },
+    {
+      "order": 18,
+      "path": "third_party/patches/wine/0018-xtajit-map-normalized-i386-exceptions.patch",
+      "sha256": "99370fcb37054c0210b8bb867c9e07b6cd857e579adfc801b063e0943f7b2b83",
+      "authoringCommit": "4478de9295fa222e7fc2f1f792b86ddf499dc22a",
+      "purpose": "Map stable GEM i386 exception identities to precise Windows breakpoint, divide, overflow, stack, and illegal-instruction exceptions in the WoW64 CPU boundary."
     }
   ],
   "researchEvidence": {

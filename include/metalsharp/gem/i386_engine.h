@@ -16,6 +16,17 @@ extern "C" {
 #define GEM_I386_BOUNDARY_WINDOWS_SYSCALL UINT32_C(1)
 #define GEM_I386_BOUNDARY_UNIX_CALL UINT32_C(2)
 
+/* Stable Windows-visible exception identities reported in
+ * gem_i386_stop_info.engine_status when reason is
+ * GEM_STOP_WINDOWS_EXCEPTION.  These values are part of the i386 engine ABI;
+ * Blink-private halt values must never cross this boundary. */
+#define GEM_I386_EXCEPTION_NONE UINT32_C(0)
+#define GEM_I386_EXCEPTION_ILLEGAL_INSTRUCTION UINT32_C(1)
+#define GEM_I386_EXCEPTION_BREAKPOINT UINT32_C(2)
+#define GEM_I386_EXCEPTION_INTEGER_DIVIDE_BY_ZERO UINT32_C(3)
+#define GEM_I386_EXCEPTION_INTEGER_OVERFLOW UINT32_C(4)
+#define GEM_I386_EXCEPTION_STACK_OVERFLOW UINT32_C(5)
+
 struct gem_i386_runtime;
 
 enum gem_i386_engine_mode {

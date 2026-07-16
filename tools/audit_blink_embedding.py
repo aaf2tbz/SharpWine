@@ -145,7 +145,7 @@ def audit_trace(provenance, machine_text, embedding_text, embedding_header):
         "unrestricted GemHandlerId numbering drift",
     )
     gem_handler_id = re.search(
-        r"int GemHandlerId\(nexgen32e_f handler, long rde\) \{(.*?)\n\}",
+        r"int GemHandlerId\(nexgen32e_f handler, long rde, bool legacy32\) \{(.*?)\n\}",
         machine_text,
         re.S,
     )
@@ -185,7 +185,7 @@ def audit_trace(provenance, machine_text, embedding_text, embedding_header):
         "handler restriction provenance drift",
     )
     need(
-        "return GemHandlerId(handler, rde) != 0;" in machine_text,
+        "return GemHandlerId(handler, rde, legacy32) != 0;" in machine_text,
         "GemIsAllowedHandler not derived from GemHandlerId",
     )
     need(
@@ -209,7 +209,8 @@ def audit_trace(provenance, machine_text, embedding_text, embedding_header):
     need(
         re.search(
             r"GemHandlerId\(GetOp\(Mopcode\(m->xedd->op.rde\)\),\s*"
-            r"m->xedd->op.rde\)",
+            r"m->xedd->op.rde,\s*"
+            r"g->guest_mode == BLINK_GEM_GUEST_LEGACY_32\)",
             embedding_text,
         ),
         "trace identity not sourced from Blink decode dispatch",
@@ -278,7 +279,8 @@ def audit_decode_attempt(provenance, machine_text, embedding_text, embedding_hea
     need(
         re.search(
             r"GemHandlerId\(GetOp\(Mopcode\(m->xedd->op.rde\)\),\s*"
-            r"m->xedd->op.rde\)",
+            r"m->xedd->op.rde,\s*"
+            r"g->guest_mode == BLINK_GEM_GUEST_LEGACY_32\)",
             embedding_text,
         )
         and "g->last_decode.handler_id" in embedding_text,
@@ -319,11 +321,12 @@ def main():
     parser.add_argument("--rosetta-patch", type=Path, required=True)
     parser.add_argument("--rosetta-sse41-patch", type=Path, required=True)
     parser.add_argument("--phase1-patch", type=Path, required=True)
+    parser.add_argument("--phase2-patch", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 5, "provenance schema")
+    need(provenance["schemaVersion"] == 6, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -338,6 +341,7 @@ def main():
         "Rosetta SSE4.1 patch hash",
     )
     need(digest(args.phase1_patch) == provenance["phase1PatchSha256"], "phase 1 patch hash")
+    need(digest(args.phase2_patch) == provenance["phase2PatchSha256"], "phase 2 patch hash")
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
 
@@ -348,6 +352,8 @@ def main():
     jit = (args.source / "blink/jit.c").read_text()
     jit_header = (args.source / "blink/jit.h").read_text()
     instruction = (args.source / "blink/instruction.c").read_text()
+    legacy = (args.source / "blink/legacy.c").read_text()
+    stack = (args.source / "blink/stack.c").read_text()
     throw = (args.source / "blink/throw.c").read_text()
     for symbol in (
         "NewSystem(",
@@ -383,6 +389,9 @@ def main():
         "m->fs.base = s->fs_base",
         "memcpy(m->fpu.st, s->x87",
         "blink_gem_machine_sync(",
+        "BLINK_GEM_EXCEPTION_DIVIDE",
+        "BLINK_GEM_EXCEPTION_ILLEGAL_INSTRUCTION",
+        "BLINK_GEM_EXCEPTION_OVERFLOW",
     ):
         need(required in embedding, f"missing bounded JIT embedding invariant {required}")
     need("m->gemembed || opclass == kOpBranching" in machine, "JIT path is not one instruction")
@@ -395,6 +404,12 @@ def main():
         "m->faultaddr = ip + i;" in instruction
         and "if (!m->gemembed || !m->faultaddr) m->faultaddr = pc;" in instruction,
         "GEM cross-page decode fault address missing",
+    )
+    need(
+        "SetWriteAddr(m, v, osz);" in stack
+        and "SetReadAddr(m, v, osz);" in stack
+        and legacy.count("memcpy(b, Load(m, addr, n, b), n);") == 2,
+        "GEM precise stack access/fault tracking missing",
     )
     need(
         fusion.count("if (m->gemembed) return false;") == 2,

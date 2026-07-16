@@ -121,6 +121,10 @@
         {
           "path": "third_party/patches/wine/0017-darwin-arm64-canonicalize-wow64-gui-pointers.patch",
           "sha256": "cb9e07b6b2606b5d7f32e7a9a45d99786be1019a9079fb502e01e779fad6691e"
+        },
+        {
+          "path": "third_party/patches/wine/0018-xtajit-map-normalized-i386-exceptions.patch",
+          "sha256": "99370fcb37054c0210b8bb867c9e07b6cd857e579adfc801b063e0943f7b2b83"
         }
       ]
     },

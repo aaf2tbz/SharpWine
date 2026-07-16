@@ -1,0 +1,61 @@
+From 4478de9295fa222e7fc2f1f792b86ddf499dc22a Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Wed, 15 Jul 2026 19:30:00 -0600
+Subject: [PATCH 1/1] xtajit: map normalized i386 exceptions
+
+---
+diff --git a/dlls/xtajit/cpu.c b/dlls/xtajit/cpu.c
+index 79ef5f0a3f..835d7415aa 100644
+--- a/dlls/xtajit/cpu.c
++++ b/dlls/xtajit/cpu.c
+@@ -202,7 +202,29 @@ void WINAPI BTCpuSimulate(void)
+                 rec.ExceptionInformation[1] = params.fault_address;
+                 Wow64RaiseException( -1, &rec );
+             }
+-            else if (params.event == 4) Wow64RaiseException( 3, &rec );
++            else if (params.event == 4)
++            {
++                switch (params.engine_status)
++                {
++                case XTAJIT_EXCEPTION_BREAKPOINT:
++                    rec.ExceptionCode = EXCEPTION_BREAKPOINT;
++                    break;
++                case XTAJIT_EXCEPTION_INTEGER_DIVIDE_BY_ZERO:
++                    rec.ExceptionCode = EXCEPTION_INT_DIVIDE_BY_ZERO;
++                    break;
++                case XTAJIT_EXCEPTION_INTEGER_OVERFLOW:
++                    rec.ExceptionCode = EXCEPTION_INT_OVERFLOW;
++                    break;
++                case XTAJIT_EXCEPTION_STACK_OVERFLOW:
++                    rec.ExceptionCode = EXCEPTION_STACK_OVERFLOW;
++                    break;
++                case XTAJIT_EXCEPTION_ILLEGAL_INSTRUCTION:
++                default:
++                    rec.ExceptionCode = EXCEPTION_ILLEGAL_INSTRUCTION;
++                    break;
++                }
++                Wow64RaiseException( -1, &rec );
++            }
+             else Wow64RaiseException( 6, &rec );
+             if (RtlWow64GetThreadContext( GetCurrentThread(), &params.context ))
+                 RtlRaiseStatus( STATUS_UNSUCCESSFUL );
+diff --git a/dlls/xtajit/unixlib.h b/dlls/xtajit/unixlib.h
+index effe88a61b..f3fff103f4 100644
+--- a/dlls/xtajit/unixlib.h
++++ b/dlls/xtajit/unixlib.h
+@@ -30,3 +30,15 @@ enum xtajit_memory_operation
++/* Kept numerically identical to GEM_I386_EXCEPTION_*; the PE half cannot
++ * include native Unix-side bridge headers. */
++enum xtajit_exception
++{
++    XTAJIT_EXCEPTION_NONE,
++    XTAJIT_EXCEPTION_ILLEGAL_INSTRUCTION,
++    XTAJIT_EXCEPTION_BREAKPOINT,
++    XTAJIT_EXCEPTION_INTEGER_DIVIDE_BY_ZERO,
++    XTAJIT_EXCEPTION_INTEGER_OVERFLOW,
++    XTAJIT_EXCEPTION_STACK_OVERFLOW
++};
++
+ struct xtajit_process_init_params
+ {
+     ULONG syscall_boundary;

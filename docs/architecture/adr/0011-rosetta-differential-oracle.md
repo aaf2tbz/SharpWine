@@ -78,10 +78,37 @@ unaligned atomics, the SSE4.1 packed integer min/max family, transactional
 PUSHA/POPA stack frames, Windows user-mode PUSHF/POPF state, and CMPXCHG8B
 writeback.
 
-This result does not close the remaining coverage plan. Fault delivery and page
-crossings, x87/MMX state, string/REP instructions, segmentation, self-modifying
-code, and wider seeded randomized input remain separate follow-on corpora
-because they require additional normalized state or exception capture.
+The Phase 2 fault/coherency corpus adds 128 deterministic PE32 records: 32
+illegal-instruction exceptions, 48 integer divide exceptions, and 48 access
+violations. Each record binds the instruction bytes, initial and final context,
+exception code and parameters, fault address and access type, retirement state,
+and before/after memory hashes. All 128 records replay successfully alongside
+110 native boundary, rollback, exception-delivery, guard-page, and invalidation
+scenarios replay in both interpreter and JIT modes for 220 comparisons. The
+original 2,916 Phase 1 interpreter/JIT
+comparisons remain 2,916/2,916 after the Phase 2 embedding changes.
+
+Phase 2 exposed a stale translated block after guest self-modification. The
+embedding now invalidates the written executable page and its predecessor so
+same-address rewrites, overlapping instructions, and instructions crossing a
+page boundary observe new code in both execution modes. The corpus also proves
+that unsuccessful multi-page operations preserve register, flag, stack,
+memory, and instruction-pointer state; guard consumption is the only permitted
+protection-state side effect before retry.
+
+The expanded boundary matrix additionally found that INTO was being reported
+as an illegal instruction and that cross-page PUSH/POP and PUSHA/POPA failures
+could lose their write/read identity or exact second-page address. The ordered
+embedding patch admits INTO only through its architectural overflow behavior
+and records stack access intent before any lazy page resolution, including the
+multi-register POPA load. Those exception and stack-address changes are gated
+to the legacy-32 guest mode so the established x86_64 embedding contract and
+fault metadata remain unchanged.
+
+This result does not close the remaining coverage plan. x87/MMX state,
+string/REP instructions, segmentation, and wider seeded randomized input remain
+separate follow-on corpora because they require additional normalized state or
+exception capture.
 
 ## Boundaries
 

@@ -164,6 +164,7 @@ if(MSWR_ENABLE_X64_ENGINE OR MSWR_ENABLE_I386_ENGINE)
         --rosetta-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0005-gem-rosetta-i386-conformance.patch"
         --rosetta-sse41-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0006-gem-rosetta-sse41-minmax.patch"
         --phase1-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0007-gem-i386-stack-cmpxchg8b.patch"
+        --phase2-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0008-gem-i386-normalized-exceptions.patch"
         --provenance "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/0008-blink-embedding.provenance.json"
         RESULT_VARIABLE blink_audit_result)
     if(NOT blink_audit_result EQUAL 0)
@@ -367,6 +368,13 @@ if(BUILD_TESTING)
         add_test(NAME gem.i386_engine_conformance COMMAND i386_engine_conformance)
         set_tests_properties(gem.i386_engine_conformance PROPERTIES
             LABELS "i386;zero-rosetta;gem.engine;production-jit;interpreter-oracle")
+
+        add_executable(i386_phase2_conformance tests/i386_phase2_conformance.c)
+        target_link_libraries(i386_phase2_conformance PRIVATE metalsharp_gem)
+        mswr_enable_warnings(i386_phase2_conformance)
+        add_test(NAME gem.i386_phase2_conformance COMMAND i386_phase2_conformance)
+        set_tests_properties(gem.i386_phase2_conformance PROPERTIES
+            LABELS "i386;zero-rosetta;faults;page-boundary;code-invalidation")
     endif()
 
     if(MSWR_ARM64X_ROUNDTRIP_ARTIFACT_DIR)
@@ -437,7 +445,7 @@ if(BUILD_TESTING)
     set(mswr_assert_test_targets
         context_test context_layout_test gem_headers_cxx_test
         context_conversion_test context_serialization_test memory_test
-        i386_context_test i386_memory_test i386_engine_conformance
+        i386_context_test i386_memory_test i386_engine_conformance i386_phase2_conformance
         memory_page_isolation_test macos_tso_api_probe
         arm64ec_engine_conformance wine_bridge_conformance wine_i386_bridge_conformance
         x64_engine_conformance

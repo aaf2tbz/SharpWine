@@ -77,3 +77,13 @@ PMINSB, PMINSD, PMINUW, PMINUD, PMAXSB, PMAXSD, PMAXUW, and PMAXUD.
 `817bf0e8592eb5f9223c32435867203d8a949ea25cb716d092fe237c3825b4b4`)
 routes PUSHA stack frames and CMPXCHG8B replacements through Blink's tracked
 write paths, and gives legacy PUSHF/POPF the Windows user-mode IF/IOPL view.
+
+`0008-gem-i386-normalized-exceptions.patch` (SHA-256
+`df5b9d33a5945df0fa53ac6a412d7df0d416d936c0a9b5ae7b01e6dadc27e354`)
+converts Blink-private divide, overflow, decode, and undefined-instruction halt
+values into stable embedding exception classes. The GEM i386 boundary maps
+only those reviewed values into Windows-visible exceptions; private halt codes
+never escape the embedding ABI. Stack reads and writes now preserve their
+precise access type and failing cross-page address. Guest writes to executable
+shadow pages also invalidate that page and its possible cross-page predecessor
+before the next JIT execution.

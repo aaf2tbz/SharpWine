@@ -144,14 +144,40 @@ enum gem_stop_reason gem_i386_blink_step(struct gem_i386_runtime *runtime,
     }
     if (result.outcome == BLINK_GEM_MEMORY_FAULT)
         return GEM_STOP_MEMORY_FAULT;
+    if (result.outcome == BLINK_GEM_EXCEPTION) {
+        switch (result.engine_status) {
+        case BLINK_GEM_EXCEPTION_ILLEGAL_INSTRUCTION:
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_ILLEGAL_INSTRUCTION;
+            break;
+        case BLINK_GEM_EXCEPTION_DIVIDE:
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_INTEGER_DIVIDE_BY_ZERO;
+            break;
+        case BLINK_GEM_EXCEPTION_OVERFLOW:
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_INTEGER_OVERFLOW;
+            break;
+        default:
+            return GEM_STOP_INVARIANT_VIOLATION;
+        }
+        return GEM_STOP_WINDOWS_EXCEPTION;
+    }
     if (result.outcome == BLINK_GEM_UNSUPPORTED) {
         struct blink_gem_decode_attempt attempt;
         memset(&attempt, 0, sizeof(attempt));
         attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
         attempt.size = sizeof(attempt);
         if (blink_gem_machine_decode_attempt_info(runtime->backend, &attempt) && attempt.valid &&
-            strcmp(attempt.name, "OpInterrupt3") == 0)
+            strcmp(attempt.name, "OpInterrupt3") == 0) {
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_BREAKPOINT;
             return GEM_STOP_WINDOWS_EXCEPTION;
+        }
+        if (attempt.valid && strcmp(attempt.name, "OpInto") == 0) {
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_INTEGER_OVERFLOW;
+            return GEM_STOP_WINDOWS_EXCEPTION;
+        }
+        if (attempt.valid && strcmp(attempt.name, "OpUd") == 0) {
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_ILLEGAL_INSTRUCTION;
+            return GEM_STOP_WINDOWS_EXCEPTION;
+        }
         if (attempt.valid && (strcmp(attempt.name, "OpInterruptImm") == 0 ||
                               strcmp(attempt.name, "OpSysenter") == 0)) {
             runtime->last_stop.engine_status = GEM_I386_BOUNDARY_WINDOWS_SYSCALL;
