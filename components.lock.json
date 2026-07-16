@@ -201,6 +201,7 @@
       "bounded_jit_patch_sha256": "797f92651c17b86cce97a5bc73dd88e0c014e4f7c8664b4ee4d4c431a8175c80",
       "i386_legacy_patch_sha256": "50499a434838be5620fb86d4a6e214e6a9545eeac0dd059b1f56385a78b6cbeb",
       "batched_sync_patch_sha256": "06be3aef4cce6e1beceb5872106cfa11b7909fa3631a6a587669c71c6d900b33",
+      "phase4_corrections_patch_sha256": "ce884f139520826442edd5eff25e8a9e0d5bd76b5810d6e71dc266e8788fe246",
       "embedding_provenance": "docs/architecture/adr/0008-blink-embedding.provenance.json",
       "accepting_mode": "bounded one-instruction AArch64 JIT for long and legacy-32 guest modes; interpreter is an explicit conformance oracle"
     }

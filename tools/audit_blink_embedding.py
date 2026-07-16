@@ -359,13 +359,14 @@ def main():
     parser.add_argument("--phase1-patch", type=Path, required=True)
     parser.add_argument("--phase2-patch", type=Path, required=True)
     parser.add_argument("--phase3-patch", type=Path, required=True)
+    parser.add_argument("--phase4-patch", type=Path, required=True)
     parser.add_argument("--capability-manifest", type=Path, required=True)
     parser.add_argument("--phase3-corpus", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 7, "provenance schema")
+    need(provenance["schemaVersion"] == 8, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -382,6 +383,7 @@ def main():
     need(digest(args.phase1_patch) == provenance["phase1PatchSha256"], "phase 1 patch hash")
     need(digest(args.phase2_patch) == provenance["phase2PatchSha256"], "phase 2 patch hash")
     need(digest(args.phase3_patch) == provenance["phase3PatchSha256"], "phase 3 patch hash")
+    need(digest(args.phase4_patch) == provenance["phase4PatchSha256"], "phase 4 patch hash")
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
 

@@ -5,7 +5,7 @@
   "corpus": {
     "path": "tests/i386_phase3_conformance.c",
     "reference": "tests/fixtures/i386_phase3_reference.bin",
-    "referenceSha256": "606861057e2836dd6180041a1a8b37e45a0da46a7f3d98053eef758b77833d38",
+    "referenceSha256": "fb8a1f249d08b81d93e5acbf715fc63801a77f185135e24c70cea81c535ddd06",
     "cases": 1024,
     "comparisons": 2048,
     "categories": {

@@ -26,6 +26,7 @@ jobs:
           python-version: "3.13"
       - run: python3 tools/ci/check-repository.py
       - run: python3 tools/ci/test-check-repository.py
+      - run: python3 tools/ci/test-phase4-tools.py
       - run: python3 tools/release/test-release-tools.py
       - run: python3 tools/release/test-focused-overlay.py
       - run: python3 tools/release/validate-wine-patches.py
@@ -41,6 +42,7 @@ jobs:
           tools/ci/create-arm64x-issue14-bundle.py
           tools/ci/run-blink-tso-conformance.py
           tools/ci/test-check-repository.py
+          tools/ci/test-phase4-tools.py
           tools/ci/validate-arm64x-issue14-artifact.py
           tools/ci/validate-blink-tso-evidence.py
           tools/release/repackage-published-runtime.py
@@ -52,6 +54,9 @@ jobs:
           tools/release/finalize-x86-64-evidence.py
           tools/release/reconstruct-x86-64-fixture.py
           tools/release/validate-release-assets.py
+          tools/i386/minimize_phase4_case.py
+          tools/i386/phase4_differential.py
+          tools/i386/create_phase5_golden.py
           tools/release/validate-readiness.py
           tools/release/validate-wine-patches.py
           tools/release/validate-dxmt-patches.py

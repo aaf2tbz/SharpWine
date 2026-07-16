@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
   "archiveSha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
   "patchSha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
@@ -11,6 +11,7 @@
   "phase1PatchSha256": "817bf0e8592eb5f9223c32435867203d8a949ea25cb716d092fe237c3825b4b4",
   "phase2PatchSha256": "df5b9d33a5945df0fa53ac6a412d7df0d416d936c0a9b5ae7b01e6dadc27e354",
   "phase3PatchSha256": "48834288b7a65337829f26d16c621e8bffa006b6eeea5f5ea353a1c4ee5429ae",
+  "phase4PatchSha256": "ce884f139520826442edd5eff25e8a9e0d5bd76b5810d6e71dc266e8788fe246",
   "license": "ISC",
   "prePatch": {
     "blink/machine.c": "73a32c95fbc191394c116bd2f41ebba464c963718b3785adaca22c5a93e8dc89",
@@ -31,14 +32,14 @@
     "blink/name.c": "e5ef3593becbc189fbb0e80747ce8f418e41e68cce351d32668283667185d063",
     "blink/address.c": "92cf3ef727aa5441776da12dc20e2d86116730100e3ef90fb696cf6c6c144c1e",
     "blink/aes.c": "740ec04d63785293e54cc6680ab1049142c48b8d38a180301524a86094bf6de0",
-    "blink/fpu.c": "6965a2e3b9b15d6e7b380ee4c98046dd1cfff3edef1616cc1cbf75fd69d2e8b0",
+    "blink/fpu.c": "06b189834b712d4edf64f58188db629f8bb42c6f63d9eef0ac2a9f227d8e39c3",
     "blink/sse.c": "492aea124a2af3777f8dd4615a8c1440e66b6704f2a1fcac1ea1700351bb0ee0",
     "blink/stack.c": "45325f69603157c84cfbf79bc7ad71be6071ad1664e7b3981233817a936df35b",
     "blink/throw.c": "1826aa163631f978d742f8d00af0198f7b86c5b17cd2fc5dae3f7d427f33eefe",
     "blink/jit.h": "8667edf65bf2e34412b7c37af92b8e5a1877f08dc24a604ea6306d08a6437fe6",
     "blink/jit.c": "af082eb389d010c6649b09703239522dbc97d635c1640036b0c9f777a78928fb",
     "blink/uop.c": "306fe3cb6ad72e0a3e6589f91a3152c16b38d0f1ab3bb9334a3602dedc8aca0d",
-    "blink/string.c": "a6ca81cc1999930fff528a2b0d9607c9a4532efd46656196616d4024d8f83ac3",
+    "blink/string.c": "97521235e417563f8e2dd40b8d7e40e63a60e4279d0ac5ae0dd7192f2262b42d",
     "blink/memory.c": "4933fa653269c7743ceac2638212440eba4352138e9c67f8a6e037c4058efc54",
     "blink/sse4.c": "b990ec6f557d2baffdeadd8644d74088d9dcf9c4722578ea459578bf0136a959"
   },

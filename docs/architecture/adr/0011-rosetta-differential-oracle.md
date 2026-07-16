@@ -128,8 +128,42 @@ six segment descriptors enforce complete access widths and permissions. A
 packaged PE32 context/exception fixture also completed with its exact success
 marker and no residual Wine processes.
 
-This result does not close the remaining coverage plan. Wider seeded randomized
-input and mismatch minimization remain Phase 4 work.
+The Phase 4 generator defines 16 independently addressable 4,096-case shards
+using schema v1, template revision 1, master seed `0x534841525057494e`, and
+SplitMix64 derivation. The shared integer-only generator is compiled into both
+the PE32 compatibility worker and native GEM worker. Canonical records carry
+the complete initial and final i386 context, defined-state masks, memory hashes,
+exception state, retirement state, and JIT counters. Every case runs in an
+isolated process under a two-second watchdog, with four independent prefixes
+and scoped ten-second cleanup.
+
+The accepted Phase 4 qualification stops at shard 4 ordinal 3928: 20,313
+baseline records, 40,626/40,626 native-to-baseline comparisons, and
+20,313/20,313 interpreter/JIT parity checks. All 20,313 cases passed with zero
+mismatches, unsupported advertised instructions, JIT fallback, crashes,
+timeouts, malformed records, infrastructure failures, or residual processes.
+The proportional 4,096-case smoke shard also passed independently. Together
+with the retained 5,184 deterministic comparisons, this records 45,810 native
+compatibility comparisons. The unexecuted suffix of the generated 65,536-case
+space is explicitly not claimed; Phase 5 may select or bind additional cases
+when establishing the permanent CI corpus.
+
+Qualification promoted two minimized deterministic regressions. A full x87
+stack push now commits the indefinite value and special tag after masked stack
+overflow, and SCAS now computes accumulator-minus-memory flags while retaining
+load-before-update fault behavior. The PE32 capture path also normalizes x87
+arithmetic at the documented binary64 boundary and explicitly reconstructs MMX
+alias state where the carrier FXSAVE view is insufficient. Complete category
+totals, precision policy, source hashes, fixture hash, patch hash, and evidence
+hash are recorded in `i386-phase4-evidence.json`.
+
+Phase 5 promotes the accepted prefix into a 162,536-byte golden corpus containing
+one compatibility hash for every accepted identity. Normal CI replays all 20,313
+cases independently through the native interpreter and JIT without an external
+runtime, verifies every hash, and rejects JIT fallback. The golden file's schema,
+seed, final identity, length, and SHA-256 are checked by the repository-policy
+job. Existing capability and Blink provenance audits continue to reject CPUID
+features without handlers and tests, or unreviewed embedded-source drift.
 
 ## Boundaries
 
