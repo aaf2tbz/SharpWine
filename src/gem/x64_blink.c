@@ -46,7 +46,7 @@ static uint32_t commit(void *o, const struct blink_gem_write *w, size_t n,
         pages[i].address = w[i].address;
         pages[i].data = w[i].data;
     }
-    e = gem_memory_transaction_commit_pages(r->transaction, pages, n, fault_address);
+    e = gem_memory_transaction_commit_pages(r->transaction, pages, n, fault_address, NULL);
     free(pages);
     return e;
 }

@@ -15,7 +15,7 @@
  }
 --- a/blink/machine.c
 +++ b/blink/machine.c
-@@ -93,3 +93,10 @@
+@@ -93,11 +93,21 @@
  static void OpPushf(P) {
 -  Push(A, ExportFlags(m->flags) & 0xFCFFFF);
 +  u64 flags;
@@ -27,7 +27,8 @@
 +  }
 +  Push(A, flags);
  }
-@@ -97,7 +104,10 @@
+-
++
  static void OpPopf(P) {
    if (!Osz(rde)) {
      ImportFlags(m, Pop(A, 0));

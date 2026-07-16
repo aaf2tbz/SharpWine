@@ -3,14 +3,18 @@
 
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <sched.h>
+#endif
 
-static uint32_t boundary_status(const struct gem_i386_runtime *runtime, uint32_t eip) {
-    if (runtime->config.windows_syscall_boundary != 0U &&
-        eip == runtime->config.windows_syscall_boundary)
-        return GEM_I386_BOUNDARY_WINDOWS_SYSCALL;
-    if (runtime->config.unix_call_boundary != 0U && eip == runtime->config.unix_call_boundary)
-        return GEM_I386_BOUNDARY_UNIX_CALL;
-    return 0U;
+static void yield_execution(void) {
+#if defined(_WIN32)
+    (void)SwitchToThread();
+#else
+    (void)sched_yield();
+#endif
 }
 
 struct gem_i386_runtime *gem_i386_runtime_create(struct gem_memory *memory,
@@ -45,6 +49,9 @@ struct gem_i386_runtime *gem_i386_runtime_create(struct gem_memory *memory,
         return NULL;
     }
     atomic_init(&runtime->async_stop_requested, false);
+    runtime->quantum_budget = 64U;
+    runtime->performance.abi_version = GEM_I386_PERFORMANCE_INFO_ABI_VERSION;
+    runtime->performance.size = sizeof(runtime->performance);
     return runtime;
 }
 
@@ -57,7 +64,6 @@ void gem_i386_runtime_destroy(struct gem_i386_runtime *runtime) {
 
 enum gem_stop_reason gem_i386_runtime_run(struct gem_i386_runtime *runtime,
                                           struct gem_i386_context *context, uint64_t budget) {
-    const uint64_t transaction_slice = 4096U;
     enum gem_stop_reason reason = GEM_STOP_BUDGET_EXPIRED;
     uint64_t retired = 0U;
     if (runtime == NULL)
@@ -75,60 +81,72 @@ enum gem_stop_reason gem_i386_runtime_run(struct gem_i386_runtime *runtime,
     }
     runtime->running = true;
     while (retired < budget) {
-        uint64_t slice_retired = 0U;
-        uint64_t slice_budget = budget - retired;
-        if (slice_budget > transaction_slice)
-            slice_budget = transaction_slice;
+        uint32_t quantum_retired = 0U;
+        uint64_t remaining = budget - retired;
+        uint32_t quantum_budget = runtime->quantum_budget;
+        struct gem_i386_context output;
+        struct gem_i386_context quantum_input = *context;
+        enum gem_memory_error transaction_error;
+        uint64_t transaction_fault = 0U;
+        if ((uint64_t)quantum_budget > remaining)
+            quantum_budget = (uint32_t)remaining;
         runtime->transaction = gem_memory_transaction_begin(runtime->memory);
         if (runtime->transaction == NULL) {
             reason = GEM_STOP_INVARIANT_VIOLATION;
             break;
         }
         gem_i386_blink_sync(runtime);
-        reason = GEM_STOP_NONE;
-        while (slice_retired < slice_budget) {
-            struct gem_i386_context output;
-            uint32_t one = 0U;
-            uint32_t boundary;
-            if (context->eip == runtime->config.host_return_sentinel) {
-                reason = GEM_STOP_HOST_RETURN;
-                break;
-            }
-            if (atomic_exchange_explicit(&runtime->async_stop_requested, false,
-                                         memory_order_acq_rel)) {
-                reason = GEM_STOP_ASYNC_REQUEST;
-                break;
-            }
-            boundary = boundary_status(runtime, context->eip);
-            if (boundary != 0U) {
-                runtime->last_stop.engine_status = boundary;
-                reason = GEM_STOP_SYSCALL;
-                break;
-            }
-            reason = gem_i386_blink_step(runtime, context, &output, &one);
-            if (reason != GEM_STOP_NONE) {
-                if (reason == GEM_STOP_MEMORY_FAULT &&
-                    runtime->last_stop.engine_status == GEM_I386_ENGINE_STATUS_RESTARTABLE_REP &&
-                    gem_i386_context_is_valid(&output))
-                    *context = output;
-                break;
-            }
-            if (one != 1U || !gem_i386_context_is_valid(&output)) {
-                reason = GEM_STOP_INVARIANT_VIOLATION;
-                break;
-            }
-            *context = output;
-            ++retired;
-            ++slice_retired;
-            if (context->eip == runtime->config.host_return_sentinel) {
-                reason = GEM_STOP_HOST_RETURN;
-                break;
-            }
+        ++runtime->performance.quanta;
+        ++runtime->performance.decode_resets;
+        reason = gem_i386_blink_run(runtime, context, &output, quantum_budget, &quantum_retired);
+        transaction_error = gem_memory_transaction_finish(runtime->transaction, &transaction_fault);
+        if (transaction_error == GEM_MEMORY_CONFLICT) {
+            output = quantum_input;
+            quantum_retired = 0U;
+            runtime->last_stop.fault_address = (uint32_t)transaction_fault;
+            runtime->last_stop.access = GEM_I386_ACCESS_NONE;
+            runtime->last_stop.memory_error = GEM_MEMORY_CONFLICT;
+            reason = GEM_STOP_MEMORY_FAULT;
+        } else if (transaction_error != GEM_MEMORY_OK) {
+            reason = GEM_STOP_INVARIANT_VIOLATION;
         }
+        if (quantum_retired != 0U || reason == GEM_STOP_NONE || reason == GEM_STOP_HOST_RETURN ||
+            reason == GEM_STOP_SYSCALL || reason == GEM_STOP_ASYNC_REQUEST ||
+            (reason == GEM_STOP_MEMORY_FAULT &&
+             runtime->last_stop.engine_status == GEM_I386_ENGINE_STATUS_RESTARTABLE_REP)) {
+            if (!gem_i386_context_is_valid(&output))
+                reason = GEM_STOP_INVARIANT_VIOLATION;
+            else
+                *context = output;
+        }
+        retired += quantum_retired;
+        runtime->performance.retired_instructions += quantum_retired;
+        runtime->performance.lock_wait_nanoseconds +=
+            gem_memory_transaction_lock_wait_nanoseconds(runtime->transaction);
         gem_memory_transaction_end(runtime->transaction);
         runtime->transaction = NULL;
-        if (reason != GEM_STOP_NONE)
+        if (reason == GEM_STOP_MEMORY_FAULT &&
+            runtime->last_stop.memory_error == GEM_MEMORY_CONFLICT) {
+            ++runtime->performance.retries;
+            ++runtime->consecutive_conflicts;
+            if (runtime->quantum_budget > 1U)
+                runtime->quantum_budget /= 2U;
+            if (runtime->consecutive_conflicts >= 8U) {
+                runtime->consecutive_conflicts = 0U;
+                yield_execution();
+            }
+            reason = GEM_STOP_NONE;
+            continue;
+        }
+        runtime->consecutive_conflicts = 0U;
+        if (reason == GEM_STOP_NONE) {
+            if (runtime->quantum_budget < 256U)
+                runtime->quantum_budget *= 2U;
+            if (runtime->quantum_budget > 256U)
+                runtime->quantum_budget = 256U;
+        } else {
             break;
+        }
     }
     runtime->running = false;
     if (reason == GEM_STOP_NONE)
@@ -151,6 +169,15 @@ bool gem_i386_runtime_last_stop_info(const struct gem_i386_runtime *runtime,
 bool gem_i386_runtime_engine_info(const struct gem_i386_runtime *runtime,
                                   struct gem_i386_engine_info *out) {
     return gem_i386_blink_engine_info(runtime, out);
+}
+
+bool gem_i386_runtime_performance_info(const struct gem_i386_runtime *runtime,
+                                       struct gem_i386_performance_info *out) {
+    if (runtime == NULL || out == NULL ||
+        out->abi_version != GEM_I386_PERFORMANCE_INFO_ABI_VERSION || out->size != sizeof(*out))
+        return false;
+    *out = runtime->performance;
+    return true;
 }
 
 void gem_i386_runtime_invalidate_code(struct gem_i386_runtime *runtime, uint32_t address,
@@ -183,6 +210,6 @@ const char *gem_i386_runtime_engine_license(const struct gem_i386_runtime *runti
 const char *gem_i386_runtime_engine_provenance(const struct gem_i386_runtime *runtime) {
     return runtime != NULL ? "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;legacy32;"
                              "context-v2;cpuid-sse42-aes-pclmul;"
-                             "one-instruction;interpreter-or-aarch64-jit"
+                             "bounded-multi-instruction;interpreter-or-aarch64-jit"
                            : "unavailable";
 }

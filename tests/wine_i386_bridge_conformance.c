@@ -249,8 +249,8 @@ int main(void) {
 #if defined(__APPLE__)
     {
         const uint32_t stale_code = UINT32_C(0x00600000);
-        uint8_t *host = mmap(NULL, host_page, PROT_READ | PROT_WRITE,
-                             MAP_PRIVATE | MAP_ANON, -1, 0);
+        uint8_t *host =
+            mmap(NULL, host_page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
         assert(host != MAP_FAILED);
         host[0] = 0x90U;
         assert(gem_wine_process_reserve(process, stale_code, GEM_WINE_GUEST_PAGE_SIZE) ==
@@ -266,8 +266,7 @@ int main(void) {
         boundary_state.expected_engine_status = 0U;
         boundary_state.expected_access = GEM_I386_ACCESS_FETCH;
         boundary_state.resume_bytes = 0U;
-        assert(gem_wine_i386_thread_run(thread, &input, &output, &result) ==
-               GEM_WINE_TERMINATED);
+        assert(gem_wine_i386_thread_run(thread, &input, &output, &result) == GEM_WINE_TERMINATED);
         assert(boundary_state.calls == 1U);
         assert(result.stop.fault_address == stale_code);
         if (result.stop.memory_error != GEM_MEMORY_NOT_COMMITTED)

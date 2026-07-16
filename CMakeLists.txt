@@ -14,6 +14,7 @@ option(MSWR_FETCH_DYNARMIC "Fetch the pinned Dynarmic dependency when engine sup
 option(MSWR_ENABLE_X64_ENGINE "Build the pinned Blink GEM_x86_64 adapter" OFF)
 option(MSWR_X64_ENGINE_CONFORMANCE "Build x64 engine conformance tests" OFF)
 option(MSWR_ENABLE_I386_ENGINE "Build the pinned Blink GEM_i386 adapter" OFF)
+option(MSWR_BLINK_INTERPRETER_ONLY "Build the pinned Blink embedding without native JIT" OFF)
 option(MSWR_I386_ENGINE_CONFORMANCE "Build i386 engine conformance tests" OFF)
 option(MSWR_BUILD_WINE_BRIDGE "Build the versioned native Wine/GEM bridge dylib" OFF)
 option(MSWR_WINE_BRIDGE_CONFORMANCE "Build Wine/GEM bridge conformance tests" OFF)
@@ -168,6 +169,9 @@ if(MSWR_ENABLE_X64_ENGINE OR MSWR_ENABLE_I386_ENGINE)
         --phase3-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0009-gem-i386-legacy-state.patch"
         --phase4-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0010-gem-i386-phase4-corrections.patch"
         --phase6-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0011-gem-preserve-shadow-snapshot-fault.patch"
+        --phase55-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0012-gem-bounded-multi-instruction-run.patch"
+        --phase55-optimization-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0013-gem-concurrent-quantum-optimization.patch"
+        --phase55-concurrency-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0014-gem-concurrent-host-page-registry.patch"
         --capability-manifest "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/i386-phase3-capabilities.json"
         --phase3-corpus "${CMAKE_CURRENT_SOURCE_DIR}/tests/i386_phase3_conformance.c"
         --provenance "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/0008-blink-embedding.provenance.json"
@@ -304,6 +308,17 @@ if(BUILD_TESTING)
     add_test(NAME gem.memory_page_isolation COMMAND memory_page_isolation_test)
     set_tests_properties(gem.memory_page_isolation PROPERTIES LABELS "page-isolation;zero-rosetta")
 
+    add_executable(memory_transaction_concurrency_test
+        tests/memory_transaction_concurrency_test.cpp)
+    target_link_libraries(memory_transaction_concurrency_test PRIVATE metalsharp_gem)
+    target_include_directories(memory_transaction_concurrency_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+    target_compile_features(memory_transaction_concurrency_test PRIVATE cxx_std_17)
+    mswr_enable_warnings(memory_transaction_concurrency_test)
+    add_test(NAME gem.memory_transaction_concurrency COMMAND memory_transaction_concurrency_test)
+    set_tests_properties(gem.memory_transaction_concurrency PROPERTIES
+        LABELS "concurrency;page-isolation;zero-rosetta")
+
     if(APPLE)
         add_executable(macos_tso_api_probe tests/macos_tso_api_probe.c)
         target_link_libraries(macos_tso_api_probe PRIVATE "${CMAKE_DL_LIBS}")
@@ -373,6 +388,26 @@ if(BUILD_TESTING)
         add_test(NAME gem.i386_engine_conformance COMMAND i386_engine_conformance)
         set_tests_properties(gem.i386_engine_conformance PROPERTIES
             LABELS "i386;zero-rosetta;gem.engine;production-jit;interpreter-oracle")
+
+        add_executable(i386_phase55_performance tests/i386_phase55_performance.c)
+        target_link_libraries(i386_phase55_performance PRIVATE metalsharp_gem)
+        target_include_directories(i386_phase55_performance PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+        target_compile_definitions(i386_phase55_performance PRIVATE
+            $<$<CONFIG:Release>:GEM_PHASE55_REQUIRED_SPEEDUP=3.0>)
+        mswr_enable_warnings(i386_phase55_performance)
+        add_test(NAME gem.i386_phase55_performance COMMAND i386_phase55_performance)
+        set_tests_properties(gem.i386_phase55_performance PROPERTIES
+            LABELS "concurrency;i386;performance;zero-rosetta")
+
+        if(UNIX)
+            add_executable(i386_phase55_concurrency tests/i386_phase55_concurrency.c)
+            target_link_libraries(i386_phase55_concurrency PRIVATE metalsharp_gem Threads::Threads)
+            mswr_enable_warnings(i386_phase55_concurrency)
+            add_test(NAME gem.i386_phase55_concurrency COMMAND i386_phase55_concurrency)
+            set_tests_properties(gem.i386_phase55_concurrency PROPERTIES
+                LABELS "concurrency;i386;interpreter-oracle;zero-rosetta")
+        endif()
 
         add_executable(i386_phase2_conformance tests/i386_phase2_conformance.c)
         target_link_libraries(i386_phase2_conformance PRIVATE metalsharp_gem)

@@ -19,7 +19,16 @@ static uint32_t snapshot(void *opaque, uint64_t address, uint8_t data[4096], uin
         return GEM_MEMORY_OVERFLOW;
     error = gem_memory_transaction_snapshot_page(runtime->transaction, address, data,
                                                  &guest_protection);
+    if (error == GEM_MEMORY_OK) {
+        ++runtime->performance.page_snapshots;
+        runtime->performance.bytes_copied += GEM_GUEST_PAGE_SIZE;
+    }
     *protection = 0U;
+    if ((guest_protection & GEM_PAGE_GUARD) != 0U)
+        *protection |= 8U;
+    if (error == GEM_MEMORY_OK &&
+        gem_memory_transaction_page_is_external(runtime->transaction, address))
+        *protection |= 16U;
     if ((guest_protection & ~(uint32_t)GEM_PAGE_GUARD) != GEM_PAGE_NOACCESS) {
         if ((guest_protection & ~(uint32_t)GEM_PAGE_GUARD) != GEM_PAGE_EXECUTE)
             *protection |= 1U;
@@ -48,6 +57,7 @@ static uint32_t commit(void *opaque, const struct blink_gem_write *writes, size_
     struct gem_i386_runtime *runtime = (struct gem_i386_runtime *)opaque;
     struct gem_memory_page_write *pages;
     enum gem_memory_error error;
+    size_t bytes_committed = 0U;
     size_t i;
     if (count == 0U)
         return GEM_MEMORY_OK;
@@ -63,7 +73,10 @@ static uint32_t commit(void *opaque, const struct blink_gem_write *writes, size_
         pages[i].address = writes[i].address;
         pages[i].data = writes[i].data;
     }
-    error = gem_memory_transaction_commit_pages(runtime->transaction, pages, count, fault_address);
+    error = gem_memory_transaction_commit_pages(runtime->transaction, pages, count, fault_address,
+                                                &bytes_committed);
+    if (error == GEM_MEMORY_OK)
+        runtime->performance.bytes_committed += bytes_committed;
     free(pages);
     return (uint32_t)error;
 }
@@ -159,6 +172,7 @@ enum gem_stop_reason gem_i386_blink_step(struct gem_i386_runtime *runtime,
     struct blink_gem_state blink_out;
     struct blink_gem_result result;
     import_state(in, &blink_in);
+    ++runtime->performance.state_imports;
     result = blink_gem_machine_step(runtime->backend, &blink_in, &blink_out);
     *retired = result.retired;
     runtime->last_stop.fault_address = (uint32_t)result.fault_address;
@@ -167,6 +181,7 @@ enum gem_stop_reason gem_i386_blink_step(struct gem_i386_runtime *runtime,
     runtime->last_stop.engine_status = result.engine_status;
     if (result.outcome == BLINK_GEM_RETIRED) {
         export_state(&blink_out, in, out);
+        ++runtime->performance.state_exports;
         return result.retired == 1U ? GEM_STOP_NONE : GEM_STOP_INVARIANT_VIOLATION;
     }
     if (result.outcome == BLINK_GEM_MEMORY_FAULT) {
@@ -212,6 +227,116 @@ enum gem_stop_reason gem_i386_blink_step(struct gem_i386_runtime *runtime,
         }
         if (attempt.valid && (strcmp(attempt.name, "OpInterruptImm") == 0 ||
                               strcmp(attempt.name, "OpSysenter") == 0)) {
+            runtime->last_stop.engine_status = GEM_I386_BOUNDARY_WINDOWS_SYSCALL;
+            return GEM_STOP_SYSCALL;
+        }
+        return GEM_STOP_UNSUPPORTED_INSTRUCTION;
+    }
+    return GEM_STOP_INVARIANT_VIOLATION;
+}
+
+static bool async_stop(void *opaque) {
+    struct gem_i386_runtime *runtime = (struct gem_i386_runtime *)opaque;
+    return atomic_exchange_explicit(&runtime->async_stop_requested, false, memory_order_acq_rel);
+}
+
+enum gem_stop_reason gem_i386_blink_run(struct gem_i386_runtime *runtime,
+                                        const struct gem_i386_context *in,
+                                        struct gem_i386_context *out, uint32_t budget,
+                                        uint32_t *retired) {
+    struct blink_gem_state blink_in;
+    struct blink_gem_state blink_out;
+    struct blink_gem_result result;
+    uint64_t stop_pcs[3];
+    uint32_t stop_count = 0U;
+    struct blink_gem_run_request request;
+    stop_pcs[stop_count++] = runtime->config.host_return_sentinel;
+    if (runtime->config.windows_syscall_boundary != 0U)
+        stop_pcs[stop_count++] = runtime->config.windows_syscall_boundary;
+    if (runtime->config.unix_call_boundary != 0U)
+        stop_pcs[stop_count++] = runtime->config.unix_call_boundary;
+    memset(&request, 0, sizeof(request));
+    request.abi_version = BLINK_GEM_RUN_REQUEST_ABI_VERSION;
+    request.size = sizeof(request);
+    request.instruction_budget = budget;
+    request.stop_pc_count = stop_count;
+    request.stop_pcs = stop_pcs;
+    request.async_stop = async_stop;
+    request.async_opaque = runtime;
+    import_state(in, &blink_in);
+    ++runtime->performance.state_imports;
+    result = blink_gem_machine_run(runtime->backend, &request, &blink_in, &blink_out);
+    *retired = result.retired;
+    runtime->last_stop.fault_address = (uint32_t)result.fault_address;
+    runtime->last_stop.access = (enum gem_i386_memory_access)result.access;
+    runtime->last_stop.memory_error = result.memory_error;
+    runtime->last_stop.engine_status = result.engine_status;
+    if (result.outcome == BLINK_GEM_RETIRED || result.outcome == BLINK_GEM_STOP_PC ||
+        result.outcome == BLINK_GEM_ASYNC_STOP || result.outcome == BLINK_GEM_QUANTUM_BOUNDARY ||
+        result.retired != 0U || result.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP) {
+        export_state(&blink_out, in, out);
+        ++runtime->performance.state_exports;
+    }
+    if (result.outcome == BLINK_GEM_RETIRED)
+        return result.retired == budget ? GEM_STOP_NONE : GEM_STOP_INVARIANT_VIOLATION;
+    if (result.outcome == BLINK_GEM_QUANTUM_BOUNDARY)
+        return result.retired != 0U && result.retired <= budget ? GEM_STOP_NONE
+                                                                : GEM_STOP_INVARIANT_VIOLATION;
+    if (result.outcome == BLINK_GEM_STOP_PC) {
+        uint32_t boundary = 0U;
+        if (out->eip == runtime->config.host_return_sentinel)
+            return GEM_STOP_HOST_RETURN;
+        if (out->eip == runtime->config.windows_syscall_boundary)
+            boundary = GEM_I386_BOUNDARY_WINDOWS_SYSCALL;
+        else if (out->eip == runtime->config.unix_call_boundary)
+            boundary = GEM_I386_BOUNDARY_UNIX_CALL;
+        runtime->last_stop.engine_status = boundary;
+        return boundary != 0U ? GEM_STOP_SYSCALL : GEM_STOP_INVARIANT_VIOLATION;
+    }
+    if (result.outcome == BLINK_GEM_ASYNC_STOP)
+        return GEM_STOP_ASYNC_REQUEST;
+    if (result.outcome == BLINK_GEM_MEMORY_FAULT) {
+        if (result.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP)
+            runtime->last_stop.engine_status = GEM_I386_ENGINE_STATUS_RESTARTABLE_REP;
+        return GEM_STOP_MEMORY_FAULT;
+    }
+    if (result.outcome == BLINK_GEM_EXCEPTION) {
+        switch (result.engine_status) {
+        case BLINK_GEM_EXCEPTION_ILLEGAL_INSTRUCTION:
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_ILLEGAL_INSTRUCTION;
+            break;
+        case BLINK_GEM_EXCEPTION_DIVIDE:
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_INTEGER_DIVIDE_BY_ZERO;
+            break;
+        case BLINK_GEM_EXCEPTION_OVERFLOW:
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_INTEGER_OVERFLOW;
+            break;
+        default:
+            return GEM_STOP_INVARIANT_VIOLATION;
+        }
+        return GEM_STOP_WINDOWS_EXCEPTION;
+    }
+    if (result.outcome == BLINK_GEM_UNSUPPORTED) {
+        struct blink_gem_decode_attempt attempt;
+        memset(&attempt, 0, sizeof(attempt));
+        attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+        attempt.size = sizeof(attempt);
+        if (!blink_gem_machine_decode_attempt_info(runtime->backend, &attempt) || !attempt.valid)
+            return GEM_STOP_UNSUPPORTED_INSTRUCTION;
+        if (strcmp(attempt.name, "OpInterrupt3") == 0) {
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_BREAKPOINT;
+            return GEM_STOP_WINDOWS_EXCEPTION;
+        }
+        if (strcmp(attempt.name, "OpInto") == 0) {
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_INTEGER_OVERFLOW;
+            return GEM_STOP_WINDOWS_EXCEPTION;
+        }
+        if (strcmp(attempt.name, "OpUd") == 0) {
+            runtime->last_stop.engine_status = GEM_I386_EXCEPTION_ILLEGAL_INSTRUCTION;
+            return GEM_STOP_WINDOWS_EXCEPTION;
+        }
+        if (strcmp(attempt.name, "OpInterruptImm") == 0 ||
+            strcmp(attempt.name, "OpSysenter") == 0) {
             runtime->last_stop.engine_status = GEM_I386_BOUNDARY_WINDOWS_SYSCALL;
             return GEM_STOP_SYSCALL;
         }

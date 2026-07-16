@@ -1,0 +1,248 @@
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -28,5 +28,6 @@
+ #include "blink/ldbl.h"
+ #include "blink/machine.h"
+ #include "blink/map.h"
++#include "blink/modrm.h"
+ #include "blink/rde.h"
+ #include "blink/x86.h"
+@@ -103,6 +103,18 @@
+   for (i = 0; i < g->page_count; ++i)
+     if (g->pages[i].address == a) return g->pages + i;
+   return 0;
++}
++static int guarded_range(struct blink_gem_machine* g, uint64_t address,
++                         uint64_t size) {
++  uint64_t end, page;
++  if (!size || __builtin_add_overflow(address, size - 1, &end)) return 1;
++  page = address & ~UINT64_C(4095);
++  for (;;) {
++    struct shadow_page* p = find_page(g, page);
++    if (!p || (p->protection & 8)) return 1;
++    if (page >= (end & ~UINT64_C(4095))) return 0;
++    page += 4096;
++  }
+ }
+ static int masked_legacy_vex(const struct blink_gem_machine* g, uint64_t address) {
+   const struct shadow_page *first = 0, *second = 0;
+@@ -319,6 +331,48 @@
+     out->segments[i].limit = m->seg[i].limit;
+     out->segments[i].attributes = m->seg[i].attributes;
+   }
++}
++static void export_integer_state(const struct Machine* m,
++                                 const struct blink_gem_state* in,
++                                 struct blink_gem_state* out) {
++  size_t i;
++  (void)in;
++  for (i = 0; i < 16; ++i) out->gpr[i] = Read64(m->weg[i]);
++  out->rip = m->ip;
++  out->rflags = ExportFlags(m->flags);
++}
++static int integer_handler(int handler_id) {
++  return handler_id >= BLINK_GEM_HANDLER_OP_NOP &&
++         handler_id <= BLINK_GEM_HANDLER_OP_NOP_EV &&
++         handler_id != BLINK_GEM_HANDLER_OP_ADD_PSD &&
++         handler_id != BLINK_GEM_HANDLER_OP_SUB_PSD;
++}
++static int nofault_batch_instruction(struct blink_gem_machine* g,
++                                     uint64_t pc) {
++  int handler_id;
++  if (LoadInstruction2(g->machine, pc)) return 0;
++  handler_id = GemHandlerId(GetOp(Mopcode(g->machine->xedd->op.rde)),
++                            g->machine->xedd->op.rde,
++                            g->guest_mode == BLINK_GEM_GUEST_LEGACY_32);
++  return handler_id == BLINK_GEM_HANDLER_OP_NOP ||
++         handler_id == BLINK_GEM_HANDLER_OP_NOP_EV ||
++         handler_id == BLINK_GEM_HANDLER_OP_JMP ||
++         handler_id == BLINK_GEM_HANDLER_OP_JCC;
++}
++static int end_quantum_after_instruction(struct blink_gem_machine* g) {
++  uint64_t page, end;
++  if (Lock(g->machine->xedd->op.rde) || Rep(g->machine->xedd->op.rde)) return 1;
++  if (g->machine->writesize <= 0) return 0;
++  page = (uint64_t)g->machine->writeaddr & ~UINT64_C(4095);
++  end = ((uint64_t)g->machine->writeaddr + (uint64_t)g->machine->writesize - 1) &
++        ~UINT64_C(4095);
++  for (;;) {
++    struct shadow_page* p = find_page(g, page);
++    if (!p || (p->protection & (4 | 16))) return 1;
++    if (page == end) break;
++    page += 4096;
++  }
++  return 0;
+ }
+ static int mmx_instruction(const struct Machine* m) {
+   unsigned op = Mopcode(m->xedd->op.rde);
+@@ -478,6 +517,8 @@
+   for (retries = 0; retries < (int)BLINK_GEM_MAX_SHADOW_PAGES + 1; ++retries) {
+     if (!g->batched_run || !g->batched_continuation || retries)
+       import_state(m, in);
++    else
++      ImportFlags(m, ExportFlags(m->flags));
+     m->gem_access_segment = 0;
+     m->gem_access_offset = 0;
+     m->readaddr = m->writeaddr = 0;
+@@ -499,7 +540,8 @@
+     }
+     if (!g->batched_run) ResetInstructionCache(m);
+     fetching = 1;
+-    if (!(rc = sigsetjmp(m->onhalt, 1))) {
++    if ((g->batched_run && g->batched_continuation) ||
++        !(rc = sigsetjmp(m->onhalt, 1))) {
+       m->canhalt = true;
+       LoadInstruction(m, m->cs.base + GetIp(m));
+       fetch_address = m->cs.base + GetIp(m);
+@@ -730,8 +772,10 @@
+         continue;
+       }
+     }
+-    error = g->cb.validate(g->opaque, fetch_address, (size_t)fetch_size,
+-                           BLINK_GEM_ACCESS_FETCH);
++    error = (!g->batched_run || guarded_range(g, fetch_address, fetch_size))
++                ? g->cb.validate(g->opaque, fetch_address, (size_t)fetch_size,
++                                 BLINK_GEM_ACCESS_FETCH)
++                : 0;
+     if (error) {
+       r = result(BLINK_GEM_MEMORY_FAULT);
+       r.fault_address = fetch_address;
+@@ -740,8 +784,11 @@
+       return r;
+     }
+     if (m->readsize > 0) {
+-      error = g->cb.validate(g->opaque, (uint64_t)m->readaddr,
+-                             (size_t)m->readsize, BLINK_GEM_ACCESS_READ);
++      error = (!g->batched_run ||
++               guarded_range(g, (uint64_t)m->readaddr, (uint64_t)m->readsize))
++                  ? g->cb.validate(g->opaque, (uint64_t)m->readaddr,
++                                   (size_t)m->readsize, BLINK_GEM_ACCESS_READ)
++                  : 0;
+       if (error) {
+         r = result(BLINK_GEM_MEMORY_FAULT);
+         r.fault_address = (uint64_t)m->readaddr;
+@@ -751,8 +798,11 @@
+       }
+     }
+     if (m->writesize > 0) {
+-      error = g->cb.validate(g->opaque, (uint64_t)m->writeaddr,
+-                             (size_t)m->writesize, BLINK_GEM_ACCESS_WRITE);
++      error = (!g->batched_run ||
++               guarded_range(g, (uint64_t)m->writeaddr, (uint64_t)m->writesize))
++                  ? g->cb.validate(g->opaque, (uint64_t)m->writeaddr,
++                                   (size_t)m->writesize, BLINK_GEM_ACCESS_WRITE)
++                  : 0;
+       if (error) {
+         r = result(BLINK_GEM_MEMORY_FAULT);
+         r.fault_address = (uint64_t)m->writeaddr;
+@@ -805,7 +855,10 @@
+       if (p->protection & 4) ResetInstructionCache(m);
+       memcpy(p->before, p->host, 4096);
+     }
+-    export_state(m, in, out);
++    if (g->batched_run && g->batched_continuation && integer_handler(handler_id))
++      export_integer_state(m, in, out);
++    else
++      export_state(m, in, out);
+     if (g->trace_count < BLINK_GEM_MAX_TRACE_ENTRIES) {
+       g->trace[g->trace_count].rip = fetch_address;
+       g->trace[g->trace_count].handler_id = (uint32_t)handler_id;
+@@ -829,6 +882,7 @@
+   struct blink_gem_result r;
+   struct blink_gem_state current, next;
+   uint32_t retired = 0;
++  int halt;
+   size_t i;
+   if (!g || !request || !in || !out ||
+       request->abi_version != BLINK_GEM_RUN_REQUEST_ABI_VERSION ||
+@@ -839,6 +893,49 @@
+   current = *in;
+   g->batched_run = true;
+   g->batched_continuation = false;
++FirstInstruction:
++  for (i = 0; i < request->stop_pc_count; ++i) {
++    if (current.rip == request->stop_pcs[i]) {
++      g->batched_run = false;
++      *out = current;
++      r = result(BLINK_GEM_STOP_PC);
++      r.retired = retired;
++      return r;
++    }
++  }
++  if (request->async_stop && request->async_stop(request->async_opaque)) {
++    g->batched_run = false;
++    *out = current;
++    r = result(BLINK_GEM_ASYNC_STOP);
++    r.retired = retired;
++    return r;
++  }
++  next = current;
++  r = blink_gem_machine_step(g, &current, &next);
++  if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
++    g->batched_run = false;
++    if (r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP)
++      *out = next;
++    else
++      *out = current;
++    r.retired += retired;
++    return r;
++  }
++  current = next;
++  ++retired;
++  if (retired >= request->instruction_budget) goto Finished;
++
++RestartBatch:
++  halt = sigsetjmp(g->machine->onhalt, 1);
++  if (halt) {
++    g->machine->canhalt = false;
++    if (!rollback_shadow_pages(g)) {
++      g->batched_run = false;
++      return result(BLINK_GEM_INVALID);
++    }
++    g->batched_continuation = false;
++    goto FirstInstruction;
++  }
+   while (retired < request->instruction_budget) {
+     for (i = 0; i < request->stop_pc_count; ++i) {
+       if (current.rip == request->stop_pcs[i]) {
+@@ -856,6 +953,32 @@
+       r.retired = retired;
+       return r;
+     }
++    if (!nofault_batch_instruction(g, current.rip)) {
++      g->batched_continuation = false;
++      next = current;
++      r = blink_gem_machine_step(g, &current, &next);
++      if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
++        g->batched_run = false;
++        if (r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP)
++          *out = next;
++        else
++          *out = current;
++        r.retired += retired;
++        return r;
++      }
++      current = next;
++      ++retired;
++      if (end_quantum_after_instruction(g)) {
++        g->batched_run = false;
++        *out = current;
++        r = result(BLINK_GEM_QUANTUM_BOUNDARY);
++        r.retired = retired;
++        return r;
++      }
++      if (retired >= request->instruction_budget) goto Finished;
++      goto RestartBatch;
++    }
++    next = current;
+     r = blink_gem_machine_step(g, &current, &next);
+     if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
+       g->batched_run = false;
+@@ -869,6 +985,7 @@
+     current = next;
+     ++retired;
+   }
++Finished:
+   g->batched_run = false;
+   *out = current;
+   for (i = 0; i < request->stop_pc_count; ++i) {

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 8,
+  "schemaVersion": 11,
   "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
   "archiveSha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
   "patchSha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
@@ -8,11 +8,14 @@
   "syncPatchSha256": "06be3aef4cce6e1beceb5872106cfa11b7909fa3631a6a587669c71c6d900b33",
   "rosettaPatchSha256": "6c704396c72f739b5e5bd1cf22dc0f85ddb3cb69160fbcc965fcb44cba0c708a",
   "rosettaSse41PatchSha256": "7aca01d50c670da77df8c8366806b2de7d42c3a21ba47532c1e21b00d00aa9be",
-  "phase1PatchSha256": "817bf0e8592eb5f9223c32435867203d8a949ea25cb716d092fe237c3825b4b4",
+  "phase1PatchSha256": "d7104347dead5681aad60876b04889de19f4cadea6bedc1c7a4ae5d4bcd03eee",
   "phase2PatchSha256": "df5b9d33a5945df0fa53ac6a412d7df0d416d936c0a9b5ae7b01e6dadc27e354",
   "phase3PatchSha256": "48834288b7a65337829f26d16c621e8bffa006b6eeea5f5ea353a1c4ee5429ae",
-  "phase4PatchSha256": "ce884f139520826442edd5eff25e8a9e0d5bd76b5810d6e71dc266e8788fe246",
+  "phase4PatchSha256": "2e72280627b4c56d4594a862420d8fd6e8c86f847cf4fca547e673382c74970a",
   "phase6PatchSha256": "c3ccbbee11adb765bb80d54560e1e3240668136f0a6f03c8c06fcd961d8a05b0",
+  "phase55PatchSha256": "ac718a33b9f8920b39a9746d6515ab2c79feafbd0aed7b96e094577a1f1867c9",
+  "phase55OptimizationPatchSha256": "d9ab44fbd1e67c791a4f0d0960d308122471aa23fa4e034dbba998f1c2f37980",
+  "phase55ConcurrencyPatchSha256": "cd4894556b28691082307bb23d74a83d51073e63dee329cd8f66384734e49c4f",
   "license": "ISC",
   "prePatch": {
     "blink/machine.c": "73a32c95fbc191394c116bd2f41ebba464c963718b3785adaca22c5a93e8dc89",
@@ -21,8 +24,8 @@
   },
   "postPatch": {
     "blink/fusion.c": "492f2bf80ba626b63e37de749dcc679b439e44e135d01db718d84f9cb13dd7c7",
-    "blink/gem_embed.c": "9513253b97c3c7f86d876f75bc1f8657b290de8e1d083c0786916e86ab481887",
-    "blink/gem_embed.h": "72d7aaa4be55e9c9a5745cb4167244c5282d11e5d9c9db1fef7eb32a67d3f1a7",
+    "blink/gem_embed.c": "05fd067275f321a2eaa92efb0c4eda6a5dc6eceafff17a42b1ce2bbfdaac9194",
+    "blink/gem_embed.h": "c1671c046ece8cec69d3535fa0967c0995821fb499b59c9ca4adefe1a8e955fa",
     "blink/instruction.c": "643b63a9af36ab8732df8643552bd8b2ccf7c8e692ca58c6a4a209348e60e380",
     "blink/machine.c": "6d6560b6ed8425bfaa33f9b9ce125b6dd23aedb8e92cd06e46f9ea5054734b3c",
     "blink/legacy.c": "0dd21523bed5b9fa731a69e3b376d1c28800ada3a7c36668aace4832c0bb8cfe",
@@ -42,6 +45,7 @@
     "blink/uop.c": "306fe3cb6ad72e0a3e6589f91a3152c16b38d0f1ab3bb9334a3602dedc8aca0d",
     "blink/string.c": "97521235e417563f8e2dd40b8d7e40e63a60e4279d0ac5ae0dd7192f2262b42d",
     "blink/memory.c": "4933fa653269c7743ceac2638212440eba4352138e9c67f8a6e037c4058efc54",
+    "blink/memorymalloc.c": "3e0696412e04ba9bbb2bab25273140365bf5511235ec01818452965ccf6b1441",
     "blink/sse4.c": "b990ec6f557d2baffdeadd8644d74088d9dcf9c4722578ea459578bf0136a959"
   },
   "build": [
@@ -51,6 +55,7 @@
   ],
   "jitPolicy": {
     "pathBound": "exactly one decoded instruction per GEM path",
+    "quantumComposition": "bounded 64-to-256 instruction runs compose individually checked paths and stop before configured boundaries",
     "branchFusion": "disabled for GEM embedding so compare/test and conditional branch remain separate checked transactions",
     "crossPage": "one-instruction GEM paths may span two 4 KiB pages; invalidating either page also resets hooks beginning on its predecessor",
     "shadowPages": "bounded 64-page FIFO; long-mode paths reconcile cached pages per instruction, while legacy-32 paths reconcile at explicit GEM transaction boundaries",

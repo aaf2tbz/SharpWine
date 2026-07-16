@@ -17,7 +17,8 @@ and memory ownership rules.
 ## Decision
 
 GEM_i386 is a separate architecture module with its own fixed 448-byte
-`gem_i386_context` v1. It owns the eight IA-32 GPRs, EIP/EFLAGS, segment
+`gem_i386_context` v2, while continuing to accept v1 callers. It owns the eight
+IA-32 GPRs, EIP/EFLAGS, segment
 selectors/bases/limits/attributes, eight XMM lanes, x87/MM state, FP control,
 FS-based TEB address, transition cookie, and stop state. The ARM64EC/x64
 context layout and meanings do not change.
@@ -33,10 +34,10 @@ continues to use the reviewed long-mode page-table implementation, while the
 thread-confined machine decoder/executor is explicitly placed in
 `XED_MACHINE_MODE_LEGACY_32`. Every fetch, read, write, and commit remains
 checked against the i386 range and an active GEM transaction. Production uses
-the bounded one-instruction AArch64 JIT; the interpreter is an explicit oracle,
-not a silent fallback. Both modes import and export complete i386 state at each
-instruction boundary. JIT failure, address escape, malformed state, or an
-unknown engine outcome fails closed.
+bounded 64-to-256-instruction AArch64 JIT quanta; the interpreter is an explicit
+oracle, not a silent fallback. Both modes import and export complete i386 state
+at each observable execution boundary. JIT failure, address escape, malformed
+state, or an unknown engine outcome fails closed.
 
 Wine integration is additive. A versioned i386 bridge configuration must
 strictly classify PE32 magic `0x10b` and machine `0x014c`, publish explicit
@@ -50,6 +51,45 @@ boundary callbacks, mappings, shadow pages, JIT arena, threads, children, wall
 time, logs, and teardown are bounded. A stop cannot leave architectural state
 only inside Blink. Code writes and executable-protection changes invalidate
 GEM_i386 paths before further execution.
+
+### Phase 5.5 concurrent execution contract
+
+The prototype process-wide execution transaction is replaced by optimistic,
+private Blink quanta. A quantum snapshots a page when it is first touched and
+records its mapping, shared-backing content, protection, and external-backing
+generations. Address and backing-identity stripes are both acquired, so two
+guest aliases of the same bytes cannot commit concurrently through different
+address stripes.
+Commit validates the complete dependency set and retries from the quantum's
+initial context on a conflict. Read-only quanta overlap. Dirty commits acquire
+only the affected subset of 256 cache-line-aligned writer-preferring lock
+stripes, in ascending order after the recursive mapping metadata lock, so
+disjoint writers can make concurrent progress.
+
+Successful commits copy only changed 64-byte cache-line spans. Mapping and
+backing lifetimes remain pinned through validation and publication. Faulting
+instructions remain unretired and rolled back, earlier instructions in the
+same quantum commit before the fault is reported, restartable REP retains its
+documented partial progress, and atomic operations retry from their original
+context. LOCK, REP, executable or external writes, host boundaries, faults,
+unsupported instructions, and asynchronous requests terminate a quantum.
+
+`gem_i386_performance_info` is a separate versioned query and does not alter an
+existing structure or ABI. It reports retired instructions, quanta, conflict
+retries, page snapshots, bytes copied and committed, state transfers, decode
+resets, and lock wait time. The embedding's single-step entry point remains
+available and is implemented as a one-instruction bounded run.
+
+The Phase 5.5 evidence includes deterministic one-step versus batched equality
+at every budget from 1 through 256, interpreter/JIT golden-corpus parity,
+Wine-boundary conformance, simultaneous reader and disjoint-writer progress,
+linearizable conflict retries, and ThreadSanitizer stress of both GEM memory
+and independent i386 runtimes. The host-page registry used by the embedding is
+preallocated and protected by its allocator lock, removing the registry-growth
+race found by that stress. Across five 65,536-instruction release samples, the
+median is 35,493,000 ns for single-step execution and 4,154,000 ns for bounded
+execution, an 8.544x speedup. Visible application launch medians are recorded
+in the pull request after packaged-runtime qualification.
 
 ## Acceptance consequences
 

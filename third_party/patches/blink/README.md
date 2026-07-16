@@ -74,7 +74,7 @@ completes the SSE4.1 packed integer min/max family exposed by the expanded Roset
 PMINSB, PMINSD, PMINUW, PMINUD, PMAXSB, PMAXSD, PMAXUW, and PMAXUD.
 
 `0007-gem-i386-stack-cmpxchg8b.patch` (SHA-256
-`817bf0e8592eb5f9223c32435867203d8a949ea25cb716d092fe237c3825b4b4`)
+`d7104347dead5681aad60876b04889de19f4cadea6bedc1c7a4ae5d4bcd03eee`)
 routes PUSHA stack frames and CMPXCHG8B replacements through Blink's tracked
 write paths, and gives legacy PUSHF/POPF the Windows user-mode IF/IOPL view.
 
@@ -94,3 +94,21 @@ preserves the exact memory error when a legacy i386 shadow snapshot fails.
 This prevents a freed external Wine mapping from reaching either execution
 engine and keeps the fault address, access class, and memory status available
 to the compatibility boundary.
+
+`0012-gem-bounded-multi-instruction-run.patch` (SHA-256
+`ac718a33b9f8920b39a9746d6515ab2c79feafbd0aed7b96e094577a1f1867c9`)
+adds the versioned bounded run request, stop-PC and asynchronous boundaries,
+and reuses Blink's decode cache within a run while retaining one-instruction
+step semantics.
+
+`0013-gem-concurrent-quantum-optimization.patch` (SHA-256
+`d9ab44fbd1e67c791a4f0d0960d308122471aa23fa4e034dbba998f1c2f37980`)
+keeps reviewed NOP and branch sequences resident under one recovery frame,
+defers non-guard dependency validation to the GEM quantum boundary, and uses
+a lightweight integer-state export between safe resident instructions.
+
+`0014-gem-concurrent-host-page-registry.patch` (SHA-256
+`cd4894556b28691082307bb23d74a83d51073e63dee329cd8f66384734e49c4f`)
+preallocates and serializes the embedding-only host-page registry so separate
+Blink machines can fault in shadow pages concurrently without racing a global
+registry reallocation.

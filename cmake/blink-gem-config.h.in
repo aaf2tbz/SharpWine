@@ -3,8 +3,12 @@
 #define DISABLE_VFS
 #define HAVE_FORK
 #define HAVE_SYNC
+#if defined(__APPLE__)
 #define HAVE_SYSCTL
+#endif
+#if defined(__APPLE__)
 #define HAVE_SA_LEN
+#endif
 #define HAVE_PREADV
 #define HAVE_MKFIFO
 #define HAVE_SCHED_H

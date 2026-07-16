@@ -25,7 +25,7 @@ index 8580274..7a3fb9d 100644
 +  }
  }
 diff --git a/blink/string.c b/blink/string.c
-index a6ca81c..0000000 100644
+index a6ca81c..d8ee71b 100644
 --- a/blink/string.c
 +++ b/blink/string.c
 @@ -169,8 +169,7 @@ static void StringOp(P, int op) {

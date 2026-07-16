@@ -1,0 +1,29 @@
+--- a/blink/memorymalloc.c
++++ b/blink/memorymalloc.c
+@@ -74,6 +74,19 @@
+   if (HasLinearMapping()) {
+     return (uintptr_t)ptr;
+   } else {
++#ifdef BLINK_GEM_EMBEDDING
++    LOCK(&g_allocator.lock);
++    if (!g_hostpages.c) {
++      g_hostpages.c = 1024 * 1024;
++      unassert((g_hostpages.p =
++                    calloc(g_hostpages.c, sizeof(*g_hostpages.p))));
++    }
++    unassert(g_hostpages.n < g_hostpages.c);
++    entry = g_hostpages.n++;
++    g_hostpages.p[entry] = ptr;
++    UNLOCK(&g_allocator.lock);
++    return entry << 12;
++#else
+     if (g_hostpages.n == g_hostpages.c) {
+       g_hostpages.c += 1;
+       g_hostpages.c += g_hostpages.c >> 1;
+@@ -84,6 +97,7 @@
+     entry = g_hostpages.n++;
+     g_hostpages.p[entry] = ptr;
+     return entry << 12;
++#endif
+   }
+ }
