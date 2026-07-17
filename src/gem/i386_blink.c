@@ -372,3 +372,37 @@ bool gem_i386_blink_invalidate_code(struct gem_i386_runtime *runtime, uint32_t a
     return runtime != NULL && i386_range(address, size) &&
            blink_gem_machine_invalidate_code(runtime->backend, address, size);
 }
+
+const struct gem_i386_engine_ops gem_i386_blink_jit_ops = {
+    GEM_I386_ENGINE_OPS_ABI_VERSION,
+    GEM_I386_ENGINE_JIT,
+    "GEM_i386 Blink AArch64 JIT",
+    "blink-f006a4fc-gem-i386-v2",
+    "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;legacy32;"
+    "context-v2;cpuid-sse42-aes-pclmul;"
+    "bounded-multi-instruction;interpreter-or-aarch64-jit",
+    gem_i386_blink_create,
+    gem_i386_blink_destroy,
+    gem_i386_blink_sync,
+    gem_i386_blink_step,
+    gem_i386_blink_run,
+    gem_i386_blink_engine_info,
+    gem_i386_blink_invalidate_code,
+};
+
+const struct gem_i386_engine_ops gem_i386_blink_interpreter_ops = {
+    GEM_I386_ENGINE_OPS_ABI_VERSION,
+    GEM_I386_ENGINE_INTERPRETER,
+    "GEM_i386 Blink interpreter",
+    "blink-f006a4fc-gem-i386-v2",
+    "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;legacy32;"
+    "context-v2;cpuid-sse42-aes-pclmul;"
+    "bounded-multi-instruction;interpreter-or-aarch64-jit",
+    gem_i386_blink_create,
+    gem_i386_blink_destroy,
+    gem_i386_blink_sync,
+    gem_i386_blink_step,
+    gem_i386_blink_run,
+    gem_i386_blink_engine_info,
+    gem_i386_blink_invalidate_code,
+};

@@ -19,13 +19,31 @@ static void yield_execution(void) {
 
 struct gem_i386_runtime *gem_i386_runtime_create(struct gem_memory *memory,
                                                  const struct gem_i386_runtime_config *config) {
+    enum gem_i386_engine_mode mode = GEM_I386_ENGINE_DEFAULT;
+    if (config != NULL)
+        mode = config->engine_mode;
+    return gem_i386_runtime_create_with_ops(memory, config,
+                                            mode == GEM_I386_ENGINE_INTERPRETER
+                                                ? &gem_i386_blink_interpreter_ops
+                                                : &gem_i386_blink_jit_ops);
+}
+
+struct gem_i386_runtime *
+gem_i386_runtime_create_with_ops(struct gem_memory *memory,
+                                 const struct gem_i386_runtime_config *config,
+                                 const struct gem_i386_engine_ops *ops) {
     struct gem_i386_runtime *runtime;
-    if (memory == NULL)
+    if (memory == NULL || ops == NULL || ops->abi_version != GEM_I386_ENGINE_OPS_ABI_VERSION ||
+        (ops->engine_mode != GEM_I386_ENGINE_JIT &&
+         ops->engine_mode != GEM_I386_ENGINE_INTERPRETER) ||
+        ops->create == NULL || ops->destroy == NULL || ops->sync == NULL || ops->step == NULL ||
+        ops->run == NULL || ops->engine_info == NULL || ops->invalidate_code == NULL)
         return NULL;
     runtime = (struct gem_i386_runtime *)calloc(1U, sizeof(*runtime));
     if (runtime == NULL)
         return NULL;
     runtime->memory = memory;
+    runtime->ops = ops;
     if (config != NULL)
         runtime->config = *config;
     if ((runtime->config.engine_mode != GEM_I386_ENGINE_DEFAULT &&
@@ -37,14 +55,18 @@ struct gem_i386_runtime *gem_i386_runtime_create(struct gem_memory *memory,
         return NULL;
     }
     if (runtime->config.engine_mode == GEM_I386_ENGINE_DEFAULT)
-        runtime->config.engine_mode = GEM_I386_ENGINE_JIT;
+        runtime->config.engine_mode = ops->engine_mode;
+    if (runtime->config.engine_mode != ops->engine_mode) {
+        free(runtime);
+        return NULL;
+    }
     if (runtime->config.host_return_sentinel == 0U)
         runtime->config.host_return_sentinel = GEM_I386_DEFAULT_HOST_RETURN_SENTINEL;
     if (runtime->config.windows_syscall_boundary == runtime->config.host_return_sentinel ||
         runtime->config.unix_call_boundary == runtime->config.host_return_sentinel ||
         (runtime->config.windows_syscall_boundary != 0U &&
          runtime->config.windows_syscall_boundary == runtime->config.unix_call_boundary) ||
-        !gem_i386_blink_create(runtime)) {
+        !ops->create(runtime)) {
         free(runtime);
         return NULL;
     }
@@ -57,7 +79,7 @@ struct gem_i386_runtime *gem_i386_runtime_create(struct gem_memory *memory,
 
 void gem_i386_runtime_destroy(struct gem_i386_runtime *runtime) {
     if (runtime != NULL) {
-        gem_i386_blink_destroy(runtime);
+        runtime->ops->destroy(runtime);
         free(runtime);
     }
 }
@@ -95,10 +117,10 @@ enum gem_stop_reason gem_i386_runtime_run(struct gem_i386_runtime *runtime,
             reason = GEM_STOP_INVARIANT_VIOLATION;
             break;
         }
-        gem_i386_blink_sync(runtime);
+        runtime->ops->sync(runtime);
         ++runtime->performance.quanta;
         ++runtime->performance.decode_resets;
-        reason = gem_i386_blink_run(runtime, context, &output, quantum_budget, &quantum_retired);
+        reason = runtime->ops->run(runtime, context, &output, quantum_budget, &quantum_retired);
         transaction_error = gem_memory_transaction_finish(runtime->transaction, &transaction_fault);
         if (transaction_error == GEM_MEMORY_CONFLICT) {
             output = quantum_input;
@@ -168,7 +190,9 @@ bool gem_i386_runtime_last_stop_info(const struct gem_i386_runtime *runtime,
 
 bool gem_i386_runtime_engine_info(const struct gem_i386_runtime *runtime,
                                   struct gem_i386_engine_info *out) {
-    return gem_i386_blink_engine_info(runtime, out);
+    if (runtime == NULL)
+        return false;
+    return runtime->ops->engine_info(runtime, out);
 }
 
 bool gem_i386_runtime_performance_info(const struct gem_i386_runtime *runtime,
@@ -183,7 +207,7 @@ bool gem_i386_runtime_performance_info(const struct gem_i386_runtime *runtime,
 void gem_i386_runtime_invalidate_code(struct gem_i386_runtime *runtime, uint32_t address,
                                       uint64_t size) {
     if (runtime != NULL &&
-        (runtime->running || !gem_i386_blink_invalidate_code(runtime, address, size)))
+        (runtime->running || !runtime->ops->invalidate_code(runtime, address, size)))
         runtime->backend_failed = true;
 }
 
@@ -193,14 +217,15 @@ void gem_i386_runtime_request_async_stop(struct gem_i386_runtime *runtime) {
 }
 
 const char *gem_i386_runtime_engine_name(const struct gem_i386_runtime *runtime) {
-    if (runtime == NULL)
+    if (runtime == NULL || runtime->ops->engine_name == NULL)
         return "unavailable";
-    return runtime->config.engine_mode == GEM_I386_ENGINE_JIT ? "GEM_i386 Blink AArch64 JIT"
-                                                              : "GEM_i386 Blink interpreter";
+    return runtime->ops->engine_name;
 }
 
 const char *gem_i386_runtime_engine_version(const struct gem_i386_runtime *runtime) {
-    return runtime != NULL ? "blink-f006a4fc-gem-i386-v2" : "unavailable";
+    if (runtime == NULL || runtime->ops->engine_version == NULL)
+        return "unavailable";
+    return runtime->ops->engine_version;
 }
 
 const char *gem_i386_runtime_engine_license(const struct gem_i386_runtime *runtime) {
@@ -208,8 +233,7 @@ const char *gem_i386_runtime_engine_license(const struct gem_i386_runtime *runti
 }
 
 const char *gem_i386_runtime_engine_provenance(const struct gem_i386_runtime *runtime) {
-    return runtime != NULL ? "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;legacy32;"
-                             "context-v2;cpuid-sse42-aes-pclmul;"
-                             "bounded-multi-instruction;interpreter-or-aarch64-jit"
-                           : "unavailable";
+    if (runtime == NULL || runtime->ops->engine_provenance == NULL)
+        return "unavailable";
+    return runtime->ops->engine_provenance;
 }
