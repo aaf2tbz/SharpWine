@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "fex": {
+    "repository": "https://github.com/FEX-Emu/FEX.git",
+    "release": "FEX-2607",
+    "revision": "1cc4b93e7a71c883ec021b71359f136394dc1f3c",
+    "revisionDate": "2026-07-03",
+    "license": "MIT",
+    "externalLicenseNotes": [
+      "External/cephes and External/tiny-json carry their own permissive licenses",
+      "CodeEmitter/ is vixl-derived (BSD-3-Clause family)"
+    ],
+    "vendored": false,
+    "reviewedFiles": {
+      "LICENSE": "f34a779f56b36d22b20e1b990d23e583a6a7ca071331925fa46156441c77a1ee",
+      "FEXCore/Source/Interface/Core/Frontend.cpp": "2c0ef4491a1f98277af00820a4f770a0ccee92d7da09295540f4a7cd3fade4a4",
+      "FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp": "901a8df226b728b3c8b03fa9dc63039cc5a45c8f9571a69c2d8b8049026c1c3e",
+      "FEXCore/Source/Interface/Core/OpcodeDispatcher.h": "0e2e133ab1d5b6bc015305888007dd01059be09f6664bdaf40e123fc70ce8035",
+      "FEXCore/Source/Interface/Core/OpcodeDispatcher/Flags.cpp": "764c626558baa29d6a5266c6b2fb512cb9f00c4dc2c6da2b418e6e4f2d94397c",
+      "FEXCore/Source/Interface/Core/OpcodeDispatcher/AVX_128.cpp": "73c2d63c82a2225bfc8c6ddb6ab01c31024db5a9eabe27ca5a461d5db565fbf5",
+      "FEXCore/Source/Interface/Core/OpcodeDispatcher/Vector.cpp": "e0add7082bab104e08a40e88f8cd21ff8777e5269f22eb6a64344f1c159d9531",
+      "FEXCore/Source/Interface/Core/X86Tables/VEXTables.cpp": "eb61165fab1ff27f462050a8a9ce9364afc593944083211c31b17acbbeace253",
+      "FEXCore/Source/Interface/Core/X86Tables/SecondaryGroupTables.cpp": "d3915b2e45677323da1cd479c95753c7c7f7f6c10c1cf4e10edd9da870f8800d",
+      "FEXCore/Source/Interface/Core/X86Tables/SecondaryModRMTables.cpp": "e03261b7022c38bf023087a38b70677943315a5ba255847942a870fca7a128ff",
+      "FEXCore/Source/Interface/Core/JIT/AtomicOps.cpp": "f72d792531a0e332d225f977ec528e682637daf48c792901778b6edecc7aa4fe",
+      "FEXCore/Source/Interface/Core/JIT/BranchOps.cpp": "f02c9c7c39e1c6884326354e7373bda088a0e31617b574ca704906764d18a438",
+      "FEXCore/Source/Interface/Core/Core.cpp": "6122f66a6587dc74c0cc92a0635b995a54fb14cff0ac816ff9e2a3361e5dd0c2",
+      "FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp": "12e322a953bbeb947bc60a0493e392ab5a7c1914720d36b81f0c67bb462d068f",
+      "FEXCore/docs/MemoryModelEmulation.md": "21786191334dc235eadbfcc9857b95ff125686e0f33fb0e873db65191a7e4fe5",
+      "unittests/ASM/FEX_bugs/cmpxchg16b.asm": "b3d4ceb045e1ade6898d827f635787cfe2817f053223aa07670edd35c3eec93f"
+    }
+  }
+}
