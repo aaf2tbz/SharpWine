@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 function(mswr_add_blink_gem_library blink_source)
-    if(NOT APPLE OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    if(NOT MSWR_BLINK_INTERPRETER_ONLY AND
+            (NOT APPLE OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$"))
         message(FATAL_ERROR "GEM_x86_64 Blink JIT requires native Apple Silicon")
     endif()
-    if(NOT CMAKE_C_COMPILER_ID STREQUAL "AppleClang")
+    if(NOT MSWR_BLINK_INTERPRETER_ONLY AND NOT CMAKE_C_COMPILER_ID STREQUAL "AppleClang")
         message(FATAL_ERROR "GEM_x86_64 Blink JIT requires Apple Clang")
     endif()
     find_package(ZLIB REQUIRED)
@@ -54,6 +55,9 @@ function(mswr_add_blink_gem_library blink_source)
         BLINK_COMMITS="f006a4fc"
         BLINK_UNAME_V="GEM_JIT"
         BUILD_TIMESTAMP="1970-01-01")
+    if(MSWR_BLINK_INTERPRETER_ONLY)
+        target_compile_definitions(blink_gem_archive PRIVATE DISABLE_JIT=1)
+    endif()
     target_compile_options(blink_gem_archive PRIVATE
         -fno-align-functions
         -fno-common

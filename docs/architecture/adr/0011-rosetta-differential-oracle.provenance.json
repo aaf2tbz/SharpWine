@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "projectChampollion": {
+    "repository": "https://github.com/FFRI/ProjectChampollion.git",
+    "revision": "b2c083206e3dde48c00d72be181483428463686c",
+    "license": "Apache-2.0",
+    "reviewedFiles": {
+      "docs_src/src/part1.md": "d1c89567d3f1506ea51f0e353401e728d07bcb8f0308c3d669e39a5deabc3908",
+      "docs_src/src/part2.md": "8eda8e0e3a7cf080bb0e41880e989e2199fc586a360a1d6ea92c8eb1c7a7a2fb",
+      "docs_src/src/appendix.md": "3832db97b728e54e792e0ef7ddd3ec81fa942b182cc820b226bc93fb635d5acc"
+    }
+  },
+  "metalSharpCarrier": {
+    "release": "0.55.0-arm64",
+    "archive": "MetalSharp.app/Contents/Resources/bundles/metalsharp-runtime.tar.zst",
+    "archiveSha256": "aaff5d0f9123a09613fa65c07b2d87ef09bd606dc6f0610df8be76eba7c9c02f"
+  },
+  "i386Matrix": {
+    "host": {
+      "productVersion": "27.0",
+      "buildVersion": "26A5378j",
+      "nativeArchitecture": "arm64",
+      "translatedArchitecture": "x86_64"
+    },
+    "caseCount": 514,
+    "elapsedMilliseconds": 4596,
+    "fixtureSha256": "1fe47f9609d97ff6b89b2b0884c5febbc63b7109b88f1fd886489ce1114a1242",
+    "evidenceSha256": "21fdfba07a1be769b36f0be5612a48addb4b737124bdd7eb7192b6174da19fe5",
+    "nativeReplay": {
+      "modes": ["interpreter", "jit"],
+      "comparisons": 1028,
+      "passed": 1028,
+      "failed": 0,
+      "evidenceSha256": "71e872202027cecae8ced798c39f236c8f47989ce765bba0a5ce394b04ee796f"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000019 Mon Sep 17 00:00:00 2001
+From: MetalSharp Wine Runtime contributors <noreply@metalsharp.dev>
+Date: Wed, 15 Jul 2026 22:30:00 -0600
+Subject: [PATCH 19/19] xtajit: preserve complete i386 v2 legacy state
+
+Keep the x87 environment and all segment descriptor metadata intact while
+crossing the WoW64 CPU boundary.  This completes context restoration without
+changing the callback ABI or the fixed-size GEM context record.
+---
+ dlls/xtajit/unixlib.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/dlls/xtajit/unixlib.c b/dlls/xtajit/unixlib.c
+index 2e97f8bbd4..dfa3019c91 100644
+--- a/dlls/xtajit/unixlib.c
++++ b/dlls/xtajit/unixlib.c
+@@ -196,6 +196,14 @@ static void context_to_gem( struct gem_i386_context *dst, const I386_CONTEXT *s
+     dst->segment_limit[GEM_I386_ES] = dst->segment_limit[GEM_I386_CS] = 0xffffffff;
+     dst->segment_limit[GEM_I386_SS] = dst->segment_limit[GEM_I386_DS] = 0xffffffff;
+     dst->segment_limit[GEM_I386_FS] = dst->segment_limit[GEM_I386_GS] = 0xffffffff;
++    dst->segment_attributes[GEM_I386_ES] = GEM_I386_SEGMENT_PRESENT |
++        GEM_I386_SEGMENT_WRITABLE | GEM_I386_SEGMENT_DEFAULT_32;
++    dst->segment_attributes[GEM_I386_CS] = GEM_I386_SEGMENT_PRESENT |
++        GEM_I386_SEGMENT_EXECUTABLE | GEM_I386_SEGMENT_DEFAULT_32;
++    dst->segment_attributes[GEM_I386_SS] = dst->segment_attributes[GEM_I386_DS] =
++        GEM_I386_SEGMENT_PRESENT | GEM_I386_SEGMENT_WRITABLE | GEM_I386_SEGMENT_DEFAULT_32;
++    dst->segment_attributes[GEM_I386_FS] = dst->segment_attributes[GEM_I386_GS] =
++        GEM_I386_SEGMENT_PRESENT | GEM_I386_SEGMENT_WRITABLE | GEM_I386_SEGMENT_DEFAULT_32;
+     {
+         const XSAVE_FORMAT *xsave = (const XSAVE_FORMAT *)src->ExtendedRegisters;
+         unsigned int i;
+@@ -203,6 +211,11 @@ static void context_to_gem( struct gem_i386_context *dst, const I386_CONTEXT *s
+         dst->fcw = xsave->ControlWord;
+         dst->fsw = xsave->StatusWord;
+         dst->ftw = fpux_tag_to_full( xsave );
++        dst->fop = xsave->ErrorOpcode;
++        dst->x87_environment.fip = xsave->ErrorOffset;
++        dst->x87_environment.fcs = xsave->ErrorSelector;
++        dst->x87_environment.fdp = xsave->DataOffset;
++        dst->x87_environment.fds = xsave->DataSelector;
+         memcpy( dst->xmm, xsave->XmmRegisters, sizeof(dst->xmm) );
+         for (i = 0; i < 8; ++i) memcpy( &dst->x87[i], &xsave->FloatRegisters[i], 10 );
+     }
+@@ -225,6 +238,11 @@ static void context_from_gem( I386_CONTEXT *dst, const struct gem_i386_context
+         xsave->ControlWord = src->fcw;
+         xsave->StatusWord = src->fsw;
+         xsave->TagWord = full_tag_to_fpux( src->ftw );
++        xsave->ErrorOpcode = src->fop;
++        xsave->ErrorOffset = src->x87_environment.fip;
++        xsave->ErrorSelector = src->x87_environment.fcs;
++        xsave->DataOffset = src->x87_environment.fdp;
++        xsave->DataSelector = src->x87_environment.fds;
+         memcpy( xsave->XmmRegisters, src->xmm, sizeof(src->xmm) );
+         for (i = 0; i < 8; ++i) memcpy( &xsave->FloatRegisters[i], &src->x87[i], 10 );
+     }
+--
+2.50.1

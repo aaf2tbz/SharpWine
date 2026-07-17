@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Thu, 16 Jul 2026 09:51:00 -0600
+Subject: [PATCH] gem: preserve failed shadow snapshot errors
+
+When a legacy i386 page snapshot fails, retain that exact memory error
+instead of overwriting it with a metadata-only validation result. Continue
+through the common fault path so restartable REP instructions still commit
+their completed iterations before reporting the failing page.
+---
+ blink/gem_embed.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/blink/gem_embed.c b/blink/gem_embed.c
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -674,7 +674,8 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+           return r;
+         }
+       }
+-      error = g->cb.validate(g->opaque, m->faultaddr, 1, r.access);
++      if (!error)
++        error = g->cb.validate(g->opaque, m->faultaddr, 1, r.access);
+       r.outcome = BLINK_GEM_MEMORY_FAULT;
+       r.memory_error = error;
+       if (restartable_rep) {
+--
+2.54.0 (Apple Git-157)

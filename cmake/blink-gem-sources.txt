@@ -7,6 +7,7 @@ blink/alui.c
 blink/ancillary.c
 blink/argv.c
 blink/assert.c
+blink/aes.c
 blink/bcd.c
 blink/bios.c
 blink/biosrom.c
@@ -114,6 +115,7 @@ blink/reset.c
 blink/signal.c
 blink/smc.c
 blink/sse.c
+blink/sse4.c
 blink/sse2.c
 blink/ssefloat.c
 blink/ssemov.c

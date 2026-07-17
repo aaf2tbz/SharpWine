@@ -107,6 +107,20 @@ is not a release input.
      successful instead of incorrectly falling back to `start.exe`;
    - prevents an ASLR-relocated `wineboot.exe` from causing a secondary
      `kernel32.dll` bootstrap failure.
+16. `0016-darwin-arm64-enable-synchronous-gui-callbacks.patch`
+   - preserves full-width syscall results and supports GUI syscalls with more
+     than sixteen arguments;
+   - completes translated user-mode callbacks synchronously and preserves
+     their restored continuations;
+   - uses a server-owned desktop without translated Explorer, loads
+     `winemac.drv` directly, and reads KUSER from its canonical high mapping.
+17. `0017-darwin-arm64-canonicalize-wow64-gui-pointers.patch`
+   - canonicalizes 32-bit guest pointers embedded in WoW64 GUI, macdrv,
+     printing, and code-page parameter blocks on Darwin ARM64;
+   - initializes GDI stock objects safely for early dependency calls and
+     guards callbacks until the 32-bit callback table is published;
+   - preserves atom-valued properties and converts structured window-message
+     pointers so 32-bit applications can create sustained interactive windows.
 
 ## Current evidence and limitation
 
@@ -156,8 +170,16 @@ and MoltenVK binaries. The command also builds and stages the exact GEM bridge,
 verifies ntdll's direct versioned dependency, native launch ABI, and relocatable
 lookup path, audits every staged host Mach-O as ARM64-only, runs the bounded
 pre-guest lifecycle probe, and executes the full fresh-prefix
-`wineboot`/`cmd.exe` gate. The gate records the exact staged PE selected by the
+`wineboot`/`cmd.exe` gate. The staged runtime has additionally produced an
+on-screen native Cocoa window for ARM64X Notepad through GEM. The gate records
+the exact staged PE selected by the
 wrapper and rejects loader re-exec or `start.exe` fallback evidence. The
 resulting `wine-build-manifest.json` records those results, evidence hashes,
 configure flags, toolchain, dependency roots, installed files, and Mach-O audit
 output. It is integration evidence, not a final release package.
+
+Patch `0018` preserves the existing xtajit Unix-call ABI and maps stable GEM
+i386 exception identities to Windows exception records. Access violations
+retain exact read/write/execute information and the faulting address;
+breakpoint, divide, overflow, stack, and illegal-instruction stops no longer
+collapse into one fallback exception.

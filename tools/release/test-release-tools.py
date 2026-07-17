@@ -246,6 +246,23 @@ class ReleaseToolTests(unittest.TestCase):
         self.assertEqual(missing, [])
         self.assertEqual(set(snapshot), set(PACKAGED.PREFIX_READY_FILES))
 
+    def test_launcher_populates_packaged_wow64_payload(self) -> None:
+        foundation = self.directory / "foundation"
+        package = self.directory / "runtime"
+        for relative in ("bin/wine", "bin/wineserver",
+                         "lib/libmetalsharp-gem-wine.0.1.0.dylib",
+                         "lib/wine/i386-windows/ntdll.dll", "share/wine/wine.inf"):
+            path = foundation / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(relative.encode("ascii"))
+        (foundation / "bin/wine").chmod(0o755)
+        (foundation / "bin/wineserver").chmod(0o755)
+        STAGER.copy_wine(foundation, package)
+        launcher = (package / "bin/wine").read_text(encoding="utf-8")
+        self.assertIn("ensure_wow64_payload", launcher)
+        self.assertIn("$root/lib/wine/i386-windows", launcher)
+        self.assertIn("drive_c/windows/syswow64", launcher)
+
     def test_verifies_published_asset_digests(self) -> None:
         fake_bin = self.directory / "fake-bin"
         fake_bin.mkdir()

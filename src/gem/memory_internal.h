@@ -33,7 +33,13 @@ enum gem_memory_error gem_memory_transaction_validate(struct gem_memory_transact
 enum gem_memory_error
 gem_memory_transaction_commit_pages(struct gem_memory_transaction *transaction,
                                     const struct gem_memory_page_write *writes, size_t count,
-                                    uint64_t *fault_address);
+                                    uint64_t *fault_address, size_t *bytes_committed);
+enum gem_memory_error gem_memory_transaction_finish(struct gem_memory_transaction *transaction,
+                                                    uint64_t *fault_address);
+uint64_t
+gem_memory_transaction_lock_wait_nanoseconds(const struct gem_memory_transaction *transaction);
+bool gem_memory_transaction_page_is_external(const struct gem_memory_transaction *transaction,
+                                             uint64_t address);
 
 #ifdef __cplusplus
 }

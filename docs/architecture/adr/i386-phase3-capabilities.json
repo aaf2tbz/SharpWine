@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "profile": "gem-i386-sse42-aes-pclmul-v1",
+  "hostIndependent": true,
+  "corpus": {
+    "path": "tests/i386_phase3_conformance.c",
+    "reference": "tests/fixtures/i386_phase3_reference.bin",
+    "referenceSha256": "fb8a1f249d08b81d93e5acbf715fc63801a77f185135e24c70cea81c535ddd06",
+    "cases": 1024,
+    "comparisons": 2048,
+    "categories": {
+      "x87": 256,
+      "mmx": 128,
+      "simd": 384,
+      "repAndSegmentation": 160,
+      "cpuidAndContext": 96
+    }
+  },
+  "advertised": [
+    {"name": "FPU", "leaf": "0x00000001", "register": "edx", "bit": 0, "handlers": ["OpFpu", "OpFxsave", "OpFxrstor"], "witness": "I386_PHASE3_X87_CASES"},
+    {"name": "CX8", "leaf": "0x00000001", "register": "edx", "bit": 8, "handlers": ["OpCmpxchg8b"], "witness": "c2[]"},
+    {"name": "CMOV", "leaf": "0x00000001", "register": "edx", "bit": 15, "handlers": ["OpCmov"], "witness": "c3[]"},
+    {"name": "MMX", "leaf": "0x00000001", "register": "edx", "bit": 23, "handlers": ["OpSsePxor", "OpEmms"], "witness": "I386_PHASE3_MMX_CASES"},
+    {"name": "FXSR", "leaf": "0x00000001", "register": "edx", "bit": 24, "handlers": ["OpFxsave", "OpFxrstor"], "witness": "c5[]"},
+    {"name": "SSE", "leaf": "0x00000001", "register": "edx", "bit": 25, "handlers": ["OpXorpsd"], "witness": "s0[]"},
+    {"name": "SSE2", "leaf": "0x00000001", "register": "edx", "bit": 26, "handlers": ["OpSsePxor"], "witness": "s1[]"},
+    {"name": "SSE3", "leaf": "0x00000001", "register": "ecx", "bit": 0, "handlers": ["OpAddsubpsd"], "witness": "I386_PHASE3_SIMD_CASES"},
+    {"name": "PCLMUL", "leaf": "0x00000001", "register": "ecx", "bit": 1, "handlers": ["OpSsePclmulqdq"], "witness": "s5[]"},
+    {"name": "SSSE3", "leaf": "0x00000001", "register": "ecx", "bit": 9, "handlers": ["OpSsePshufb"], "witness": "s2[]"},
+    {"name": "SSE4.1", "leaf": "0x00000001", "register": "ecx", "bit": 19, "handlers": ["OpSse4", "OpSsePminsd", "OpSsePmulld", "OpMovntdqaVdqMdq"], "witness": "s12[]", "opcodeWitnesses": ["s3[]", "s12[]", "s13[]", "s14[]", "s15[]", "s16[]", "s17[]", "s18[]", "s19[]", "s20[]", "s21[]", "s22[]", "s23[]", "s24[]", "s25[]", "s26[]", "s27[]", "s28[]", "s29[]", "s30[]", "s32[]", "s33[]", "s34[]", "s35[]", "s36[]", "s37[]", "s38[]", "s39[]", "s40[]", "s41[]", "s42[]", "s43[]", "s44[]", "s45[]", "s46[]", "s47[]", "s48[]", "s49[]"], "opcodes": ["0x210", "0x214", "0x215", "0x217", "0x220", "0x221", "0x222", "0x223", "0x224", "0x225", "0x228", "0x229", "0x22a", "0x22b", "0x230", "0x231", "0x232", "0x233", "0x234", "0x235", "0x238-0x241", "0x308-0x30e", "0x314-0x317", "0x320-0x322", "0x340-0x342"]},
+    {"name": "SSE4.2", "leaf": "0x00000001", "register": "ecx", "bit": 20, "handlers": ["OpSse4", "OpCrc32"], "witness": "s4[]", "opcodeWitnesses": ["s4[]", "s31[]", "s50[]", "s51[]", "s52[]", "s53[]"], "opcodes": ["0x237", "0x360-0x363", "0x2f0-0x2f1"]},
+    {"name": "POPCNT", "leaf": "0x00000001", "register": "ecx", "bit": 23, "handlers": ["AluPopcnt"], "witness": "c4[]"},
+    {"name": "AES", "leaf": "0x00000001", "register": "ecx", "bit": 25, "handlers": ["OpAesenc", "OpAesenclast", "OpAesdec", "OpAesdeclast", "OpAesimc", "OpAeskeygenassist"], "witness": "s6[]", "opcodeWitnesses": ["s6[]", "s7[]", "s8[]", "s9[]", "s10[]", "s11[]"]},
+    {"name": "ERMS", "leaf": "0x00000007", "register": "ebx", "bit": 9, "handlers": ["OpMovsb"], "witness": "I386_PHASE3_REP_SEGMENT_CASES"}
+  ],
+  "masked": [
+    "AVX", "AVX2", "FMA", "OSXSAVE", "BMI1", "BMI2", "ADX", "FSGSBASE",
+    "RDRAND", "RDSEED", "RDPID", "CX16", "LONG_MODE", "SYSCALL", "RDTSCP"
+  ],
+  "precisionBoundary": "Raw 80-bit values and environment state round-trip exactly; common x87 arithmetic uses reviewed host-double compatibility tolerances."
+}

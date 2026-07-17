@@ -12,11 +12,22 @@
 extern "C" {
 #endif
 
-#define GEM_I386_CONTEXT_LAYOUT_VERSION UINT32_C(1)
+#define GEM_I386_CONTEXT_LAYOUT_VERSION_V1 UINT32_C(1)
+#define GEM_I386_CONTEXT_LAYOUT_VERSION_V2 UINT32_C(2)
+#define GEM_I386_CONTEXT_LAYOUT_VERSION GEM_I386_CONTEXT_LAYOUT_VERSION_V2
 #define GEM_I386_CONTEXT_SERIALIZATION_VERSION UINT32_C(1)
 #define GEM_I386_CONTEXT_SIZE_V1 UINT32_C(448)
+#define GEM_I386_CONTEXT_SIZE_V2 UINT32_C(448)
 #define GEM_I386_CONTEXT_ALIGNMENT_V1 UINT32_C(8)
 #define GEM_I386_EFLAGS_REQUIRED UINT32_C(0x00000002)
+
+enum gem_i386_segment_attribute {
+    GEM_I386_SEGMENT_PRESENT = 1U << 0,
+    GEM_I386_SEGMENT_WRITABLE = 1U << 1,
+    GEM_I386_SEGMENT_EXECUTABLE = 1U << 2,
+    GEM_I386_SEGMENT_EXPAND_DOWN = 1U << 3,
+    GEM_I386_SEGMENT_DEFAULT_32 = 1U << 4
+};
 
 enum gem_i386_gpr {
     GEM_I386_EAX = 0,
@@ -36,6 +47,14 @@ enum gem_i386_segment {
     GEM_I386_DS = 3,
     GEM_I386_FS = 4,
     GEM_I386_GS = 5,
+};
+
+struct gem_i386_x87_environment {
+    uint32_t fip;
+    uint32_t fdp;
+    uint16_t fcs;
+    uint16_t fds;
+    uint32_t reserved[2];
 };
 
 /* Dedicated PE32 architectural state. It is deliberately not a union member
@@ -62,7 +81,10 @@ struct gem_i386_context {
     uint32_t reserved0;
     uint64_t transition_cookie;
     uint32_t stop_reason;
-    uint32_t reserved[5];
+    union {
+        uint32_t reserved[5];
+        struct gem_i386_x87_environment x87_environment;
+    };
 };
 
 #if defined(__cplusplus)
@@ -87,6 +109,14 @@ GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, transition_cookie) == 4
                        "i386 transition cookie offset changed");
 GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, stop_reason) == 424U,
                        "i386 stop reason offset changed");
+GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, x87_environment.fip) == 428U,
+                       "i386 x87 instruction pointer offset changed");
+GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, x87_environment.fdp) == 432U,
+                       "i386 x87 data pointer offset changed");
+GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, x87_environment.fcs) == 436U,
+                       "i386 x87 code selector offset changed");
+GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, x87_environment.fds) == 438U,
+                       "i386 x87 data selector offset changed");
 
 #undef GEM_I386_ALIGNOF
 #undef GEM_I386_STATIC_ASSERT

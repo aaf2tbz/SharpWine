@@ -216,7 +216,7 @@ static enum gem_memory_error replace_stack_record(struct gem_memory *memory, uin
         memcpy(page + offset, &value, sizeof(value));
         write.address = page_address;
         write.data = page;
-        error = gem_memory_transaction_commit_pages(transaction, &write, 1U, NULL);
+        error = gem_memory_transaction_commit_pages(transaction, &write, 1U, NULL, NULL);
     }
     gem_memory_transaction_end(transaction);
     return error;

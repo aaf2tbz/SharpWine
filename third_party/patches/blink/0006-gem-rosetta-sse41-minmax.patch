@@ -1,0 +1,43 @@
+--- a/blink/sse.c
++++ b/blink/sse.c
+@@ -1343,7 +1343,8 @@
+-static void SsePminsd(u8 x[16], const u8 y[16]) {
+-  unsigned i;
+-  i32 X[4], Y[4];
+-  memcpy(X, x, 16);
+-  memcpy(Y, y, 16);
+-  for (i = 0; i < 4; ++i) {
+-    X[i] = MIN(X[i], Y[i]);
++#define DEFINE_SSE41_MINMAX(NAME, TYPE, LANES, OP)       \
++  static void NAME(u8 x[16], const u8 y[16]) {           \
++    unsigned i;                                           \
++    TYPE X[LANES], Y[LANES];                              \
++    memcpy(X, x, 16);                                     \
++    memcpy(Y, y, 16);                                     \
++    for (i = 0; i < LANES; ++i) X[i] = OP(X[i], Y[i]);   \
++    memcpy(x, X, 16);                                     \
+@@ -1351,2 +1351,0 @@
+-  memcpy(x, X, 16);
+-}
+@@ -1354 +1353,10 @@
+-static void MmxPminsd(u8 x[8], const u8 y[8]) {
++DEFINE_SSE41_MINMAX(SsePminsb, i8, 16, MIN)
++DEFINE_SSE41_MINMAX(SsePminsd, i32, 4, MIN)
++DEFINE_SSE41_MINMAX(SsePminuw, u16, 8, MIN)
++DEFINE_SSE41_MINMAX(SsePminud, u32, 4, MIN)
++DEFINE_SSE41_MINMAX(SsePmaxsb, i8, 16, MAX)
++DEFINE_SSE41_MINMAX(SsePmaxsd, i32, 4, MAX)
++DEFINE_SSE41_MINMAX(SsePmaxuw, u16, 8, MAX)
++DEFINE_SSE41_MINMAX(SsePmaxud, u32, 4, MAX)
++
++static void MmxSse41Minmax(u8 x[8], const u8 y[8]) {
+@@ -1588 +1596,8 @@
+-void OpSsePminsd(P) { OpSse(A, MmxPminsd, SsePminsd); }
++void OpSsePminsb(P) { OpSse(A, MmxSse41Minmax, SsePminsb); }
++void OpSsePminsd(P) { OpSse(A, MmxSse41Minmax, SsePminsd); }
++void OpSsePminuw(P) { OpSse(A, MmxSse41Minmax, SsePminuw); }
++void OpSsePminud(P) { OpSse(A, MmxSse41Minmax, SsePminud); }
++void OpSsePmaxsb(P) { OpSse(A, MmxSse41Minmax, SsePmaxsb); }
++void OpSsePmaxsd(P) { OpSse(A, MmxSse41Minmax, SsePmaxsd); }
++void OpSsePmaxuw(P) { OpSse(A, MmxSse41Minmax, SsePmaxuw); }
++void OpSsePmaxud(P) { OpSse(A, MmxSse41Minmax, SsePmaxud); }

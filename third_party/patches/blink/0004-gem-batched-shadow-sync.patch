@@ -1,0 +1,197 @@
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -297,5 +297,18 @@
+   if (g) {
+     if (g->machine) FreeMachine(g->machine);
+     free(g);
++  }
++}
++
++void blink_gem_machine_sync(struct blink_gem_machine* g) {
++  size_t i;
++  uint32_t error = 0;
++  if (!g) return;
++  for (i = 0; i < g->page_count;) {
++    if (reconcile_page(g, g->pages + i, &error) < 0) {
++      drop_page(g, i);
++      continue;
++    }
++    ++i;
+   }
+ }
+@@ -323,14 +336,16 @@
+   memset(&g->last_decode, 0, sizeof(g->last_decode));
+   g->last_decode.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+   g->last_decode.size = sizeof(g->last_decode);
+-  /* Native Wine syscalls and the external-memory bridge can update any
+-   * already-cached guest data page between single-instruction steps. */
+-  for (i = 0; i < g->page_count;) {
+-    if (reconcile_page(g, g->pages + i, &error) < 0) {
+-      drop_page(g, i);
+-      continue;
++  if (g->guest_mode != BLINK_GEM_GUEST_LEGACY_32) {
++    /* Native Wine syscalls and the external-memory bridge can update any
++     * already-cached guest data page between single-instruction steps. */
++    for (i = 0; i < g->page_count;) {
++      if (reconcile_page(g, g->pages + i, &error) < 0) {
++        drop_page(g, i);
++        continue;
++      }
++      ++i;
+     }
+-    ++i;
+   }
+   for (retries = 0; retries < (int)BLINK_GEM_MAX_SHADOW_PAGES + 1; ++retries) {
+     import_state(m, in);
+@@ -338,16 +353,18 @@
+     m->readsize = m->writesize = 0;
+     m->faultaddr = 0;
+     m->oplen = 0;
+-    rc = reconcile_range(g, in->rip, 15, &error);
+-    if (rc) {
+-      if (rc < 0) {
+-        r = result(BLINK_GEM_MEMORY_FAULT);
+-        r.fault_address = in->rip;
+-        r.access = BLINK_GEM_ACCESS_FETCH;
+-        r.memory_error = error;
+-        return r;
++    if (g->guest_mode != BLINK_GEM_GUEST_LEGACY_32) {
++      rc = reconcile_range(g, in->rip, 15, &error);
++      if (rc) {
++        if (rc < 0) {
++          r = result(BLINK_GEM_MEMORY_FAULT);
++          r.fault_address = in->rip;
++          r.access = BLINK_GEM_ACCESS_FETCH;
++          r.memory_error = error;
++          return r;
++        }
++        continue;
+       }
+-      continue;
+     }
+     ResetInstructionCache(m);
+     fetching = 1;
+@@ -356,30 +373,32 @@
+       LoadInstruction(m, m->ip);
+       fetch_address = m->ip;
+       fetch_size = Oplength(m->xedd->op.rde);
+-      rc = reconcile_range(g, fetch_address, fetch_size, &error);
+-      if (rc) {
+-        m->canhalt = false;
+-        if (rc < 0) {
+-          r = result(BLINK_GEM_MEMORY_FAULT);
+-          r.fault_address = fetch_address;
+-          r.access = BLINK_GEM_ACCESS_FETCH;
+-          r.memory_error = error;
+-          return r;
++      if (g->guest_mode != BLINK_GEM_GUEST_LEGACY_32) {
++        rc = reconcile_range(g, fetch_address, fetch_size, &error);
++        if (rc) {
++          m->canhalt = false;
++          if (rc < 0) {
++            r = result(BLINK_GEM_MEMORY_FAULT);
++            r.fault_address = fetch_address;
++            r.access = BLINK_GEM_ACCESS_FETCH;
++            r.memory_error = error;
++            return r;
++          }
++          continue;
+         }
+-        continue;
+-      }
+-      rc = reconcile_range(g, in->gpr[4] >= 128 ? in->gpr[4] - 128 : 0,
+-                           256, &error);
+-      if (rc) {
+-        m->canhalt = false;
+-        if (rc < 0) {
+-          r = result(BLINK_GEM_MEMORY_FAULT);
+-          r.fault_address = in->gpr[4];
+-          r.access = BLINK_GEM_ACCESS_READ;
+-          r.memory_error = error;
+-          return r;
++        rc = reconcile_range(g, in->gpr[4] >= 128 ? in->gpr[4] - 128 : 0,
++                             256, &error);
++        if (rc) {
++          m->canhalt = false;
++          if (rc < 0) {
++            r = result(BLINK_GEM_MEMORY_FAULT);
++            r.fault_address = in->gpr[4];
++            r.access = BLINK_GEM_ACCESS_READ;
++            r.memory_error = error;
++            return r;
++          }
++          continue;
+         }
+-        continue;
+       }
+       handler_id =
+           GemHandlerId(GetOp(Mopcode(m->xedd->op.rde)), m->xedd->op.rde);
+@@ -477,7 +496,8 @@
+       }
+       r.fault_address = m->faultaddr;
+       r.access = fault_access(m, fetching);
+-      if (find_page(g, m->faultaddr)) {
++      if (g->guest_mode != BLINK_GEM_GUEST_LEGACY_32 &&
++          find_page(g, m->faultaddr)) {
+         int changed = reconcile_page(g, find_page(g, m->faultaddr), &error);
+         if (changed > 0) continue;
+         if (changed < 0) {
+@@ -485,7 +505,7 @@
+           r.memory_error = error;
+           return r;
+         }
+-      } else {
++      } else if (!find_page(g, m->faultaddr)) {
+         if (add_page(g, m->faultaddr, &error)) continue;
+         if (error == UINT32_MAX) {
+           r = result(BLINK_GEM_INVALID);
+@@ -498,22 +518,24 @@
+       r.memory_error = error;
+       return r;
+     }
+-    rc = reconcile_range(g, (uint64_t)m->readaddr, (uint64_t)m->readsize,
+-                         &error);
+-    if (!rc)
+-      rc = reconcile_range(g, (uint64_t)m->writeaddr,
+-                           (uint64_t)m->writesize, &error);
+-    if (rc) {
+-      if (rc < 0) {
+-        r = result(BLINK_GEM_MEMORY_FAULT);
+-        r.fault_address = m->writesize ? (uint64_t)m->writeaddr
+-                                       : (uint64_t)m->readaddr;
+-        r.access = m->writesize ? BLINK_GEM_ACCESS_WRITE
+-                                : BLINK_GEM_ACCESS_READ;
+-        r.memory_error = error;
+-        return r;
++    if (g->guest_mode != BLINK_GEM_GUEST_LEGACY_32) {
++      rc = reconcile_range(g, (uint64_t)m->readaddr, (uint64_t)m->readsize,
++                           &error);
++      if (!rc)
++        rc = reconcile_range(g, (uint64_t)m->writeaddr,
++                             (uint64_t)m->writesize, &error);
++      if (rc) {
++        if (rc < 0) {
++          r = result(BLINK_GEM_MEMORY_FAULT);
++          r.fault_address = m->writesize ? (uint64_t)m->writeaddr
++                                         : (uint64_t)m->readaddr;
++          r.access = m->writesize ? BLINK_GEM_ACCESS_WRITE
++                                  : BLINK_GEM_ACCESS_READ;
++          r.memory_error = error;
++          return r;
++        }
++        continue;
+       }
+-      continue;
+     }
+     error = g->cb.validate(g->opaque, fetch_address, (size_t)fetch_size,
+                            BLINK_GEM_ACCESS_FETCH);
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -170,6 +170,7 @@
+ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine*,
+                                                const struct blink_gem_state*,
+                                                struct blink_gem_state*);
++void blink_gem_machine_sync(struct blink_gem_machine*);
+ bool blink_gem_machine_engine_info(const struct blink_gem_machine*,
+                                    struct blink_gem_engine_info*);
+ bool blink_gem_machine_invalidate_code(struct blink_gem_machine*, uint64_t,

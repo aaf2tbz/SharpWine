@@ -243,7 +243,7 @@ i386_acceptance_exe="$prefix/lib/wine/i386-windows/sharpwine-i386-acceptance.exe
 file "$acceptance_exe" | grep -Eq 'PE32\+ executable.*Aarch64' || {
     echo "native ARM64 GEM acceptance executable has the wrong architecture" >&2; exit 1;
 }
-"$llvm_mingw/bin/i686-w64-mingw32-clang" -O2 -Wall -Wextra -Werror \
+"$llvm_mingw/bin/i686-w64-mingw32-clang" -O2 -msse2 -Wall -Wextra -Werror \
     -Wl,--no-insert-timestamp -Wl,--subsystem,console \
     "$root/tests/fixtures/wine_i386_gem_acceptance.c" -o "$i386_acceptance_exe"
 file "$i386_acceptance_exe" | grep -Eq 'PE32 executable.*Intel 80386' || {

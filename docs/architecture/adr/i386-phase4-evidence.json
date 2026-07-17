@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "generatorVersion": 1,
+  "templateRevision": 1,
+  "masterSeed": "0x534841525057494e",
+  "acceptedQualification": {
+    "shardsComplete": 4,
+    "finalShard": 4,
+    "finalOrdinal": 3928,
+    "caseCount": 20313,
+    "baselineRecords": 20313,
+    "nativeToBaselineComparisons": 40626,
+    "interpreterJitParityChecks": 20313,
+    "classifications": {
+      "pass": 20313,
+      "semanticMismatch": 0,
+      "unsupportedAdvertised": 0,
+      "jitFallback": 0,
+      "timeout": 0,
+      "crash": 0,
+      "nonzeroExit": 0,
+      "malformedRecord": 0,
+      "infrastructureFailure": 0
+    },
+    "categoryTotals": {
+      "scalar": 5120,
+      "memory": 3840,
+      "x87Mmx": 2560,
+      "simd": 3840,
+      "system": 3840,
+      "negative": 1113
+    },
+    "resultsSha256": "799de284a2aebc46a4745d403742af968169ba737cfffe3ea4b7556ad0d5c36b"
+  },
+  "smokeShard": {
+    "caseCount": 4096,
+    "baselineRecords": 4096,
+    "nativeToBaselineComparisons": 8192,
+    "interpreterJitParityChecks": 4096,
+    "pass": 4096,
+    "fail": 0,
+    "resultsSha256": "e04e154bd288f745379efcf959b90f28d024b1e8646e528973ac0f450f8b1fdb"
+  },
+  "retainedDeterministicComparisons": 5184,
+  "totalNativeCompatibilityComparisons": 45810,
+  "phase5CiCorpus": {
+    "path": "tests/fixtures/i386_phase5_golden.bin",
+    "schemaVersion": 1,
+    "caseCount": 20313,
+    "finalShard": 4,
+    "finalOrdinal": 3928,
+    "goldenSha256": "179ed278a8382fa4b3066b73b2aecf5c791880492505c1b93ba6e6922d67755b",
+    "replayModes": ["interpreter", "jit"],
+    "externalRuntimeRequired": false,
+    "coverage": {
+      "templateCount": 36,
+      "operandForms": ["register", "memory", "implicit-string", "invalid-encoding"],
+      "addressingForms": ["register", "esi-indirect", "edi-indirect", "implicit-esi-edi"],
+      "widths": [8, 32, 64, 80, 128],
+      "faultClasses": ["illegal-instruction", "retained-phase2-memory-and-protection"]
+    },
+    "prioritizationInputs": ["32-bit Wine startup", "interactive Notepad", "Steam bootstrap"]
+  },
+  "sourceSha256": {
+    "generatorAndTemplates": "feb4c009015e4cfe23c0c55536ef386780561d4d480aafb93613ebb005297791",
+    "recordSchema": "e3bb1fe0148811b8bae8685994849ad953d8f137498421c6b7d9b13fc2e80bde",
+    "baselineWorker": "53190c30d366ce45ad9577d4954835207c109b62a0f892cb1977e1e242919eb7",
+    "baselineAssembly": "750e5cb3962ba9223fc5aa29e877bd2009b64d9a19432692c934f55735838ae2",
+    "baselineFixture": "a29596126745c2e885665afd9780df6fbfb8a52f19f32cbd97ddf197cc540f9b",
+    "blinkCorrectionsPatch": "2e72280627b4c56d4594a862420d8fd6e8c86f847cf4fca547e673382c74970a"
+  },
+  "precisionPolicy": {
+    "integerAndRawState": "exact",
+    "x87Arithmetic": "binary64 normalized with exact signed-zero, infinity, and NaN class",
+    "simdFloatingPoint": "one ULP only for templates declaring rounding sensitivity",
+    "undefinedState": "explicitly masked"
+  },
+  "promotedRegressions": [
+    {
+      "identity": "v1/r1/shard-0/case-1792/template-300",
+      "defect": "x87 full-stack push failed to commit indefinite special state"
+    },
+    {
+      "identity": "v1/r1/shard-0/case-3080/template-504",
+      "defect": "SCAS subtraction operand order produced reversed arithmetic flags"
+    }
+  ],
+  "qualificationBoundary": "The accepted development evidence ends after shard 4 ordinal 3928. The remaining generated cases were intentionally not executed and are not claimed by this record."
+}

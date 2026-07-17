@@ -774,6 +774,7 @@ enum gem_wine_status gem_wine_thread_create(struct gem_wine_process *process,
                                             struct gem_wine_thread **out_thread) {
     struct gem_wine_thread *thread;
     struct gem_arm64ec_runtime_config runtime_config;
+    pthread_mutexattr_t run_lock_attr;
 
     if (process == NULL || config == NULL || out_thread == NULL)
         return GEM_WINE_INVALID_ARGUMENT;
@@ -790,10 +791,21 @@ enum gem_wine_status gem_wine_thread_create(struct gem_wine_process *process,
     thread->process = process;
     thread->config = *config;
     atomic_init(&thread->active_hybrid, NULL);
-    if (pthread_mutex_init(&thread->run_lock, NULL) != 0) {
+    /* Native Wine syscalls synchronously invoke translated user callbacks.
+     * Those callbacks re-enter this same logical guest thread while the outer
+     * run is paused at its boundary callback, so run ownership must be
+     * recursive for the owning host thread. */
+    if (pthread_mutexattr_init(&run_lock_attr) != 0) {
         free(thread);
         return GEM_WINE_ENGINE_ERROR;
     }
+    if (pthread_mutexattr_settype(&run_lock_attr, PTHREAD_MUTEX_RECURSIVE) != 0 ||
+        pthread_mutex_init(&thread->run_lock, &run_lock_attr) != 0) {
+        (void)pthread_mutexattr_destroy(&run_lock_attr);
+        free(thread);
+        return GEM_WINE_ENGINE_ERROR;
+    }
+    (void)pthread_mutexattr_destroy(&run_lock_attr);
     if (pthread_mutex_init(&thread->runtime_lock, NULL) != 0) {
         (void)pthread_mutex_destroy(&thread->run_lock);
         free(thread);

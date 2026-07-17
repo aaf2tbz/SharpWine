@@ -26,6 +26,7 @@ jobs:
           python-version: "3.13"
       - run: python3 tools/ci/check-repository.py
       - run: python3 tools/ci/test-check-repository.py
+      - run: python3 tools/ci/test-phase4-tools.py
       - run: python3 tools/release/test-release-tools.py
       - run: python3 tools/release/test-focused-overlay.py
       - run: python3 tools/release/validate-wine-patches.py
@@ -41,6 +42,7 @@ jobs:
           tools/ci/create-arm64x-issue14-bundle.py
           tools/ci/run-blink-tso-conformance.py
           tools/ci/test-check-repository.py
+          tools/ci/test-phase4-tools.py
           tools/ci/validate-arm64x-issue14-artifact.py
           tools/ci/validate-blink-tso-evidence.py
           tools/release/repackage-published-runtime.py
@@ -52,6 +54,9 @@ jobs:
           tools/release/finalize-x86-64-evidence.py
           tools/release/reconstruct-x86-64-fixture.py
           tools/release/validate-release-assets.py
+          tools/i386/minimize_phase4_case.py
+          tools/i386/phase4_differential.py
+          tools/i386/create_phase5_golden.py
           tools/release/validate-readiness.py
           tools/release/validate-wine-patches.py
           tools/release/validate-dxmt-patches.py
@@ -98,6 +103,37 @@ jobs:
       - run: cmake --build build --parallel
       - run: ctest --test-dir build --output-on-failure
 
+  thread-sanitizer:
+    name: Concurrent GEM memory (Linux ThreadSanitizer)
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - run: >-
+          cmake -S . -B build-tsan
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_FLAGS='-fsanitize=thread -fno-omit-frame-pointer'
+          -DCMAKE_CXX_FLAGS='-fsanitize=thread -fno-omit-frame-pointer'
+          -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=thread'
+          -DMSWR_ENABLE_I386_ENGINE=ON
+          -DMSWR_I386_ENGINE_CONFORMANCE=ON
+          -DMSWR_BLINK_INTERPRETER_ONLY=ON
+          -DMSWR_WARNINGS_AS_ERRORS=ON
+      - run: >-
+          cmake --build build-tsan --parallel --target
+          memory_test memory_page_isolation_test memory_transaction_concurrency_test
+          i386_phase55_concurrency
+      - run: >-
+          ctest --test-dir build-tsan --output-on-failure
+          -R 'gem.(memory_(test|page_isolation|transaction_concurrency)|i386_phase55_concurrency)'
+      - run: >-
+          ctest --test-dir build-tsan --output-on-failure --repeat until-fail:100
+          -R 'gem.(memory_(page_isolation|transaction_concurrency)|i386_phase55_concurrency)'
+
   arm64ec-engine:
     name: ARM64EC engine conformance (native macOS ARM64)
     runs-on: macos-15
@@ -133,7 +169,9 @@ jobs:
           arch -arm64 cmake -S . -B build-page-isolation
           -DCMAKE_BUILD_TYPE=Debug
           -DMSWR_WARNINGS_AS_ERRORS=ON
-      - run: arch -arm64 cmake --build build-page-isolation --parallel --target memory_page_isolation_test
+      - run: >-
+          arch -arm64 cmake --build build-page-isolation --parallel --target
+          memory_page_isolation_test memory_transaction_concurrency_test
       - run: >-
           arch -arm64 ctest --test-dir build-page-isolation
           --output-on-failure --repeat until-fail:100 -L page-isolation
@@ -253,6 +291,16 @@ jobs:
           -DMSWR_WARNINGS_AS_ERRORS=ON
       - run: cmake --build build-i386 --parallel
       - run: ctest --test-dir build-i386 --output-on-failure -L i386
+      - run: >-
+          cmake -S . -B build-i386-performance
+          -DCMAKE_BUILD_TYPE=Release
+          -DMSWR_ENABLE_I386_ENGINE=ON
+          -DMSWR_I386_ENGINE_CONFORMANCE=ON
+          -DMSWR_WARNINGS_AS_ERRORS=ON
+      - run: cmake --build build-i386-performance --parallel --target i386_phase55_performance
+      - run: >-
+          ctest --test-dir build-i386-performance --output-on-failure
+          -R '^gem.i386_phase55_performance$'
       - run: tools/ci/audit-zero-rosetta.sh build-i386
       - run: grep -q '^#define HAVE_JIT' build-i386/_deps/blink_gem-src/blink/builtin.h
       - run: test -z "$(grep DISABLE_JIT build-i386/generated/blink-gem/config.h || true)"

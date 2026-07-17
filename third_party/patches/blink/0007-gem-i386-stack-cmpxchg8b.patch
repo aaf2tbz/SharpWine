@@ -1,0 +1,48 @@
+--- a/blink/legacy.c
++++ b/blink/legacy.c
+@@ -45,2 +45,5 @@
+ static relegated void PushaCommon(struct Machine *m, void *b, size_t n) {
++  u8 copy[32];
++  u8 *p;
++  void *pages[2];
+   u32 v;
+@@ -56,3 +59,5 @@
+   }
+-  CopyToUser(m, m->ss.base + v, b, n);
++  p = BeginStore(m, m->ss.base + v, n, pages, copy);
++  memcpy(p, b, n);
++  EndStore(m, m->ss.base + v, n, pages, copy);
+ }
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -93,11 +93,21 @@
+ static void OpPushf(P) {
+-  Push(A, ExportFlags(m->flags) & 0xFCFFFF);
++  u64 flags;
++  flags = ExportFlags(m->flags) & 0xFCFFFF;
++  if (Mode(rde) == XED_MODE_LEGACY) {
++    flags &= ~(3u << FLAGS_IOPL);
++    flags &= ~(1u << FLAGS_F1);
++    flags |= 1u << FLAGS_IF;
++  }
++  Push(A, flags);
+ }
+-
++
+ static void OpPopf(P) {
+   if (!Osz(rde)) {
+     ImportFlags(m, Pop(A, 0));
+   } else {
+     ImportFlags(m, (m->flags & ~0xffff) | Pop(A, 0));
+   }
++  if (Mode(rde) == XED_MODE_LEGACY) {
++    m->flags = SetFlag(m->flags, FLAGS_IF, true);
++  }
+ }
+@@ -240,5 +250,5 @@
+ static void OpCmpxchg8b(P) {
+   uint8_t *p;
+   uint32_t d, a;
+-  p = GetModrmRegisterXmmPointerRead8(A);
++  p = GetModrmRegisterXmmPointerWrite8(A);
+   if (Lock(rde)) LockBus(p);

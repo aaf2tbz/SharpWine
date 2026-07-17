@@ -108,11 +108,27 @@
         },
         {
           "path": "third_party/patches/wine/0014-ntdll-add-gem-backed-i386-wow64-execution-on-arm64.patch",
-          "sha256": "989610f9fb94798c712c36625448ef61f0e41b39ff35451c9125a095c78e25b3"
+          "sha256": "799280080a819c02afa06b301df6da684e00bea6ffbc13421e0d17fe0490d949"
         },
         {
           "path": "third_party/patches/wine/0015-ntdll-accept-relocated-initial-process-images.patch",
           "sha256": "9b5f93f617ba2ab08e6aa111094d44330d2094d2872d6cf7d35bb8e21984f982"
+        },
+        {
+          "path": "third_party/patches/wine/0016-darwin-arm64-enable-synchronous-gui-callbacks.patch",
+          "sha256": "a408cbf7a112a9538490827f613b3cf3c6b670e1e7fd075e156c5d7aedef324f"
+        },
+        {
+          "path": "third_party/patches/wine/0017-darwin-arm64-canonicalize-wow64-gui-pointers.patch",
+          "sha256": "cb9e07b6b2606b5d7f32e7a9a45d99786be1019a9079fb502e01e779fad6691e"
+        },
+        {
+          "path": "third_party/patches/wine/0018-xtajit-map-normalized-i386-exceptions.patch",
+          "sha256": "99370fcb37054c0210b8bb867c9e07b6cd857e579adfc801b063e0943f7b2b83"
+        },
+        {
+          "path": "third_party/patches/wine/0019-xtajit-preserve-i386-v2-legacy-state.patch",
+          "sha256": "f4cbd77e6f913988bf04b5ded829c5ad87b8289348d756c14f01753a6c7a4271"
         }
       ]
     },
@@ -184,6 +200,8 @@
       "embedding_patch_sha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
       "bounded_jit_patch_sha256": "797f92651c17b86cce97a5bc73dd88e0c014e4f7c8664b4ee4d4c431a8175c80",
       "i386_legacy_patch_sha256": "50499a434838be5620fb86d4a6e214e6a9545eeac0dd059b1f56385a78b6cbeb",
+      "batched_sync_patch_sha256": "06be3aef4cce6e1beceb5872106cfa11b7909fa3631a6a587669c71c6d900b33",
+      "phase4_corrections_patch_sha256": "2e72280627b4c56d4594a862420d8fd6e8c86f847cf4fca547e673382c74970a",
       "embedding_provenance": "docs/architecture/adr/0008-blink-embedding.provenance.json",
       "accepting_mode": "bounded one-instruction AArch64 JIT for long and legacy-32 guest modes; interpreter is an explicit conformance oracle"
     }

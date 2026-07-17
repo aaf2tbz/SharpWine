@@ -46,7 +46,7 @@ static uint32_t commit(void *o, const struct blink_gem_write *w, size_t n,
         pages[i].address = w[i].address;
         pages[i].data = w[i].data;
     }
-    e = gem_memory_transaction_commit_pages(r->transaction, pages, n, fault_address);
+    e = gem_memory_transaction_commit_pages(r->transaction, pages, n, fault_address, NULL);
     free(pages);
     return e;
 }
@@ -67,7 +67,7 @@ void gem_x64_blink_destroy(struct gem_x64_runtime *r) {
 }
 static void import(const struct gem_x64_context *s, struct blink_gem_state *d) {
     memset(d, 0, sizeof(*d));
-    d->abi_version = 1;
+    d->abi_version = BLINK_GEM_STATE_ABI_VERSION;
     d->size = sizeof(*d);
     memcpy(d->gpr, s->gpr, sizeof(d->gpr));
     d->rip = s->rip;

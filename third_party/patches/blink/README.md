@@ -47,7 +47,7 @@ CMake resolves `$MAKE` by searching for `gmake` and then `make`, performs those 
 verified FetchContent tree, and links the actual full static interpreter archive. `HAVE_JIT` is absent; JIT code is not referenced by the accepting target.
 The embedding API consists only of `blink_gem_machine_create`, `blink_gem_machine_destroy`,
 `blink_gem_machine_step`, `blink_gem_embedding_version`, the diagnostic trace queries
-`blink_gem_machine_trace_reset`, `blink_gem_machine_trace_info`, `blink_gem_machine_trace_read`,
+`blink_gem_machine_sync`, `blink_gem_machine_trace_reset`, `blink_gem_machine_trace_info`, `blink_gem_machine_trace_read`,
 `blink_gem_handler_name`, and the diagnostic decode-attempt queries
 `blink_gem_machine_decode_attempt_info` and `blink_gem_decode_attempt_name`. See
 `docs/architecture/adr/0008-blink-embedding.provenance.json` and `LICENSES/Blink-ISC.txt`.
@@ -59,3 +59,56 @@ It binds FS-based TEB and x87 state, rejects addresses outside `[0, 2^32)`, and 
 reviewed long-mode page-table system underneath the adapter because Blink's virtual-memory helper
 requires that system mode. The thread-confined machine itself executes with
 `XED_MACHINE_MODE_LEGACY_32`; all mappings remain disposable GEM transaction snapshots.
+
+`0005-gem-rosetta-i386-conformance.patch` (SHA-256
+`6c704396c72f739b5e5bd1cf22dc0f85ddb3cb69160fbcc965fcb44cba0c708a`)
+captures semantics established by differential execution against Rosetta 2. It corrects auxiliary
+carry for INC and NEG, computes CMPXCHG flags from destination minus accumulator for every operand
+width and memory path, corrects nonzero LZCNT results, and implements the SSE4.1 PMINSD opcode in
+Blink's existing static instruction runtime. PMINSD is core interpreter support, not a dynamically
+loaded compatibility shim; its legacy MMX encoding remains an invalid-opcode fault.
+
+`0006-gem-rosetta-sse41-minmax.patch` (SHA-256
+`7aca01d50c670da77df8c8366806b2de7d42c3a21ba47532c1e21b00d00aa9be`)
+completes the SSE4.1 packed integer min/max family exposed by the expanded Rosetta corpus:
+PMINSB, PMINSD, PMINUW, PMINUD, PMAXSB, PMAXSD, PMAXUW, and PMAXUD.
+
+`0007-gem-i386-stack-cmpxchg8b.patch` (SHA-256
+`d7104347dead5681aad60876b04889de19f4cadea6bedc1c7a4ae5d4bcd03eee`)
+routes PUSHA stack frames and CMPXCHG8B replacements through Blink's tracked
+write paths, and gives legacy PUSHF/POPF the Windows user-mode IF/IOPL view.
+
+`0008-gem-i386-normalized-exceptions.patch` (SHA-256
+`df5b9d33a5945df0fa53ac6a412d7df0d416d936c0a9b5ae7b01e6dadc27e354`)
+converts Blink-private divide, overflow, decode, and undefined-instruction halt
+values into stable embedding exception classes. The GEM i386 boundary maps
+only those reviewed values into Windows-visible exceptions; private halt codes
+never escape the embedding ABI. Stack reads and writes now preserve their
+precise access type and failing cross-page address. Guest writes to executable
+shadow pages also invalidate that page and its possible cross-page predecessor
+before the next JIT execution.
+
+`0011-gem-preserve-shadow-snapshot-fault.patch` (SHA-256
+`c3ccbbee11adb765bb80d54560e1e3240668136f0a6f03c8c06fcd961d8a05b0`)
+preserves the exact memory error when a legacy i386 shadow snapshot fails.
+This prevents a freed external Wine mapping from reaching either execution
+engine and keeps the fault address, access class, and memory status available
+to the compatibility boundary.
+
+`0012-gem-bounded-multi-instruction-run.patch` (SHA-256
+`ac718a33b9f8920b39a9746d6515ab2c79feafbd0aed7b96e094577a1f1867c9`)
+adds the versioned bounded run request, stop-PC and asynchronous boundaries,
+and reuses Blink's decode cache within a run while retaining one-instruction
+step semantics.
+
+`0013-gem-concurrent-quantum-optimization.patch` (SHA-256
+`d9ab44fbd1e67c791a4f0d0960d308122471aa23fa4e034dbba998f1c2f37980`)
+keeps reviewed NOP and branch sequences resident under one recovery frame,
+defers non-guard dependency validation to the GEM quantum boundary, and uses
+a lightweight integer-state export between safe resident instructions.
+
+`0014-gem-concurrent-host-page-registry.patch` (SHA-256
+`cd4894556b28691082307bb23d74a83d51073e63dee329cd8f66384734e49c4f`)
+preallocates and serializes the embedding-only host-page registry so separate
+Blink machines can fault in shadow pages concurrently without racing a global
+registry reallocation.

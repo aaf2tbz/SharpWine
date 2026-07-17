@@ -101,7 +101,7 @@
     {
       "order": 14,
       "path": "third_party/patches/wine/0014-ntdll-add-gem-backed-i386-wow64-execution-on-arm64.patch",
-      "sha256": "989610f9fb94798c712c36625448ef61f0e41b39ff35451c9125a095c78e25b3",
+      "sha256": "799280080a819c02afa06b301df6da684e00bea6ffbc13421e0d17fe0490d949",
       "authoringCommit": "ff715cf7b8bfe079dd1ba5f87a6bd0933e9d0652",
       "purpose": "Add the i386 xtajit CPU surface backed by GEM, map the 32-bit guest address space through bounded high host shadow windows on Apple Silicon, and preserve context-changing syscall results such as NtContinue."
     },
@@ -111,6 +111,34 @@
       "sha256": "9b5f93f617ba2ab08e6aa111094d44330d2094d2872d6cf7d35bb8e21984f982",
       "authoringCommit": "f7fe3ef2f02761b6b9500ec20cae6590290474cd",
       "purpose": "Treat nonzero NT success statuses from initial executable mapping as successful so ASLR-relocated wineboot images do not incorrectly fall back to start.exe and trigger a secondary kernel32 bootstrap failure."
+    },
+    {
+      "order": 16,
+      "path": "third_party/patches/wine/0016-darwin-arm64-enable-synchronous-gui-callbacks.patch",
+      "sha256": "a408cbf7a112a9538490827f613b3cf3c6b670e1e7fd075e156c5d7aedef324f",
+      "authoringCommit": "c513608e0b1c2e8393dfdc30aa890fce8e1b40ba",
+      "purpose": "Preserve pointer-width syscall results, synchronously complete translated user callbacks, avoid an unbounded translated Explorer desktop, load winemac directly, and use the canonical high KUSER mapping so native Darwin ARM64 GUI windows can initialize and remain visible."
+    },
+    {
+      "order": 17,
+      "path": "third_party/patches/wine/0017-darwin-arm64-canonicalize-wow64-gui-pointers.patch",
+      "sha256": "cb9e07b6b2606b5d7f32e7a9a45d99786be1019a9079fb502e01e779fad6691e",
+      "authoringCommit": "eb43df5ad300bdfed83f6501af9d98fe15df6c39",
+      "purpose": "Canonicalize Darwin ARM64 WoW64 pointers across user callbacks, messages, GDI initialization, macdrv parameters, printing, and code-page tables so translated 32-bit GUI applications can create sustained interactive native windows."
+    },
+    {
+      "order": 18,
+      "path": "third_party/patches/wine/0018-xtajit-map-normalized-i386-exceptions.patch",
+      "sha256": "99370fcb37054c0210b8bb867c9e07b6cd857e579adfc801b063e0943f7b2b83",
+      "authoringCommit": "4478de9295fa222e7fc2f1f792b86ddf499dc22a",
+      "purpose": "Map stable GEM i386 exception identities to precise Windows breakpoint, divide, overflow, stack, and illegal-instruction exceptions in the WoW64 CPU boundary."
+    },
+    {
+      "order": 19,
+      "path": "third_party/patches/wine/0019-xtajit-preserve-i386-v2-legacy-state.patch",
+      "sha256": "f4cbd77e6f913988bf04b5ded829c5ad87b8289348d756c14f01753a6c7a4271",
+      "authoringCommit": "0000000000000000000000000000000000000019",
+      "purpose": "Preserve complete fixed-size i386 v2 x87, XMM, flags, and segment metadata across WoW64 callback, syscall, exception, suspend, resume, and context-set transitions."
     }
   ],
   "researchEvidence": {

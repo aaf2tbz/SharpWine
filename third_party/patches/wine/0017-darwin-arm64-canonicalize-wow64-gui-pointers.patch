@@ -1,0 +1,614 @@
+From eb43df5ad300bdfed83f6501af9d98fe15df6c39 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Wed, 15 Jul 2026 16:13:54 -0600
+Subject: [PATCH 1/1] wow64: canonicalize Darwin ARM64 GUI pointers
+
+---
+ dlls/ntdll/unix/env.c            | 12 ++++
+ dlls/ntdll/unix/signal_arm64.c   | 43 ++++++++++++--
+ dlls/win32u/gdiobj.c             | 32 ++++++++++-
+ dlls/winemac.drv/macdrv_main.c   |  2 +-
+ dlls/winemac.drv/unixlib.h       | 24 ++++++++
+ dlls/winspool.drv/cups.c         | 32 ++++++++---
+ dlls/wow64win/user.c             | 98 ++++++++++++++++++++++++++------
+ dlls/wow64win/wow64win_private.h | 27 +++++++++
+ 8 files changed, 234 insertions(+), 36 deletions(-)
+
+diff --git a/dlls/ntdll/unix/env.c b/dlls/ntdll/unix/env.c
+index bb33deb4cf..ecff08ca99 100644
+--- a/dlls/ntdll/unix/env.c
++++ b/dlls/ntdll/unix/env.c
+@@ -2345,6 +2345,18 @@ void WINAPI RtlInitCodePageTable( USHORT *ptr, CPTABLEINFO *info )
+ {
+     static const CPTABLEINFO utf8_cpinfo = { CP_UTF8, 4, '?', 0xfffd, '?', '?' };
+ 
++#if defined(__APPLE__) && defined(__aarch64__) && defined(_WIN64)
++    /* Native WoW64 callers can obtain these pointers from the 32-bit PEB.
++     * macOS cannot map the low 4 GiB, so turn the embedded guest addresses
++     * back into their canonical shadow mappings before dereferencing them. */
++    if (ptr && (ULONG_PTR)ptr <= UINT32_MAX)
++        ptr = (USHORT *)(ULONG_PTR)(((ULONG_PTR)ptr >= 0x7f000000 ? UINT64_C(0x10000000000)
++                                                                    : UINT64_C(0x8000000000)) + (ULONG_PTR)ptr);
++    if (info && (ULONG_PTR)info <= UINT32_MAX)
++        info = (CPTABLEINFO *)(ULONG_PTR)(((ULONG_PTR)info >= 0x7f000000 ? UINT64_C(0x10000000000)
++                                                                          : UINT64_C(0x8000000000)) + (ULONG_PTR)info);
++#endif
++
+     if (ptr[1] == CP_UTF8) *info = utf8_cpinfo;
+     else init_codepage_table( ptr, info );
+ }
+diff --git a/dlls/ntdll/unix/signal_arm64.c b/dlls/ntdll/unix/signal_arm64.c
+index 1c314b9843..0c95256449 100644
+--- a/dlls/ntdll/unix/signal_arm64.c
++++ b/dlls/ntdll/unix/signal_arm64.c
+@@ -82,6 +82,7 @@ struct arm64_thread_data
+     BOOL gem_logged_syscall;
+     BOOL gem_logged_unix_call;
+     BOOL gem_logged_callback;
++    ULONG gem_callback_sequence;
+     struct gem_callback_state *gem_callback;
+     struct gem_thread_context *gem_x64_start_context;
+ #endif
+@@ -1641,6 +1642,25 @@ NTSTATUS KeUserModeCallback( ULONG id, const void *args, ULONG len, void **ret_p
+     ULONG64 sp = (frame->sp - offsetof( struct callback_stack_layout, args_data[len] ) - 16) & ~15;
+     struct callback_stack_layout *stack = (struct callback_stack_layout *)sp;
+ 
++#if defined(__APPLE__)
++    {
++        PEB32 *peb32 = NULL;
++        NtQueryInformationProcess( GetCurrentProcess(), ProcessWow64Information,
++                                   &peb32, sizeof(peb32), NULL );
++        /* A WoW64 dependency can enter win32u before user32's process attach
++         * publishes the 32-bit callback table. These initialization callbacks
++         * are optional; report an empty successful result until dispatch is
++         * actually possible instead of calling through PEB32+0x2c == NULL. */
++        if (peb32 && !peb32->KernelCallbackTable)
++        {
++            TRACE_(gem)("defer early WoW64 callback id=%u\n", id);
++            *ret_ptr = NULL;
++            *ret_len = 0;
++            return STATUS_SUCCESS;
++        }
++    }
++#endif
++
+     if ((char *)get_kernel_stack( data ) + min_kernel_stack > (char *)&frame) return STATUS_STACK_OVERFLOW;
+ 
+     stack->args = stack->args_data;
+@@ -1673,12 +1693,15 @@ NTSTATUS KeUserModeCallback( ULONG id, const void *args, ULONG len, void **ret_p
+          * after the translated callback has produced its synchronous result. */
+         callback->frame.pc = UINT64_MAX - 15;
+         arm64_data->gem_callback = callback;
+-        if (!arm64_data->gem_logged_callback)
++        arm64_data->gem_callback_sequence++;
++        if (arm64_data->gem_callback_sequence <= 32)
+         {
+-            TRACE_(gem)("callback enter id=%u pc=%p return=%p sp=%p\n", id,
++            TRACE_(gem)("callback enter seq=%u id=%u state=%p previous=%p pc=%p return=%p "
++                        "outer-pc=%p outer-lr=%p sp=%p\n",
++                        arm64_data->gem_callback_sequence, id, callback, previous,
+                         pKiUserCallbackDispatcher, (void *)(uintptr_t)callback->frame.pc,
++                        (void *)(uintptr_t)outer_frame.pc, (void *)(uintptr_t)outer_frame.lr,
+                         (void *)(uintptr_t)sp );
+-            arm64_data->gem_logged_callback = TRUE;
+         }
+         frame->sp = sp;
+         frame->pc = (ULONG64)pKiUserCallbackDispatcher;
+@@ -1696,6 +1719,12 @@ NTSTATUS KeUserModeCallback( ULONG id, const void *args, ULONG len, void **ret_p
+             if (run_status != GEM_WINE_BUDGET_EXPIRED) break;
+             context.stop_reason = GEM_STOP_NONE;
+         }
++        if (arm64_data->gem_callback_sequence <= 32)
++            TRACE_(gem)("callback stop seq=%u status=%s outcome=%u reason=%u pc=%p "
++                        "state=%p active=%p previous=%p\n",
++                        arm64_data->gem_callback_sequence, gem_wine_status_name(run_status),
++                        result.outcome, result.stop_reason, (void *)(uintptr_t)output.pc,
++                        callback, arm64_data->gem_callback, previous );
+         if (run_status == GEM_WINE_OK && result.outcome == GEM_WINE_RUN_COMPLETE &&
+             arm64_data->gem_callback == previous)
+             callback_status = (NTSTATUS)output.x[0];
+@@ -1734,6 +1763,7 @@ NTSTATUS WINAPI NtCallbackReturn( void *ret_ptr, ULONG ret_len, NTSTATUS status
+         struct gem_callback_state *callback = arm64_data->gem_callback;
+         if (callback)
+         {
++            ULONG sequence = arm64_data->gem_callback_sequence;
+             *callback->ret_ptr = ret_ptr;
+             *callback->ret_len = ret_len;
+             *frame = callback->frame;
+@@ -1742,8 +1772,11 @@ NTSTATUS WINAPI NtCallbackReturn( void *ret_ptr, ULONG ret_len, NTSTATUS status
+             frame->restore_flags |= CONTEXT_FULL;
+             syscall_frame_fixup_for_fastpath( frame );
+             arm64_data->gem_callback = callback->previous;
+-            TRACE_(gem)("callback return status=%#x pc=%p sp=%p\n", (unsigned int)status,
+-                        (void *)(uintptr_t)frame->pc, (void *)(uintptr_t)frame->sp );
++            if (sequence <= 32)
++                TRACE_(gem)("callback return seq=%u state=%p previous=%p status=%#x pc=%p "
++                            "sp=%p\n", sequence, callback, callback->previous,
++                            (unsigned int)status, (void *)(uintptr_t)frame->pc,
++                            (void *)(uintptr_t)frame->sp );
+             free( callback );
+             return status;
+         }
+diff --git a/dlls/win32u/gdiobj.c b/dlls/win32u/gdiobj.c
+index e861dee167..0dc352a620 100644
+--- a/dlls/win32u/gdiobj.c
++++ b/dlls/win32u/gdiobj.c
+@@ -583,6 +583,10 @@ static void init_gdi_shared(void)
+     RtlGetCurrentPeb()->GdiSharedHandleTable = gdi_shared;
+ }
+ 
++static pthread_once_t gdi_once = PTHREAD_ONCE_INIT;
++static _Thread_local BOOL inside_gdi_init;
++static void init_gdi_once(void);
++
+ /***********************************************************************
+  *           GetStockObject    (win32u.so)
+  */
+@@ -721,6 +725,18 @@ HGDIOBJ alloc_gdi_handle( struct gdi_obj_header *obj, DWORD type, const struct g
+ 
+     assert( type );  /* type 0 is reserved to mark free entries */
+ 
++    /* A WoW64 dependency can allocate a GDI object before user32 reaches its
++     * normal initialization call.  Initialize the complete stock-object set
++     * first so the early object cannot consume one of its fixed handle slots.
++     * The thread-local guard lets stock creation recurse into this allocator;
++     * other threads still block in pthread_once until initialization ends. */
++    if (!inside_gdi_init) pthread_once( &gdi_once, init_gdi_once );
++    if (!gdi_shared)
++    {
++        WARN( "failed to initialize the GDI shared handle table\n" );
++        return 0;
++    }
++
+     pthread_mutex_lock( &gdi_lock );
+ 
+     entry = next_free;
+@@ -1029,19 +1045,29 @@ BOOL WINAPI NtGdiSetColorAdjustment( HDC hdc, const COLORADJUSTMENT *ca )
+     return FALSE;
+ }
+ 
+-void gdi_init(void)
++static void init_gdi_once(void)
+ {
+     pthread_mutexattr_t attr;
+     unsigned int dpi;
+ 
++    inside_gdi_init = TRUE;
+     pthread_mutexattr_init( &attr );
+     pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_RECURSIVE );
+     pthread_mutex_init( &gdi_lock, &attr );
+     pthread_mutexattr_destroy( &attr );
+-
+     init_gdi_shared();
+-    if (!gdi_shared) return;
++    if (!gdi_shared)
++    {
++        inside_gdi_init = FALSE;
++        return;
++    }
+ 
+     dpi = font_init();
+     init_stock_objects( dpi );
++    inside_gdi_init = FALSE;
++}
++
++void gdi_init(void)
++{
++    pthread_once( &gdi_once, init_gdi_once );
+ }
+diff --git a/dlls/winemac.drv/macdrv_main.c b/dlls/winemac.drv/macdrv_main.c
+index 96168242cc..488543bca7 100644
+--- a/dlls/winemac.drv/macdrv_main.c
++++ b/dlls/winemac.drv/macdrv_main.c
+@@ -625,7 +625,7 @@ static NTSTATUS wow64_init(void *arg)
+     } *params32 = arg;
+     struct init_params params;
+ 
+-    params.strings = UlongToPtr(params32->strings);
++    params.strings = param_ptr(params32->strings);
+     params.app_icon_callback = params32->app_icon_callback;
+     params.app_quit_request_callback = params32->app_quit_request_callback;
+     return macdrv_init(&params);
+diff --git a/dlls/winemac.drv/unixlib.h b/dlls/winemac.drv/unixlib.h
+index dc22da02d2..043c9710e6 100644
+--- a/dlls/winemac.drv/unixlib.h
++++ b/dlls/winemac.drv/unixlib.h
+@@ -73,5 +73,29 @@
+ 
+ static inline void *param_ptr(UINT64 param)
+ {
++#if defined(__APPLE__) && defined(__aarch64__) && defined(_WIN64)
++    MEMORY_BASIC_INFORMATION info;
++    ULONG_PTR primary, alternate;
++    SIZE_T ret_len;
++
++    /* WoW64 parameter blocks contain 32-bit guest pointers.  macOS reserves
++     * the low 4 GiB.  Probe both Wine shadow ranges because PE images below
++     * 0x7f000000 can still live in the high shadow, unlike ordinary heaps. */
++    if (param && param <= UINT32_MAX)
++    {
++        primary = (param >= 0x7f000000 ? UINT64_C(0x10000000000)
++                                       : UINT64_C(0x8000000000)) + param;
++        alternate = (primary == UINT64_C(0x10000000000) + param ? UINT64_C(0x8000000000)
++                                                                  : UINT64_C(0x10000000000)) + param;
++        if (!NtQueryVirtualMemory( NtCurrentProcess(), (void *)primary, MemoryBasicInformation,
++                                   &info, sizeof(info), &ret_len ) && info.State != MEM_FREE)
++            param = primary;
++        else if (!NtQueryVirtualMemory( NtCurrentProcess(), (void *)alternate, MemoryBasicInformation,
++                                        &info, sizeof(info), &ret_len ) && info.State != MEM_FREE)
++            param = alternate;
++        else
++            param = primary;
++    }
++#endif
+     return (void *)(UINT_PTR)param;
+ }
+diff --git a/dlls/winspool.drv/cups.c b/dlls/winspool.drv/cups.c
+index 89fc9688de..56d2a21606 100644
+--- a/dlls/winspool.drv/cups.c
++++ b/dlls/winspool.drv/cups.c
+@@ -72,6 +72,20 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(winspool);
+ 
++#if defined(__APPLE__) && defined(__aarch64__) && defined(_WIN64)
++/* The macOS ARM64 WoW64 runtime shadows 32-bit mappings above 4 GiB.  These
++ * wrappers decode guest pointers embedded in 32-bit Unix-call parameter
++ * blocks, so zero-extending them with ULongToPtr produces unmapped addresses. */
++static inline void *wow64_guest_ptr( ULONG addr )
++{
++    if (!addr) return NULL;
++    return (void *)(ULONG_PTR)((addr >= 0x7f000000 ? UINT64_C(0x10000000000)
++                                                   : UINT64_C(0x8000000000)) + addr);
++}
++#else
++#define wow64_guest_ptr(addr) ULongToPtr(addr)
++#endif
++
+ #ifdef SONAME_LIBCUPS
+ 
+ static void *libcups_handle;
+@@ -392,17 +406,17 @@ static NTSTATUS wow64_enum_printers( void *args )
+     unsigned int i;
+     struct enum_printers_params params =
+     {
+-        ULongToPtr( params32->printers ),
+-        ULongToPtr( params32->size ),
+-        ULongToPtr( params32->num )
++        wow64_guest_ptr( params32->printers ),
++        wow64_guest_ptr( params32->size ),
++        wow64_guest_ptr( params32->num )
+     };
+ 
+     if (!(status = enum_printers( &params )))
+     {
+         /* convert structures in place */
+-        struct printer_info *info = ULongToPtr( params32->printers );
++        struct printer_info *info = wow64_guest_ptr( params32->printers );
+         struct printer_info32 *info32 = (struct printer_info32 *)info;
+-        unsigned int num = *(unsigned int *)ULongToPtr( params32->num );
++        unsigned int num = *(unsigned int *)wow64_guest_ptr( params32->num );
+ 
+         for (i = 0; i < num; i++)
+         {
+@@ -425,8 +439,8 @@ static NTSTATUS wow64_get_default_page_size( void *args )
+ 
+     struct get_default_page_size_params params =
+     {
+-        ULongToPtr( params32->name ),
+-        ULongToPtr( params32->name_size )
++        wow64_guest_ptr( params32->name ),
++        wow64_guest_ptr( params32->name_size )
+     };
+ 
+     return get_default_page_size( &params );
+@@ -442,8 +456,8 @@ static NTSTATUS wow64_get_ppd( void *args )
+ 
+     struct get_ppd_params params =
+     {
+-        ULongToPtr( params32->printer ),
+-        ULongToPtr( params32->ppd )
++        wow64_guest_ptr( params32->printer ),
++        wow64_guest_ptr( params32->ppd )
+     };
+ 
+     return get_ppd( &params );
+diff --git a/dlls/wow64win/user.c b/dlls/wow64win/user.c
+index 5506c9fc5b..d17d590c7e 100644
+--- a/dlls/wow64win/user.c
++++ b/dlls/wow64win/user.c
+@@ -1664,6 +1664,7 @@ NTSTATUS WINAPI wow64_NtUserCallHwndParam( UINT *args )
+         }
+ 
+     case NtUserCallHwndParam_GetClientRect:
++    case NtUserCallHwndParam_GetPresentRect:
+         {
+             struct
+             {
+@@ -1677,6 +1678,19 @@ NTSTATUS WINAPI wow64_NtUserCallHwndParam( UINT *args )
+             return NtUserCallHwndParam( hwnd, (UINT_PTR)&params, code );
+         }
+ 
++    case NtUserCallHwndParam_ClientToScreen:
++    case NtUserCallHwndParam_GetChildRect:
++    case NtUserCallHwndParam_GetWindowInfo:
++    case NtUserCallHwndParam_GetWindowThread:
++    case NtUserCallHwndParam_ScreenToClient:
++    case NtUserCallHwndParam_SetDialogInfo:
++    case NtUserCallHwndParam_SetMDIClientInfo:
++    case NtUserCallHwndParam_ExposeWindowSurface:
++    case NtUserCallHwndParam_SetRawWindowPos:
++    case NtUserCallHwndParam_GetPrivateData:
++    case NtUserCallHwndParam_SetPrivateData:
++        return NtUserCallHwndParam( hwnd, (UINT_PTR)ULongToPtr( param ), code );
++
+     case NtUserCallHwndParam_MapWindowPoints:
+         {
+             struct
+@@ -1783,6 +1797,23 @@ NTSTATUS WINAPI wow64_NtUserCallTwoParam( UINT *args )
+             return TRUE;
+         }
+ 
++    case NtUserCallTwoParam_GetMonitorInfo:
++        return NtUserCallTwoParam( arg1, (UINT_PTR)ULongToPtr( arg2 ), code );
++
++    case NtUserCallTwoParam_MonitorFromRect:
++        return NtUserCallTwoParam( (UINT_PTR)ULongToPtr( arg1 ), arg2, code );
++
++    case NtUserCallTwoParam_SetIconParam:
++    case NtUserCallTwoParam_SetIMECompositionRect:
++        return NtUserCallTwoParam( arg1, (UINT_PTR)ULongToPtr( arg2 ), code );
++
++    case NtUserCallTwoParam_AdjustWindowRect:
++        return NtUserCallTwoParam( (UINT_PTR)ULongToPtr( arg1 ),
++                                   (UINT_PTR)ULongToPtr( arg2 ), code );
++
++    case NtUserCallTwoParam_GetVirtualScreenRect:
++        return NtUserCallTwoParam( (UINT_PTR)ULongToPtr( arg1 ), arg2, code );
++
+     default:
+         return NtUserCallTwoParam( arg1, arg2, code );
+     }
+@@ -2881,7 +2912,8 @@ NTSTATUS WINAPI wow64_NtUserGetProcessWindowStation( UINT *args )
+ NTSTATUS WINAPI wow64_NtUserGetProp( UINT *args )
+ {
+     HWND hwnd = get_handle( &args );
+-    const WCHAR *str = get_ptr( &args );
++    ULONG str32 = get_ulong( &args );
++    const WCHAR *str = IS_INTRESOURCE( str32 ) ? (const WCHAR *)(ULONG_PTR)str32 : ULongToPtr( str32 );
+ 
+     return HandleToUlong( NtUserGetProp( hwnd, str ));
+ }
+@@ -3070,6 +3102,7 @@ NTSTATUS WINAPI wow64_NtUserRealChildWindowFromPoint( UINT *args )
+ 
+ NTSTATUS WINAPI wow64_NtUserRegisterClassExWOW( UINT *args )
+ {
++    PEB32 *peb32 = NULL;
+     const WNDCLASSEXW32 *wc32 = get_ptr( &args );
+     UNICODE_STRING32 *name32 = get_ptr( &args );
+     UNICODE_STRING32 *version32 = get_ptr( &args );
+@@ -3081,6 +3114,20 @@ NTSTATUS WINAPI wow64_NtUserRegisterClassExWOW( UINT *args )
+     UNICODE_STRING name, version;
+     WNDCLASSEXW wc;
+ 
++    NtQueryInformationProcess( GetCurrentProcess(), ProcessWow64Information,
++                               &peb32, sizeof(peb32), NULL );
++    /* A dependency such as dinput may try to register its helper class while
++     * user32 is still attaching.  The native win32u side is not initialized
++     * until NtUserInitializeClientPfnArrays publishes the 32-bit callback
++     * table and runs init_user().  Fail this optional registration cleanly
++     * instead of dispatching through a null table or allocating GDI objects
++     * before gdi_init() has installed its shared handle table. */
++    if (!peb32 || !peb32->KernelCallbackTable)
++    {
++        set_last_error32( ERROR_DLL_INIT_FAILED );
++        return 0;
++    }
++
+     if (wc32->cbSize != sizeof(*wc32))
+     {
+          set_last_error32( ERROR_INVALID_PARAMETER );
+@@ -3407,7 +3454,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+     case WM_CREATE:
+         if (lparam)
+         {
+-            CREATESTRUCT32 *cs32 = (void *)lparam;
++            CREATESTRUCT32 *cs32 = ULongToPtr( lparam );
+             CREATESTRUCTW cs;
+ 
+             createstruct_32to64( cs32, &cs );
+@@ -3428,7 +3475,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+ 
+     case WM_MDICREATE:
+         {
+-            MDICREATESTRUCT32 *cs32 = (void *)lparam;
++            MDICREATESTRUCT32 *cs32 = ULongToPtr( lparam );
+             MDICREATESTRUCTW cs;
+ 
+             cs.szClass = UlongToPtr( cs32->szClass );
+@@ -3447,7 +3494,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+     case WM_WINDOWPOSCHANGING:
+     case WM_WINDOWPOSCHANGED:
+         {
+-            WINDOWPOS32 *winpos32 = (void *)lparam;
++            WINDOWPOS32 *winpos32 = ULongToPtr( lparam );
+             WINDOWPOS winpos;
+ 
+             winpos_32to64( &winpos, winpos32 );
+@@ -3459,7 +3506,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+     case WM_NCCALCSIZE:
+         if (wparam)
+         {
+-            NCCALCSIZE_PARAMS32 *params32 = (void *)lparam;
++            NCCALCSIZE_PARAMS32 *params32 = ULongToPtr( lparam );
+             NCCALCSIZE_PARAMS params;
+             WINDOWPOS winpos;
+ 
+@@ -3475,11 +3522,12 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+             winpos_64to32( &winpos, UlongToPtr( params32->lppos ));
+             return ret;
+         }
+-        return NtUserMessageCall( hwnd, msg, wparam, lparam, result_info, type, ansi );
++        return NtUserMessageCall( hwnd, msg, wparam, (LPARAM)ULongToPtr( lparam ),
++                                  result_info, type, ansi );
+ 
+     case WM_COMPAREITEM:
+         {
+-            COMPAREITEMSTRUCT32 *cis32 = (void *)lparam;
++            COMPAREITEMSTRUCT32 *cis32 = ULongToPtr( lparam );
+             COMPAREITEMSTRUCT cis;
+ 
+             cis.CtlType    = cis32->CtlType;
+@@ -3495,7 +3543,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+ 
+     case WM_DELETEITEM:
+         {
+-            DELETEITEMSTRUCT32 *dis32 = (void *)lparam;
++            DELETEITEMSTRUCT32 *dis32 = ULongToPtr( lparam );
+             DELETEITEMSTRUCT dis;
+ 
+             dis.CtlType  = dis32->CtlType;
+@@ -3508,7 +3556,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+ 
+     case WM_MEASUREITEM:
+         {
+-            MEASUREITEMSTRUCT32 *mis32 = (void *)lparam;
++            MEASUREITEMSTRUCT32 *mis32 = ULongToPtr( lparam );
+             MEASUREITEMSTRUCT mis;
+ 
+             mis.CtlType    = mis32->CtlType;
+@@ -3529,7 +3577,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+ 
+     case WM_DRAWITEM:
+         {
+-            DRAWITEMSTRUCT32 *dis32 = (void *)lparam;
++            DRAWITEMSTRUCT32 *dis32 = ULongToPtr( lparam );
+             DRAWITEMSTRUCT dis;
+ 
+             dis.CtlType       = dis32->CtlType;
+@@ -3549,7 +3597,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+ 
+     case WM_COPYDATA:
+         {
+-            COPYDATASTRUCT32 *cds32 = (void *)lparam;
++            COPYDATASTRUCT32 *cds32 = ULongToPtr( lparam );
+             COPYDATASTRUCT cds;
+ 
+             cds.dwData = cds32->dwData;
+@@ -3560,7 +3608,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+ 
+     case WM_HELP:
+         {
+-            HELPINFO32 *hi32 = (void *)lparam;
++            HELPINFO32 *hi32 = ULongToPtr( lparam );
+             HELPINFO hi64;
+ 
+             hi64.cbSize       = sizeof(hi64);
+@@ -3575,7 +3623,7 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+     case WM_GETDLGCODE:
+         if (lparam)
+         {
+-            MSG32 *msg32 = (MSG32 *)lparam;
++            MSG32 *msg32 = ULongToPtr( lparam );
+             MSG msg64;
+ 
+             return NtUserMessageCall( hwnd, msg, wparam, (LPARAM)msg_32to64( &msg64, msg32 ),
+@@ -3583,9 +3631,21 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+         }
+         return NtUserMessageCall( hwnd, msg, wparam, lparam, result_info, type, ansi );
+ 
++    case WM_SETTEXT:
++    case WM_GETTEXT:
++    case WM_GETMINMAXINFO:
++    case WM_STYLECHANGING:
++    case WM_STYLECHANGED:
++    case WM_MOVING:
++    case WM_SIZING:
++    case WM_DPICHANGED:
++    case WM_GETDPISCALEDSIZE:
++        return NtUserMessageCall( hwnd, msg, wparam, (LPARAM)ULongToPtr( lparam ),
++                                  result_info, type, ansi );
++
+     case WM_NEXTMENU:
+         {
+-            MDINEXTMENU32 *next32 = (void *)lparam;
++            MDINEXTMENU32 *next32 = ULongToPtr( lparam );
+             MDINEXTMENU next;
+ 
+             next.hmenuIn   = LongToHandle( next32->hmenuIn );
+@@ -3602,13 +3662,13 @@ static LRESULT message_call_32to64( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
+         {
+             PAINTSTRUCT ps;
+ 
+-            paintstruct_32to64( &ps, (PAINTSTRUCT32 *)lparam );
++            paintstruct_32to64( &ps, ULongToPtr( lparam ) );
+             return NtUserMessageCall( hwnd, msg, wparam, (LPARAM)&ps, result_info, type, ansi );
+         }
+ 
+     case CB_GETCOMBOBOXINFO:
+         {
+-            COMBOBOXINFO32 *ci32 = (COMBOBOXINFO32 *)lparam;
++            COMBOBOXINFO32 *ci32 = ULongToPtr( lparam );
+             COMBOBOXINFO ci;
+ 
+             ci.cbSize      = ci32->cbSize;
+@@ -4114,7 +4174,8 @@ NTSTATUS WINAPI wow64_NtUserRemoveMenu( UINT *args )
+ NTSTATUS WINAPI wow64_NtUserRemoveProp( UINT *args )
+ {
+     HWND hwnd = get_handle( &args );
+-    const WCHAR *str = get_ptr( &args );
++    ULONG str32 = get_ulong( &args );
++    const WCHAR *str = IS_INTRESOURCE( str32 ) ? (const WCHAR *)(ULONG_PTR)str32 : ULongToPtr( str32 );
+ 
+     return HandleToUlong( NtUserRemoveProp( hwnd, str ));
+ }
+@@ -4513,7 +4574,8 @@ NTSTATUS WINAPI wow64_NtUserSetProgmanWindow( UINT *args )
+ NTSTATUS WINAPI wow64_NtUserSetProp( UINT *args )
+ {
+     HWND hwnd = get_handle( &args );
+-    const WCHAR *str = get_ptr( &args );
++    ULONG str32 = get_ulong( &args );
++    const WCHAR *str = IS_INTRESOURCE( str32 ) ? (const WCHAR *)(ULONG_PTR)str32 : ULongToPtr( str32 );
+     HANDLE handle = get_handle( &args );
+ 
+     return NtUserSetProp( hwnd, str, handle );
+diff --git a/dlls/wow64win/wow64win_private.h b/dlls/wow64win/wow64win_private.h
+index 956e38636a..0f8652139f 100644
+--- a/dlls/wow64win/wow64win_private.h
++++ b/dlls/wow64win/wow64win_private.h
+@@ -30,6 +30,33 @@ ALL_SYSCALLS32
+ 
+ extern ntuser_callback user_callbacks[];
+ 
++#if defined(__aarch64__)
++static inline void *wow64win_guest_ptr( ULONG addr )
++{
++    MEMORY_BASIC_INFORMATION info;
++    ULONG_PTR low, primary, alternate;
++    SIZE_T ret_len;
++
++    if (!addr) return NULL;
++    low = addr;
++    if (!NtQueryVirtualMemory( NtCurrentProcess(), (void *)low, MemoryBasicInformation,
++                               &info, sizeof(info), &ret_len ) && info.State != MEM_FREE)
++        return (void *)low;
++    primary = (addr >= 0x7f000000 ? 0x10000000000ull : 0x8000000000ull) + addr;
++    alternate = (primary == 0x10000000000ull + addr ? 0x8000000000ull : 0x10000000000ull) + addr;
++    if (!NtQueryVirtualMemory( NtCurrentProcess(), (void *)primary, MemoryBasicInformation,
++                               &info, sizeof(info), &ret_len ) && info.State != MEM_FREE)
++        return (void *)primary;
++    if (!NtQueryVirtualMemory( NtCurrentProcess(), (void *)alternate, MemoryBasicInformation,
++                               &info, sizeof(info), &ret_len ) && info.State != MEM_FREE)
++        return (void *)alternate;
++    return (void *)primary;
++}
++
++#undef ULongToPtr
++#define ULongToPtr(addr) wow64win_guest_ptr( addr )
++#endif
++
+ struct object_attr64
+ {
+     OBJECT_ATTRIBUTES   attr;
+-- 
+2.54.0 (Apple Git-157)

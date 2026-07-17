@@ -1,0 +1,41 @@
+diff --git a/blink/fpu.c b/blink/fpu.c
+index 8580274..7a3fb9d 100644
+--- a/blink/fpu.c
++++ b/blink/fpu.c
+@@ -1032,6 +1032,19 @@ void FpuSetTag(struct Machine *m, unsigned i, unsigned t) {
+ void FpuPush(struct Machine *m, double x) {
+-  if (FpuGetTag(m, -1) != kFpuTagEmpty) OnFpuStackOverflow(m);
++  bool overflow;
++  overflow = FpuGetTag(m, -1) != kFpuTagEmpty;
++  if (overflow) {
++    OnFpuStackOverflow(m);
++    x = -NAN;
++  }
+   m->fpu.sw = (m->fpu.sw & ~kFpuSwSp) | ((m->fpu.sw - (1 << 11)) & kFpuSwSp);
+   *FpuSt(m, 0) = x;
+-  FpuSetTag(m, 0, kFpuTagValid);
++  if (overflow) {
++    FpuSetTag(m, 0, kFpuTagSpecial);
++  } else if (x == 0) {
++    FpuSetTag(m, 0, kFpuTagZero);
++  } else if (!isnormal(x)) {
++    FpuSetTag(m, 0, kFpuTagSpecial);
++  } else {
++    FpuSetTag(m, 0, kFpuTagValid);
++  }
+ }
+diff --git a/blink/string.c b/blink/string.c
+index a6ca81c..d8ee71b 100644
+--- a/blink/string.c
++++ b/blink/string.c
+@@ -169,8 +169,7 @@ static void StringOp(P, int op) {
+         break;
+       case STRING_SCAS:
+-        kAlu[ALU_SUB][RegLog2(rde)](
+-            m, ReadInt(Load(m, AddressDi(A), n, s[1]), RegLog2(rde)),
+-            ReadInt(m->ax, RegLog2(rde)));
++        v = ReadInt(Load(m, AddressDi(A), n, s[1]), RegLog2(rde));
++        kAlu[ALU_SUB][RegLog2(rde)](m, ReadInt(m->ax, RegLog2(rde)), v);
+         AddDi(A, sgn * n);
+         stop = (Rep(rde) == 2 && GetFlag(m->flags, FLAGS_ZF)) ||
+                (Rep(rde) == 3 && !GetFlag(m->flags, FLAGS_ZF));

@@ -1,0 +1,169 @@
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -20,7 +20,7 @@
+ #include <stdbool.h>
+ #include <stddef.h>
+ #include <stdint.h>
+-#define BLINK_GEM_ABI_VERSION       1u
++#define BLINK_GEM_ABI_VERSION       2u
+ #define BLINK_GEM_STATE_ABI_VERSION 2u
+ #define BLINK_GEM_MAX_SHADOW_PAGES 64u
+ #define BLINK_GEM_TRACE_ABI_VERSION 1u
+@@ -29,6 +29,7 @@
+ #define BLINK_GEM_DECODE_ATTEMPT_NAME_BYTES  32u
+ #define BLINK_GEM_CONFIG_ABI_VERSION          1u
+ #define BLINK_GEM_ENGINE_INFO_ABI_VERSION     1u
++#define BLINK_GEM_RUN_REQUEST_ABI_VERSION     1u
+ #define BLINK_GEM_HANDLER_DECODED_BASE         0x1000u
+ /*
+  * Decoder-owned handler identity.  Each id names the exact Blink handler that
+@@ -101,7 +102,10 @@
+   BLINK_GEM_MEMORY_FAULT = 1,
+   BLINK_GEM_UNSUPPORTED = 2,
+   BLINK_GEM_INVALID = 3,
+-  BLINK_GEM_EXCEPTION = 4
++  BLINK_GEM_EXCEPTION = 4,
++  BLINK_GEM_STOP_PC = 5,
++  BLINK_GEM_ASYNC_STOP = 6,
++  BLINK_GEM_QUANTUM_BOUNDARY = 7
+ };
+ enum blink_gem_exception {
+   BLINK_GEM_EXCEPTION_NONE = 0,
+@@ -163,6 +166,14 @@
+   enum blink_gem_access access;
+   uint32_t memory_error, engine_status;
+ };
++typedef bool (*blink_gem_async_stop_fn)(void*);
++struct blink_gem_run_request {
++  uint32_t abi_version, size;
++  uint32_t instruction_budget, stop_pc_count;
++  const uint64_t* stop_pcs;
++  blink_gem_async_stop_fn async_stop;
++  void* async_opaque;
++};
+ struct blink_gem_write {
+   uint64_t address;
+   const uint8_t* data;
+@@ -189,6 +200,10 @@
+ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine*,
+                                                const struct blink_gem_state*,
+                                                struct blink_gem_state*);
++struct blink_gem_result blink_gem_machine_run(struct blink_gem_machine*,
++                                              const struct blink_gem_run_request*,
++                                              const struct blink_gem_state*,
++                                              struct blink_gem_state*);
+ void blink_gem_machine_sync(struct blink_gem_machine*);
+ bool blink_gem_machine_engine_info(const struct blink_gem_machine*,
+                                    struct blink_gem_engine_info*);
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -63,4 +63,6 @@
+   uint64_t jit_compilations;
+   uint64_t jit_executions;
+   uint64_t jit_failures;
++  bool batched_run;
++  bool batched_continuation;
+ };
+@@ -373,6 +375,6 @@
+       (config->guest_mode != BLINK_GEM_GUEST_LONG &&
+        config->guest_mode != BLINK_GEM_GUEST_LEGACY_32) || !cb ||
+-      cb->abi_version != 1 || cb->size != sizeof(*cb) || !cb->snapshot ||
++      cb->abi_version != BLINK_GEM_ABI_VERSION || cb->size != sizeof(*cb) || !cb->snapshot ||
+       !cb->validate || !cb->commit)
+     return 0;
+   if (pthread_once_(&g_blink_gem_init_once, blink_gem_init_runtime)) return 0;
+@@ -474,7 +476,8 @@
+     }
+   }
+   for (retries = 0; retries < (int)BLINK_GEM_MAX_SHADOW_PAGES + 1; ++retries) {
+-    import_state(m, in);
++    if (!g->batched_run || !g->batched_continuation || retries)
++      import_state(m, in);
+     m->gem_access_segment = 0;
+     m->gem_access_offset = 0;
+     m->readaddr = m->writeaddr = 0;
+@@ -494,7 +497,7 @@
+         continue;
+       }
+     }
+-    ResetInstructionCache(m);
++    if (!g->batched_run) ResetInstructionCache(m);
+     fetching = 1;
+     if (!(rc = sigsetjmp(m->onhalt, 1))) {
+       m->canhalt = true;
+@@ -813,14 +816,74 @@
+     }
+     r = result(BLINK_GEM_RETIRED);
+     r.retired = 1;
++    g->batched_continuation = true;
+     return r;
+   }
+   r = result(BLINK_GEM_INVALID);
+   r.engine_status = 0xffffffffu;
++  return r;
++}
++struct blink_gem_result blink_gem_machine_run(
++    struct blink_gem_machine* g, const struct blink_gem_run_request* request,
++    const struct blink_gem_state* in, struct blink_gem_state* out) {
++  struct blink_gem_result r;
++  struct blink_gem_state current, next;
++  uint32_t retired = 0;
++  size_t i;
++  if (!g || !request || !in || !out ||
++      request->abi_version != BLINK_GEM_RUN_REQUEST_ABI_VERSION ||
++      request->size != sizeof(*request) || !request->instruction_budget ||
++      request->stop_pc_count > 8 ||
++      (request->stop_pc_count && !request->stop_pcs))
++    return result(BLINK_GEM_INVALID);
++  current = *in;
++  g->batched_run = true;
++  g->batched_continuation = false;
++  while (retired < request->instruction_budget) {
++    for (i = 0; i < request->stop_pc_count; ++i) {
++      if (current.rip == request->stop_pcs[i]) {
++        g->batched_run = false;
++        *out = current;
++        r = result(BLINK_GEM_STOP_PC);
++        r.retired = retired;
++        return r;
++      }
++    }
++    if (request->async_stop && request->async_stop(request->async_opaque)) {
++      g->batched_run = false;
++      *out = current;
++      r = result(BLINK_GEM_ASYNC_STOP);
++      r.retired = retired;
++      return r;
++    }
++    r = blink_gem_machine_step(g, &current, &next);
++    if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
++      g->batched_run = false;
++      if (r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP)
++        *out = next;
++      else
++        *out = current;
++      r.retired += retired;
++      return r;
++    }
++    current = next;
++    ++retired;
++  }
++  g->batched_run = false;
++  *out = current;
++  for (i = 0; i < request->stop_pc_count; ++i) {
++    if (current.rip == request->stop_pcs[i]) {
++      r = result(BLINK_GEM_STOP_PC);
++      r.retired = retired;
++      return r;
++    }
++  }
++  r = result(BLINK_GEM_RETIRED);
++  r.retired = retired;
+   return r;
+ }
+ const char* blink_gem_embedding_version(void) {
+-  return "blink-f006a4fc-gem-jit-v2";
++  return "blink-f006a4fc-gem-jit-v3";
+ }
+ bool blink_gem_machine_engine_info(const struct blink_gem_machine* g,
+                                    struct blink_gem_engine_info* out) {

@@ -364,7 +364,7 @@ void run_single_threaded(gem_memory *mem, std::uint64_t base, std::uint8_t *host
             assert(transaction != nullptr);
             std::uint64_t fault_address = 0U;
             const gem_memory_error error = gem_memory_transaction_commit_pages(
-                transaction, writes.data(), writes.size(), &fault_address);
+                transaction, writes.data(), writes.size(), &fault_address, nullptr);
             gem_memory_transaction_end(transaction);
             check_eq("rollback guarded COW transaction", error, GEM_MEMORY_GUARD_PAGE);
             assert(fault_address == p3);

@@ -13,3 +13,7 @@
 0013-ntdll-route-pure-amd64-guests-through-gem-x86-64.patch
 0014-ntdll-add-gem-backed-i386-wow64-execution-on-arm64.patch
 0015-ntdll-accept-relocated-initial-process-images.patch
+0016-darwin-arm64-enable-synchronous-gui-callbacks.patch
+0017-darwin-arm64-canonicalize-wow64-gui-pointers.patch
+0018-xtajit-map-normalized-i386-exceptions.patch
+0019-xtajit-preserve-i386-v2-legacy-state.patch

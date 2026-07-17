@@ -1,0 +1,93 @@
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -405,2 +405,3 @@
+-      handler_id =
+-          GemHandlerId(GetOp(Mopcode(m->xedd->op.rde)), m->xedd->op.rde);
++      handler_id = GemHandlerId(GetOp(Mopcode(m->xedd->op.rde)),
++                                m->xedd->op.rde,
++                                g->guest_mode == BLINK_GEM_GUEST_LEGACY_32);
+@@ -488,5 +489,16 @@
+-      if (rc != kMachineSegmentationFault && rc != kMachineDecodeError &&
+-          rc != kMachineUndefinedInstruction) {
+-        r = result(BLINK_GEM_UNSUPPORTED);
+-        r.engine_status = (uint32_t)rc;
+-        return r;
++      if (g->guest_mode == BLINK_GEM_GUEST_LEGACY_32) {
++        if (rc == kMachineDivideError) {
++          r = result(BLINK_GEM_EXCEPTION);
++          r.engine_status = BLINK_GEM_EXCEPTION_DIVIDE;
++          return r;
++        }
++        if (rc == 4) {
++          r = result(BLINK_GEM_EXCEPTION);
++          r.engine_status = BLINK_GEM_EXCEPTION_OVERFLOW;
++          return r;
++        }
++        if (rc == kMachineDecodeError || rc == kMachineUndefinedInstruction) {
++          r = result(BLINK_GEM_EXCEPTION);
++          r.engine_status = BLINK_GEM_EXCEPTION_ILLEGAL_INSTRUCTION;
++          return r;
++        }
+@@ -604,0 +617,10 @@
++#ifdef HAVE_JIT
++      if (g->engine == BLINK_GEM_ENGINE_JIT && (p->protection & 4)) {
++        if (p->address >= 4096 &&
++            ResetJitPage(&g->system->jit, (int64_t)(p->address - 4096)))
++          return result(BLINK_GEM_INVALID);
++        if (ResetJitPage(&g->system->jit, (int64_t)p->address))
++          return result(BLINK_GEM_INVALID);
++      }
++#endif
++      if (p->protection & 4) ResetInstructionCache(m);
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -102 +102,2 @@
+-  BLINK_GEM_INVALID = 3
++  BLINK_GEM_INVALID = 3,
++  BLINK_GEM_EXCEPTION = 4
+@@ -103,0 +105,6 @@
++enum blink_gem_exception {
++  BLINK_GEM_EXCEPTION_NONE = 0,
++  BLINK_GEM_EXCEPTION_ILLEGAL_INSTRUCTION = 1,
++  BLINK_GEM_EXCEPTION_DIVIDE = 2,
++  BLINK_GEM_EXCEPTION_OVERFLOW = 3
++};
+--- a/blink/legacy.c
++++ b/blink/legacy.c
+@@ -96,3 +96 @@
+-      if (CopyFromUser(m, b, addr, n) == -1) {
+-        ThrowSegmentationFault(m, addr);
+-      }
++      memcpy(b, Load(m, addr, n, b), n);
+@@ -103,3 +101 @@
+-      if (CopyFromUser(m, b, addr, n) == -1) {
+-        ThrowSegmentationFault(m, addr);
+-      }
++      memcpy(b, Load(m, addr, n, b), n);
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2114 +2114 @@
+-int GemHandlerId(nexgen32e_f handler, long rde) {
++int GemHandlerId(nexgen32e_f handler, long rde, bool legacy32) {
+@@ -2170 +2170,2 @@
+-      handler == OpInterrupt3 || handler == OpInterruptImm || handler == OpInto)
++      handler == OpInterrupt3 || handler == OpInterruptImm ||
++      (handler == OpInto && !legacy32))
+@@ -2175,2 +2176,2 @@
+-bool GemIsAllowedHandler(nexgen32e_f handler, long rde) {
+-  return GemHandlerId(handler, rde) != 0;
++bool GemIsAllowedHandler(nexgen32e_f handler, long rde, bool legacy32) {
++  return GemHandlerId(handler, rde, legacy32) != 0;
+--- a/blink/machine.h
++++ b/blink/machine.h
+@@ -482,2 +482,2 @@
+-bool GemIsAllowedHandler(nexgen32e_f, long);
+-int GemHandlerId(nexgen32e_f, long);
++bool GemIsAllowedHandler(nexgen32e_f, long, bool);
++int GemHandlerId(nexgen32e_f, long, bool);
+--- a/blink/stack.c
++++ b/blink/stack.c
+@@ -105,0 +106 @@
++  if (m->mode.omode == XED_MODE_LEGACY) SetWriteAddr(m, v, osz);
+@@ -148,0 +150 @@
++  if (m->mode.omode == XED_MODE_LEGACY) SetReadAddr(m, v, osz);

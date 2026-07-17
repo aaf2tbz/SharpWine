@@ -24,6 +24,11 @@ PREFIX_READY_FILES = (
     "drive_c/windows/system32/kernel32.dll",
     "drive_c/windows/system32/ntdll.dll",
     "drive_c/windows/system32/services.exe",
+    "drive_c/windows/syswow64/kernel32.dll",
+    "drive_c/windows/syswow64/ntdll.dll",
+    "drive_c/windows/syswow64/notepad.exe",
+    "drive_c/windows/syswow64/user32.dll",
+    "drive_c/windows/syswow64/win32u.dll",
 )
 
 RELEASE_OPERATION_TIMEOUT = 600

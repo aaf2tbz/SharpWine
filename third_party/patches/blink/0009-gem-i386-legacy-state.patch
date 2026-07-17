@@ -1,0 +1,1355 @@
+diff -ruN --exclude=*.orig a/blink/address.c b/blink/address.c
+--- a/blink/address.c	2026-07-15 23:18:26
++++ b/blink/address.c	2026-07-15 23:18:26
+@@ -28,6 +28,32 @@
+   return m->cs.base + GetIp(m);
+ }
+
++#define GEM_SEG_PRESENT     0x01u
++#define GEM_SEG_WRITABLE    0x02u
++#define GEM_SEG_EXECUTABLE  0x04u
++#define GEM_SEG_EXPAND_DOWN 0x08u
++#define GEM_SEG_DEFAULT_32  0x10u
++
++void CheckLegacySegmentAccess(struct Machine *m, const struct DescriptorCache *s,
++                              u64 offset, u64 size, bool write, bool execute) {
++  u64 end, upper, fault;
++  if (!m->gemembed || m->mode.omode == XED_MODE_LONG || !s->attributes) return;
++  if (!(s->attributes & GEM_SEG_PRESENT)) ThrowSegmentationFault(m, s->base + offset);
++  if (write && !(s->attributes & GEM_SEG_WRITABLE))
++    ThrowSegmentationFault(m, s->base + offset);
++  if (execute && !(s->attributes & GEM_SEG_EXECUTABLE))
++    ThrowSegmentationFault(m, s->base + offset);
++  upper = (s->attributes & GEM_SEG_DEFAULT_32) ? UINT32_MAX : UINT16_MAX;
++  if (!size || __builtin_add_overflow(offset, size - 1, &end) || end > upper)
++    ThrowSegmentationFault(m, s->base + offset);
++  if (s->attributes & GEM_SEG_EXPAND_DOWN) {
++    if (offset <= s->limit) ThrowSegmentationFault(m, s->base + offset);
++  } else if (end > s->limit) {
++    fault = offset > s->limit ? offset : (u64)s->limit + 1;
++    ThrowSegmentationFault(m, s->base + fault);
++  }
++}
++
+ i64 GetIp(struct Machine *m) {
+   return MaskAddress(m->mode.omode, m->ip);
+ }
+@@ -44,6 +70,17 @@
+ }
+
+ i64 AddSegment(P, u64 i, u64 s) {
++  const struct DescriptorCache *segment;
++  if (Sego(rde)) {
++    segment = &m->seg[Sego(rde) - 1];
++  } else if (s == m->ss.base && s != m->ds.base) {
++    segment = &m->ss;
++  } else {
++    segment = &m->ds;
++  }
++  m->gem_access_segment = segment;
++  m->gem_access_offset = i;
++  CheckLegacySegmentAccess(m, segment, i, 1, false, false);
+   if (!Sego(rde)) {
+     return i + s;
+   } else {
+@@ -82,14 +119,22 @@
+
+ u64 AddressDi(P) {
+   u64 i = m->es.base;
++  u64 offset;
+   switch (Eamode(rde)) {
+     case XED_MODE_LONG:
+-      return i + Get64(m->di);
++      offset = Get64(m->di);
++      break;
+     case XED_MODE_REAL:
+-      return i + Get16(m->di);
++      offset = Get16(m->di);
++      break;
+     case XED_MODE_LEGACY:
+-      return i + Get32(m->di);
++      offset = Get32(m->di);
++      break;
+     default:
+       __builtin_unreachable();
+   }
++  m->gem_access_segment = &m->es;
++  m->gem_access_offset = offset;
++  CheckLegacySegmentAccess(m, &m->es, offset, 1, false, false);
++  return i + offset;
+ }
+diff -ruN --exclude=*.orig a/blink/aes.c b/blink/aes.c
+--- a/blink/aes.c	1969-12-31 17:00:00
++++ b/blink/aes.c	2026-07-15 23:18:26
+@@ -0,0 +1,101 @@
++/* Portable AES-NI instruction semantics for the GEM legacy profile. */
++#include <string.h>
++
++#include "blink/macros.h"
++#include "blink/machine.h"
++#include "blink/modrm.h"
++
++static const u8 kSbox[256] = {
++  0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
++  0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
++  0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,
++  0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75,
++  0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84,
++  0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf,
++  0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x33,0x85,0x45,0xf9,0x02,0x7f,0x50,0x3c,0x9f,0xa8,
++  0x51,0xa3,0x40,0x8f,0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2,
++  0xcd,0x0c,0x13,0xec,0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73,
++  0x60,0x81,0x4f,0xdc,0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb,
++  0xe0,0x32,0x3a,0x0a,0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79,
++  0xe7,0xc8,0x37,0x6d,0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08,
++  0xba,0x78,0x25,0x2e,0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a,
++  0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e,
++  0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf,
++  0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
++};
++static const u8 kInvSbox[256] = {
++  0x52,0x09,0x6a,0xd5,0x30,0x36,0xa5,0x38,0xbf,0x40,0xa3,0x9e,0x81,0xf3,0xd7,0xfb,
++  0x7c,0xe3,0x39,0x82,0x9b,0x2f,0xff,0x87,0x34,0x8e,0x43,0x44,0xc4,0xde,0xe9,0xcb,
++  0x54,0x7b,0x94,0x32,0xa6,0xc2,0x23,0x3d,0xee,0x4c,0x95,0x0b,0x42,0xfa,0xc3,0x4e,
++  0x08,0x2e,0xa1,0x66,0x28,0xd9,0x24,0xb2,0x76,0x5b,0xa2,0x49,0x6d,0x8b,0xd1,0x25,
++  0x72,0xf8,0xf6,0x64,0x86,0x68,0x98,0x16,0xd4,0xa4,0x5c,0xcc,0x5d,0x65,0xb6,0x92,
++  0x6c,0x70,0x48,0x50,0xfd,0xed,0xb9,0xda,0x5e,0x15,0x46,0x57,0xa7,0x8d,0x9d,0x84,
++  0x90,0xd8,0xab,0x00,0x8c,0xbc,0xd3,0x0a,0xf7,0xe4,0x58,0x05,0xb8,0xb3,0x45,0x06,
++  0xd0,0x2c,0x1e,0x8f,0xca,0x3f,0x0f,0x02,0xc1,0xaf,0xbd,0x03,0x01,0x13,0x8a,0x6b,
++  0x3a,0x91,0x11,0x41,0x4f,0x67,0xdc,0xea,0x97,0xf2,0xcf,0xce,0xf0,0xb4,0xe6,0x73,
++  0x96,0xac,0x74,0x22,0xe7,0xad,0x35,0x85,0xe2,0xf9,0x37,0xe8,0x1c,0x75,0xdf,0x6e,
++  0x47,0xf1,0x1a,0x71,0x1d,0x29,0xc5,0x89,0x6f,0xb7,0x62,0x0e,0xaa,0x18,0xbe,0x1b,
++  0xfc,0x56,0x3e,0x4b,0xc6,0xd2,0x79,0x20,0x9a,0xdb,0xc0,0xfe,0x78,0xcd,0x5a,0xf4,
++  0x1f,0xdd,0xa8,0x33,0x88,0x07,0xc7,0x31,0xb1,0x12,0x10,0x59,0x27,0x80,0xec,0x5f,
++  0x60,0x51,0x7f,0xa9,0x19,0xb5,0x4a,0x0d,0x2d,0xe5,0x7a,0x9f,0x93,0xc9,0x9c,0xef,
++  0xa0,0xe0,0x3b,0x4d,0xae,0x2a,0xf5,0xb0,0xc8,0xeb,0xbb,0x3c,0x83,0x53,0x99,0x61,
++  0x17,0x2b,0x04,0x7e,0xba,0x77,0xd6,0x26,0xe1,0x69,0x14,0x63,0x55,0x21,0x0c,0x7d
++};
++
++static u8 Mul(u8 a, u8 b) {
++  u8 r = 0;
++  while (b) {
++    if (b & 1) r ^= a;
++    a = (a << 1) ^ ((a & 0x80) ? 0x1b : 0);
++    b >>= 1;
++  }
++  return r;
++}
++static void ShiftSub(u8 d[16], const u8 s[16], bool inverse) {
++  static const u8 sh[16] = {0,5,10,15,4,9,14,3,8,13,2,7,12,1,6,11};
++  static const u8 ish[16] = {0,13,10,7,4,1,14,11,8,5,2,15,12,9,6,3};
++  unsigned i;
++  for (i = 0; i < 16; ++i)
++    d[i] = inverse ? kInvSbox[s[ish[i]]] : kSbox[s[sh[i]]];
++}
++static void Mix(u8 x[16], bool inverse) {
++  unsigned c;
++  for (c = 0; c < 4; ++c) {
++    u8 *p = x + c * 4, a = p[0], b = p[1], d = p[2], e = p[3];
++    if (inverse) {
++      p[0]=Mul(a,14)^Mul(b,11)^Mul(d,13)^Mul(e,9);
++      p[1]=Mul(a,9)^Mul(b,14)^Mul(d,11)^Mul(e,13);
++      p[2]=Mul(a,13)^Mul(b,9)^Mul(d,14)^Mul(e,11);
++      p[3]=Mul(a,11)^Mul(b,13)^Mul(d,9)^Mul(e,14);
++    } else {
++      p[0]=Mul(a,2)^Mul(b,3)^d^e; p[1]=a^Mul(b,2)^Mul(d,3)^e;
++      p[2]=a^b^Mul(d,2)^Mul(e,3); p[3]=Mul(a,3)^b^d^Mul(e,2);
++    }
++  }
++}
++static void AesRound(P, bool inverse, bool last) {
++  u8 t[16], *d = XmmRexrReg(m, rde);
++  const u8 *k = GetModrmRegisterXmmPointerRead16(A);
++  unsigned i;
++  ShiftSub(t, d, inverse);
++  if (!last) Mix(t, inverse);
++  for (i = 0; i < 16; ++i) d[i] = t[i] ^ k[i];
++}
++void OpAesenc(P) { AesRound(A, false, false); }
++void OpAesenclast(P) { AesRound(A, false, true); }
++void OpAesdec(P) { AesRound(A, true, false); }
++void OpAesdeclast(P) { AesRound(A, true, true); }
++void OpAesimc(P) {
++  u8 *d = XmmRexrReg(m, rde);
++  memcpy(d, GetModrmRegisterXmmPointerRead16(A), 16);
++  Mix(d, true);
++}
++void OpAeskeygenassist(P) {
++  const u8 *s = GetModrmRegisterXmmPointerRead16(A);
++  u8 *d = XmmRexrReg(m, rde), r = uimm0;
++  unsigned j;
++  for (j = 0; j < 4; ++j) d[j] = kSbox[s[4 + j]];
++  d[4]=d[1]^r; d[5]=d[2]; d[6]=d[3]; d[7]=d[0];
++  for (j = 0; j < 4; ++j) d[8 + j] = kSbox[s[12 + j]];
++  d[12]=d[9]^r; d[13]=d[10]; d[14]=d[11]; d[15]=d[8];
++}
+diff -ruN --exclude=*.orig a/blink/cpuid.c b/blink/cpuid.c
+--- a/blink/cpuid.c	2026-07-15 23:18:26
++++ b/blink/cpuid.c	2026-07-15 23:18:26
+@@ -96,6 +96,7 @@
+
+ void OpCpuid(P) {
+   u32 ax, bx, cx, dx, jit;
++  bool legacy = m->gemembed && m->mode.omode != XED_MODE_LONG;
+   if (m->trapcpuid) {
+     ThrowSegmentationFault(m, 0);
+   }
+@@ -129,6 +130,14 @@
+       dx = Read32((const u8 *)ARCH_NAME + 8);
+       break;
+     case 1:
++      if (legacy) {
++        ax = 0x000106c2;  // deterministic family 6 legacy profile
++        cx = (1u << 0) | (1u << 1) | (1u << 9) | (1u << 19) |
++             (1u << 20) | (1u << 23) | (1u << 25);
++        dx = (1u << 0) | (1u << 8) | (1u << 15) | (1u << 23) |
++             (1u << 24) | (1u << 25) | (1u << 26);
++        break;
++      }
+       cx |= 1 << 0;    // sse3
+       cx |= 1 << 1;    // pclmulqdq
+       cx |= 1 << 9;    // ssse3
+@@ -161,6 +170,10 @@
+     case 7:
+       switch (Get32(m->cx)) {
+         case 0:
++          if (legacy) {
++            bx = 1u << 9;  // erms
++            break;
++          }
+           bx |= 1 << 0;   // fsgsbase
+           bx |= 1 << 9;   // erms
+           bx |= 1 << 18;  // rdseed
+@@ -175,6 +188,11 @@
+       }
+       break;
+     case 0x80000001:
++      if (legacy) {
++        dx = (1u << 0) | (1u << 8) | (1u << 15) | (1u << 23) |
++             (1u << 24);
++        break;
++      }
+       jit = !IsJitDisabled(&m->system->jit);
+       cx |= 1 << 0;     // lahf
+       cx |= jit << 31;  // jit
+diff -ruN --exclude=*.orig a/blink/fpu.c b/blink/fpu.c
+--- a/blink/fpu.c	2026-07-15 23:18:26
++++ b/blink/fpu.c	2026-07-15 23:18:26
+@@ -161,13 +161,21 @@
+
+ static double FpuGetMemoryLdbl(struct Machine *m) {
+   u8 b[10];
+-  return DeserializeLdbl(Load(m, m->fpu.dp, 10, b));
++  Load(m, m->fpu.dp, 10, b);
++  memcpy(m->fpu.loaded_raw, b, sizeof(b));
++  m->fpu.loaded_raw_valid = true;
++  return DeserializeLdbl(b);
+ }
+
+ static void FpuSetMemoryLdbl(struct Machine *m, double f) {
+   void *p[2];
+   u8 b[10], t[10];
+-  SerializeLdbl(b, f);
++  size_t slot = (size_t)(FpuSt(m, 0) - m->fpu.st);
++  if (!memcmp(&f, &m->fpu.imported_st[slot], sizeof(f))) {
++    memcpy(b, m->fpu.raw_st[slot], sizeof(b));
++  } else {
++    SerializeLdbl(b, f);
++  }
+   memcpy(BeginStore(m, m->fpu.dp, 10, p, t), b, 10);
+   EndStore(m, m->fpu.dp, 10, p, t);
+ }
+@@ -750,6 +758,13 @@
+
+ static void OpFldt(struct Machine *m) {
+   FpuPush(m, FpuGetMemoryLdbl(m));
++  if (m->fpu.loaded_raw_valid) {
++    size_t slot = (size_t)(FpuSt(m, 0) - m->fpu.st);
++    memset(m->fpu.raw_st[slot], 0, sizeof(m->fpu.raw_st[slot]));
++    memcpy(m->fpu.raw_st[slot], m->fpu.loaded_raw, sizeof(m->fpu.loaded_raw));
++    m->fpu.imported_st[slot] = m->fpu.st[slot];
++    m->fpu.loaded_raw_valid = false;
++  }
+ }
+
+ static void OpFldl(struct Machine *m) {
+@@ -910,15 +925,22 @@
+   Write16(p + 0, m->fpu.cw);
+   Write16(p + 4, m->fpu.sw);
+   Write16(p + 8, m->fpu.tw);
+-  Write64(p + 12, m->fpu.ip);
++  Write32(p + 12, m->fpu.ip);
++  Write16(p + 16, m->fpu.cs);
+   Write16(p + 18, m->fpu.op);
+-  Write64(p + 20, m->fpu.dp);
++  Write32(p + 20, m->fpu.dp);
++  Write16(p + 24, m->fpu.ds);
+ }
+
+ static void GetFpuEnv(struct Machine *m, u8 p[28]) {
+   m->fpu.cw = Read16(p + 0);
+   m->fpu.sw = Read16(p + 4);
+   m->fpu.tw = Read16(p + 8);
++  m->fpu.ip = Read32(p + 12);
++  m->fpu.cs = Read16(p + 16);
++  m->fpu.op = Read16(p + 18);
++  m->fpu.dp = Read32(p + 20);
++  m->fpu.ds = Read16(p + 24);
+ }
+
+ static void OpFstenv(struct Machine *m) {
+@@ -1032,8 +1054,10 @@
+   op = Opcode(rde) & 7;
+   ismemory = ModrmMod(rde) != 3;
+   m->fpu.ip = MaskAddress(m->mode.omode, m->ip - Oplength(rde));
++  m->fpu.cs = m->cs.sel;
+   m->fpu.op = op << 8 | ModrmMod(rde) << 6 | ModrmReg(rde) << 3 | ModrmRm(rde);
+   m->fpu.dp = ismemory ? ComputeAddress(A) : 0;
++  m->fpu.ds = ismemory && Sego(rde) ? m->seg[Sego(rde) - 1].sel : m->ds.sel;
+   switch (DISP(op, ismemory, ModrmReg(rde))) {
+     CASE(DISP(0xD8, FPUREG, 0), OpFaddStEst(m, rde));
+     CASE(DISP(0xD8, FPUREG, 1), OpFmulStEst(m, rde));
+diff -ruN --exclude=*.orig a/blink/gem_embed.c b/blink/gem_embed.c
+--- a/blink/gem_embed.c	2026-07-15 23:18:26
++++ b/blink/gem_embed.c	2026-07-15 23:18:26
+@@ -28,6 +28,7 @@
+ #include "blink/flag.h"
+ #include "blink/flags.h"
+ #include "blink/linux.h"
++#include "blink/ldbl.h"
+ #include "blink/machine.h"
+ #include "blink/map.h"
+ #include "blink/rde.h"
+@@ -101,6 +102,19 @@
+     if (g->pages[i].address == a) return g->pages + i;
+   return 0;
+ }
++static int masked_legacy_vex(const struct blink_gem_machine* g, uint64_t address) {
++  const struct shadow_page *first = 0, *second = 0;
++  size_t i;
++  u8 lead, payload;
++  for (i = 0; i < g->page_count; ++i) {
++    if (g->pages[i].address == (address & ~UINT64_C(4095))) first = g->pages + i;
++    if (g->pages[i].address == ((address + 1) & ~UINT64_C(4095))) second = g->pages + i;
++  }
++  if (!first || !second) return 0;
++  lead = first->host[address & 4095];
++  payload = second->host[(address + 1) & 4095];
++  return (lead == 0xc4 || lead == 0xc5) && (payload & 0xc0) == 0xc0;
++}
+ static int refresh_page(struct blink_gem_machine* g, struct shadow_page* p,
+                         uint32_t* error) {
+   uint32_t prot = 0;
+@@ -162,6 +176,44 @@
+   ResetTlb(g->machine);
+   ResetInstructionCache(g->machine);
+ }
++static int rollback_shadow_pages(struct blink_gem_machine* g) {
++  size_t i;
++  for (i = 0; i < g->page_count; ++i) {
++    struct shadow_page* p = g->pages + i;
++    if (!memcmp(p->host, p->before, 4096)) continue;
++    if (ProtectVirtual(g->system, p->address, 4096,
++                       PROT_READ | PROT_WRITE | PROT_EXEC, false) == -1)
++      return 0;
++    memcpy(p->host, p->before, 4096);
++    if (ProtectVirtual(g->system, p->address, 4096,
++                       hostprot(p->protection), false) == -1)
++      return 0;
++  }
++  ResetTlb(g->machine);
++  return 1;
++}
++static int commit_restartable_rep(struct blink_gem_machine* g,
++                                  uint64_t* fault_address) {
++  struct blink_gem_write writes[BLINK_GEM_MAX_SHADOW_PAGES];
++  size_t i, count = 0;
++  uint32_t error;
++  for (i = 0; i < g->page_count; ++i) {
++    if (!memcmp(g->pages[i].host, g->pages[i].before, 4096)) continue;
++    writes[count].address = g->pages[i].address;
++    writes[count].data = g->pages[i].host;
++    writes[count].size = 4096;
++    ++count;
++  }
++  if (!count) return 0;
++  error = g->cb.commit(g->opaque, writes, count, fault_address);
++  if (error) return -(int)error;
++  for (i = 0; i < count; ++i) {
++    struct shadow_page* p = find_page(g, writes[i].address);
++    if (!p) return -1;
++    memcpy(p->before, p->host, 4096);
++  }
++  return (int)count;
++}
+ static int add_page(struct blink_gem_machine* g, uint64_t address,
+                     uint32_t* error) {
+   struct shadow_page* p;
+@@ -209,10 +261,25 @@
+   if (m->mode.omode != XED_MODE_LONG) {
+     m->fpu.sw = s->fsw;
+     m->fpu.tw = s->ftw;
+-    memcpy(m->fpu.st, s->x87, sizeof(s->x87));
++    for (i = 0; i < 8; ++i) {
++      memcpy(m->fpu.raw_st[i], s->x87[i], sizeof(m->fpu.raw_st[i]));
++      m->fpu.st[i] = DeserializeLdbl(s->x87[i]);
++      m->fpu.imported_st[i] = m->fpu.st[i];
++    }
++    m->fpu.ip = s->fip;
++    m->fpu.dp = s->fdp;
++    m->fpu.cs = s->fcs;
++    m->fpu.ds = s->fds;
++    m->fpu.op = s->fop;
+   }
+-  m->fs.base = s->fs_base;
+-  m->gs.base = s->gs_base;
++  for (i = 0; i < 6; ++i) {
++    m->seg[i].sel = s->segments[i].selector;
++    m->seg[i].base = s->segments[i].base;
++    m->seg[i].limit = s->segments[i].limit;
++    m->seg[i].attributes = s->segments[i].attributes;
++  }
++  m->fs.base = s->fs_base ? s->fs_base : s->segments[4].base;
++  m->gs.base = s->gs_base ? s->gs_base : s->segments[5].base;
+ }
+ static void export_state(const struct Machine* m,
+                          const struct blink_gem_state* in,
+@@ -228,11 +295,63 @@
+   if (m->mode.omode != XED_MODE_LONG) {
+     out->fsw = (uint16_t)m->fpu.sw;
+     out->ftw = (uint16_t)m->fpu.tw;
+-    memcpy(out->x87, m->fpu.st, sizeof(out->x87));
++    for (i = 0; i < 8; ++i) {
++      if (!memcmp(&m->fpu.st[i], &m->fpu.imported_st[i], sizeof(double))) {
++        memcpy(out->x87[i], m->fpu.raw_st[i], sizeof(out->x87[i]));
++      } else {
++        memset(out->x87[i], 0, sizeof(out->x87[i]));
++        SerializeLdbl(out->x87[i], m->fpu.st[i]);
++      }
++    }
++    out->fip = (uint32_t)m->fpu.ip;
++    out->fdp = (uint32_t)m->fpu.dp;
++    out->fcs = m->fpu.cs;
++    out->fds = m->fpu.ds;
++    out->fop = (uint16_t)m->fpu.op;
+   }
+   out->fs_base = m->fs.base;
+   out->gs_base = m->gs.base;
++  for (i = 0; i < 6; ++i) {
++    out->segments[i].selector = m->seg[i].sel;
++    out->segments[i].base = (uint32_t)m->seg[i].base;
++    out->segments[i].limit = m->seg[i].limit;
++    out->segments[i].attributes = m->seg[i].attributes;
++  }
+ }
++static int mmx_instruction(const struct Machine* m) {
++  unsigned op = Mopcode(m->xedd->op.rde);
++  if (op == 0x1d6 && Rep(m->xedd->op.rde) == 3) return 2;
++  if (op == 0x1d6 && Rep(m->xedd->op.rde) == 2) return 3;
++  if (Osz(m->xedd->op.rde) || Rep(m->xedd->op.rde)) return 0;
++  return (op >= 0x160 && op <= 0x176) || op == 0x17e || op == 0x17f ||
++         op == 0x1c4 || op == 0x1c5 || (op >= 0x1d1 && op <= 0x1d5) ||
++         (op >= 0x1d8 && op <= 0x1df) || (op >= 0x1e0 && op <= 0x1e5) ||
++         op == 0x1d7 || op == 0x1e7 || (op >= 0x1e8 && op <= 0x1ef) ||
++         (op >= 0x1f1 && op <= 0x1f7) || (op >= 0x1f8 && op <= 0x1fe);
++}
++static void import_mmx_alias(struct Machine* m) {
++  size_t i;
++  for (i = 0; i < 8; ++i) memcpy(m->xmm[i], m->fpu.raw_st[i], 8);
++}
++static void export_mmx_alias(struct Machine* m) {
++  size_t i;
++  for (i = 0; i < 8; ++i) {
++    memcpy(m->fpu.raw_st[i], m->xmm[i], 8);
++    memset(m->fpu.raw_st[i] + 8, 0xff, 2);
++    memset(m->fpu.raw_st[i] + 10, 0, 6);
++    m->fpu.st[i] = DeserializeLdbl(m->fpu.raw_st[i]);
++    m->fpu.imported_st[i] = m->fpu.st[i];
++  }
++  m->fpu.tw = 0;
++}
++static void export_mmx_register(struct Machine* m, unsigned reg) {
++  memcpy(m->fpu.raw_st[reg], m->xmm[reg], 8);
++  memset(m->fpu.raw_st[reg] + 8, 0xff, 2);
++  memset(m->fpu.raw_st[reg] + 10, 0, 6);
++  m->fpu.st[reg] = DeserializeLdbl(m->fpu.raw_st[reg]);
++  m->fpu.imported_st[reg] = m->fpu.st[reg];
++  m->fpu.tw = 0;
++}
+ static enum blink_gem_access fault_access(struct Machine* m, int fetch) {
+   uint64_t a = m->faultaddr;
+   if (fetch) return BLINK_GEM_ACCESS_FETCH;
+@@ -322,11 +441,16 @@
+   struct blink_gem_result r;
+   struct blink_gem_write writes[BLINK_GEM_MAX_SHADOW_PAGES];
+   size_t i, nwrites;
++  u8 saved_xmm[8][16];
++  u8 cross_result[16];
++  unsigned cross_reg = 0;
+   uint32_t error = 0;
+-  int rc, retries, handler_id = 0;
++  int rc, retries, handler_id = 0, mmx = 0;
++  volatile int restartable_rep = 0;
+   volatile int fetching;
+   uint64_t fetch_address = 0, fetch_size = 0, commit_fault = 0;
+-  if (!g || !in || !out || in->abi_version != 1 || in->size != sizeof(*in) ||
++  if (!g || !in || !out || in->abi_version != BLINK_GEM_STATE_ABI_VERSION ||
++      in->size != sizeof(*in) ||
+       !guest_address(g, in->rip) || !guest_address(g, in->gpr[4]) ||
+       !guest_address(g, in->gs_base) || !guest_address(g, in->fs_base))
+     return result(BLINK_GEM_INVALID);
+@@ -351,6 +475,8 @@
+   }
+   for (retries = 0; retries < (int)BLINK_GEM_MAX_SHADOW_PAGES + 1; ++retries) {
+     import_state(m, in);
++    m->gem_access_segment = 0;
++    m->gem_access_offset = 0;
+     m->readaddr = m->writeaddr = 0;
+     m->readsize = m->writesize = 0;
+     m->faultaddr = 0;
+@@ -372,9 +498,10 @@
+     fetching = 1;
+     if (!(rc = sigsetjmp(m->onhalt, 1))) {
+       m->canhalt = true;
+-      LoadInstruction(m, m->ip);
+-      fetch_address = m->ip;
++      LoadInstruction(m, m->cs.base + GetIp(m));
++      fetch_address = m->cs.base + GetIp(m);
+       fetch_size = Oplength(m->xedd->op.rde);
++      CheckLegacySegmentAccess(m, &m->cs, GetIp(m), fetch_size, false, true);
+       if (g->guest_mode != BLINK_GEM_GUEST_LEGACY_32) {
+         rc = reconcile_range(g, fetch_address, fetch_size, &error);
+         if (rc) {
+@@ -419,10 +546,28 @@
+           g->last_decode.name[i] = mnemonic[i];
+         g->last_decode.name[i] = '\0';
+       }
++      if (g->guest_mode == BLINK_GEM_GUEST_LEGACY_32 &&
++          masked_legacy_vex(g, fetch_address)) {
++        m->canhalt = false;
++        return result(BLINK_GEM_UNSUPPORTED);
++      }
+       if (!handler_id) {
+         m->canhalt = false;
+         return result(BLINK_GEM_UNSUPPORTED);
+       }
++      mmx = mmx_instruction(m);
++      restartable_rep = Rep(m->xedd->op.rde) &&
++                        ((Mopcode(m->xedd->op.rde) >= 0x0a4 &&
++                          Mopcode(m->xedd->op.rde) <= 0x0a7) ||
++                         (Mopcode(m->xedd->op.rde) >= 0x0aa &&
++                          Mopcode(m->xedd->op.rde) <= 0x0af));
++      if (mmx) {
++        memcpy(saved_xmm, m->xmm, sizeof(saved_xmm));
++        import_mmx_alias(m);
++        if (mmx == 3)
++          memcpy(m->xmm[RexbRm(m->xedd->op.rde)],
++                 saved_xmm[RexbRm(m->xedd->op.rde)], 16);
++      }
+       fetching = 0;
+       if (g->engine == BLINK_GEM_ENGINE_JIT) {
+ #ifdef HAVE_JIT
+@@ -451,6 +596,7 @@
+             }
+           }
+           import_state(m, in);
++          if (mmx) import_mmx_alias(m);
+           m->readaddr = m->writeaddr = 0;
+           m->readsize = m->writesize = 0;
+           m->faultaddr = 0;
+@@ -508,6 +654,7 @@
+         r.engine_status = (uint32_t)rc;
+         return r;
+       }
++      r = result(BLINK_GEM_MEMORY_FAULT);
+       r.fault_address = m->faultaddr;
+       r.access = fault_access(m, fetching);
+       if (g->guest_mode != BLINK_GEM_GUEST_LEGACY_32 &&
+@@ -520,7 +667,10 @@
+           return r;
+         }
+       } else if (!find_page(g, m->faultaddr)) {
+-        if (add_page(g, m->faultaddr, &error)) continue;
++        if (add_page(g, m->faultaddr, &error)) {
++          if (!rollback_shadow_pages(g)) return result(BLINK_GEM_INVALID);
++          continue;
++        }
+         if (error == UINT32_MAX) {
+           r = result(BLINK_GEM_INVALID);
+           r.engine_status = error;
+@@ -530,7 +680,32 @@
+       error = g->cb.validate(g->opaque, m->faultaddr, 1, r.access);
+       r.outcome = BLINK_GEM_MEMORY_FAULT;
+       r.memory_error = error;
++      if (restartable_rep) {
++        int committed = commit_restartable_rep(g, &commit_fault);
++        if (committed < 0) {
++          r.memory_error = (uint32_t)-committed;
++          r.fault_address = commit_fault;
++          r.access = BLINK_GEM_ACCESS_WRITE;
++          return r;
++        }
++        m->ip = in->rip;
++        export_state(m, in, out);
++        r.engine_status = BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP;
++      }
+       return r;
++    }
++    if (mmx) {
++      if (mmx == 2) {
++        cross_reg = RexrReg(m->xedd->op.rde);
++        memcpy(cross_result, m->xmm[cross_reg], sizeof(cross_result));
++      } else if (mmx == 3) {
++        cross_reg = RexrReg(m->xedd->op.rde);
++        export_mmx_register(m, cross_reg);
++      } else {
++        export_mmx_alias(m);
++      }
++      memcpy(m->xmm, saved_xmm, sizeof(saved_xmm));
++      if (mmx == 2) memcpy(m->xmm[cross_reg], cross_result, sizeof(cross_result));
+     }
+     if (g->guest_mode != BLINK_GEM_GUEST_LEGACY_32) {
+       rc = reconcile_range(g, (uint64_t)m->readaddr, (uint64_t)m->readsize,
+diff -ruN --exclude=*.orig a/blink/gem_embed.h b/blink/gem_embed.h
+--- a/blink/gem_embed.h	2026-07-15 23:18:26
++++ b/blink/gem_embed.h	2026-07-15 23:18:26
+@@ -21,6 +21,7 @@
+ #include <stddef.h>
+ #include <stdint.h>
+ #define BLINK_GEM_ABI_VERSION       1u
++#define BLINK_GEM_STATE_ABI_VERSION 2u
+ #define BLINK_GEM_MAX_SHADOW_PAGES 64u
+ #define BLINK_GEM_TRACE_ABI_VERSION 1u
+ #define BLINK_GEM_MAX_TRACE_ENTRIES 256u
+@@ -112,6 +113,7 @@
+   BLINK_GEM_ENGINE_INTERPRETER = 1,
+   BLINK_GEM_ENGINE_JIT = 2
+ };
++#define BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP 0x100u
+ enum blink_gem_guest_mode {
+   BLINK_GEM_GUEST_LONG = 1,
+   BLINK_GEM_GUEST_LEGACY_32 = 2
+@@ -132,6 +134,13 @@
+   uint64_t jit_compilations, jit_executions, jit_failures;
+   uint32_t write_xor_execute, reserved;
+ };
++struct blink_gem_segment {
++  uint16_t selector;
++  uint16_t reserved;
++  uint32_t base;
++  uint32_t limit;
++  uint32_t attributes;
++};
+ struct blink_gem_state {
+   uint32_t abi_version, size;
+   uint64_t gpr[16], rip, rflags;
+@@ -143,6 +152,9 @@
+   uint64_t fs_base;
+   uint16_t ftw;
+   uint16_t reserved[3];
++  uint32_t fip, fdp;
++  uint16_t fcs, fds, fop, state_reserved;
++  struct blink_gem_segment segments[6];
+ };
+ struct blink_gem_result {
+   enum blink_gem_outcome outcome;
+diff -ruN --exclude=*.orig a/blink/machine.c b/blink/machine.c
+--- a/blink/machine.c	2026-07-15 23:18:26
++++ b/blink/machine.c	2026-07-15 23:18:26
+@@ -38,6 +38,7 @@
+ #include "blink/flags.h"
+ #include "blink/fpu.h"
+ #include "blink/jit.h"
++#include "blink/ldbl.h"
+ #include "blink/likely.h"
+ #include "blink/log.h"
+ #include "blink/macros.h"
+@@ -1246,41 +1247,59 @@
+
+ static void OpFxsave(P) {
+   i64 v;
+-  u8 buf[32];
+-  memset(buf, 0, 32);
++  int i;
++  u8 buf[512];
++  memset(buf, 0, sizeof(buf));
+   Write16(buf + 0, m->fpu.cw);
+ #ifndef DISABLE_X87
+   Write16(buf + 2, m->fpu.sw);
+   Write8(buf + 4, m->fpu.tw);
+   Write16(buf + 6, m->fpu.op);
+   Write32(buf + 8, m->fpu.ip);
++  Write16(buf + 12, m->fpu.cs);
++  Write32(buf + 16, m->fpu.dp);
++  Write16(buf + 20, m->fpu.ds);
+ #endif
+   Write32(buf + 24, m->mxcsr);
+-  v = ComputeAddress(A);
+-  CopyToUser(m, v + 0, buf, 32);
++  Write32(buf + 28, 0x0000ffbf);
+ #ifndef DISABLE_X87
+-  CopyToUser(m, v + 32, m->fpu.st, 128);
++  for (i = 0; i < 8; ++i) {
++    if (!memcmp(&m->fpu.st[i], &m->fpu.imported_st[i], sizeof(double)))
++      memcpy(buf + 32 + i * 16, m->fpu.raw_st[i], 10);
++    else
++      SerializeLdbl(buf + 32 + i * 16, m->fpu.st[i]);
++  }
+ #endif
+-  CopyToUser(m, v + 160, m->xmm, 256);
+-  SetWriteAddr(m, v, 416);
++  memcpy(buf + 160, m->xmm, m->mode.omode == XED_MODE_LONG ? 256 : 128);
++  v = ComputeAddress(A);
++  SetWriteAddr(m, v, sizeof(buf));
++  CopyToUser(m, v, buf, sizeof(buf));
+ }
+
+ static void OpFxrstor(P) {
+   i64 v;
+-  u8 buf[32];
++  int i;
++  u8 buf[512];
+   v = ComputeAddress(A);
+-  SetReadAddr(m, v, 416);
+-  CopyFromUser(m, buf, v + 0, 32);
++  SetReadAddr(m, v, sizeof(buf));
++  CopyFromUser(m, buf, v, sizeof(buf));
+ #ifndef DISABLE_X87
+-  CopyFromUser(m, m->fpu.st, v + 32, 128);
++  for (i = 0; i < 8; ++i) {
++    memcpy(m->fpu.raw_st[i], buf + 32 + i * 16, 16);
++    m->fpu.st[i] = DeserializeLdbl(m->fpu.raw_st[i]);
++    m->fpu.imported_st[i] = m->fpu.st[i];
++  }
+ #endif
+-  CopyFromUser(m, m->xmm, v + 160, 256);
++  memcpy(m->xmm, buf + 160, m->mode.omode == XED_MODE_LONG ? 256 : 128);
+   m->fpu.cw = Load16(buf + 0);
+ #ifndef DISABLE_X87
+   m->fpu.sw = Load16(buf + 2);
+   m->fpu.tw = Load8(buf + 4);
+   m->fpu.op = Load16(buf + 6);
+   m->fpu.ip = Load32(buf + 8);
++  m->fpu.cs = Load16(buf + 12);
++  m->fpu.dp = Load32(buf + 16);
++  m->fpu.ds = Load16(buf + 20);
+ #endif
+   m->mxcsr = Load32(buf + 24);
+ }
+@@ -2087,7 +2106,27 @@
+       XLAT(0x21c, OpSsePabsb);
+       XLAT(0x21d, OpSsePabsw);
+       XLAT(0x21e, OpSsePabsd);
++      XLAT(0x210, OpSse4);
++      XLAT(0x214, OpSse4);
++      XLAT(0x215, OpSse4);
++      XLAT(0x217, OpSse4);
++      XLAT(0x220, OpSse4);
++      XLAT(0x221, OpSse4);
++      XLAT(0x222, OpSse4);
++      XLAT(0x223, OpSse4);
++      XLAT(0x224, OpSse4);
++      XLAT(0x225, OpSse4);
++      XLAT(0x228, OpSse4);
++      XLAT(0x229, OpSse4);
+       XLAT(0x22a, OpMovntdqaVdqMdq);
++      XLAT(0x22b, OpSse4);
++      XLAT(0x230, OpSse4);
++      XLAT(0x231, OpSse4);
++      XLAT(0x232, OpSse4);
++      XLAT(0x233, OpSse4);
++      XLAT(0x234, OpSse4);
++      XLAT(0x235, OpSse4);
++      XLAT(0x237, OpSse4);
+       XLAT(0x238, OpSsePminsb);
+       XLAT(0x239, OpSsePminsd);
+       XLAT(0x23a, OpSsePminuw);
+@@ -2097,13 +2136,41 @@
+       XLAT(0x23e, OpSsePmaxuw);
+       XLAT(0x23f, OpSsePmaxud);
+       XLAT(0x240, OpSsePmulld);
++      XLAT(0x241, OpSse4);
+       XLAT(0x2f0, Op2f01);
+       XLAT(0x2f1, Op2f01);
+       XLAT(0x2f5, Op2f5);
+       XLAT(0x2f6, Op2f6);
+       XLAT(0x2f7, OpShx);
++      XLAT(0x2db, OpAesimc);
++      XLAT(0x2dc, OpAesenc);
++      XLAT(0x2dd, OpAesenclast);
++      XLAT(0x2de, OpAesdec);
++      XLAT(0x2df, OpAesdeclast);
++      XLAT(0x308, OpSse4);
++      XLAT(0x309, OpSse4);
++      XLAT(0x30a, OpSse4);
++      XLAT(0x30b, OpSse4);
++      XLAT(0x30c, OpSse4);
++      XLAT(0x30d, OpSse4);
++      XLAT(0x30e, OpSse4);
+       XLAT(0x30f, OpSsePalignr);
++      XLAT(0x314, OpSse4);
++      XLAT(0x315, OpSse4);
++      XLAT(0x316, OpSse4);
++      XLAT(0x317, OpSse4);
++      XLAT(0x320, OpSse4);
++      XLAT(0x321, OpSse4);
++      XLAT(0x322, OpSse4);
++      XLAT(0x340, OpSse4);
++      XLAT(0x341, OpSse4);
++      XLAT(0x342, OpSse4);
+       XLAT(0x344, OpSsePclmulqdq);
++      XLAT(0x360, OpSse4);
++      XLAT(0x361, OpSse4);
++      XLAT(0x362, OpSse4);
++      XLAT(0x363, OpSse4);
++      XLAT(0x3df, OpAeskeygenassist);
+       XLAT(0x3f0, OpRorx);
+       default:
+         return OpUd;
+@@ -2112,6 +2179,17 @@
+ }
+
+ int GemHandlerId(nexgen32e_f handler, long rde, bool legacy32) {
++  /* The legacy CPUID profile deliberately masks state families which GEM's
++   * fixed i386 context cannot restore. Keep their decoded forms outside the
++   * embedding boundary even when Blink has a host implementation. */
++  if (legacy32 &&
++      ((Mopcode(rde) == 0x1c7 && ModrmReg(rde) >= 6) ||
++       (Mopcode(rde) == 0x1ae && Rep(rde) && ModrmReg(rde) <= 3) ||
++       (Mopcode(rde) == 0x101 &&
++        (Modrm(rde) == 0xd0 || Modrm(rde) == 0xf9)) ||
++       (Mopcode(rde) >= 0x2f2 && Mopcode(rde) <= 0x2f7) ||
++       Mopcode(rde) == 0x3f0))
++    return 0;
+   if (handler == OpNop) return 1;
+   if (handler == OpMovZvqpIvqp) return 2;
+   if (handler == OpMovEvqpGvqp) return 3;
+diff -ruN --exclude=*.orig a/blink/machine.h b/blink/machine.h
+--- a/blink/machine.h	2026-07-15 23:18:26
++++ b/blink/machine.h	2026-07-15 23:18:26
+@@ -199,10 +199,16 @@
+ struct MachineFpu {
+ #ifndef DISABLE_X87
+   double st[8];
++  double imported_st[8];
++  u8 raw_st[8][16];
++  u8 loaded_raw[10];
++  bool loaded_raw_valid;
+   u32 sw;
+   int tw;
+   int op;
+   i64 ip;
++  u16 cs;
++  u16 ds;
+ #endif
+   u32 cw;
+   i64 dp;
+@@ -216,11 +222,11 @@
+
+ // Segment descriptor cache
+ // @see Intel Manual V3A §3.4.3
+-// Currently only the base address for each segment register is maintained;
+-// a full implementation will also cache its limit & access rights
+ struct DescriptorCache {
+   u16 sel;   // visible selector value (or paragraph value in real mode)
+   u64 base;  // base linear address
++  u32 limit;
++  u32 attributes;
+ };
+
+ struct MachineState {
+@@ -411,6 +417,8 @@
+       struct DescriptorCache gs;    // winple thread-local register
+     };  //
+   };  //
++  const struct DescriptorCache *gem_access_segment;
++  u64 gem_access_offset;
+   struct MachineFpu fpu;                 // FLOATING-POINT REGISTER FILE
+   u32 mxcsr;                             // SIMD status control register
+   pthread_t thread;                      // POSIX thread of this machine
+@@ -619,6 +627,13 @@
+ void OpCmpxchgEbAlGb(P);
+ void OpCmpxchgEvqpRaxGvqp(P);
+ void OpCpuid(P);
++void OpAesenc(P);
++void OpAesenclast(P);
++void OpAesdec(P);
++void OpAesdeclast(P);
++void OpAesimc(P);
++void OpAeskeygenassist(P);
++void OpSse4(P);
+ void OpCvt0f2a(P);
+ void OpCvt0f2d(P);
+ void OpCvt0f5a(P);
+@@ -681,6 +696,8 @@
+ u64 MaskAddress(u32, u64);
+ i64 GetIp(struct Machine *);
+ i64 GetPc(struct Machine *);
++void CheckLegacySegmentAccess(struct Machine *, const struct DescriptorCache *,
++                              u64, u64, bool, bool);
+ u64 AddressOb(P);
+ u64 AddressDi(P);
+ i64 AddressSi(P);
+diff -ruN --exclude=*.orig a/blink/memory.c b/blink/memory.c
+--- a/blink/memory.c	2026-07-15 23:18:26
++++ b/blink/memory.c	2026-07-15 23:18:26
+@@ -43,6 +43,9 @@
+   if (size) {
+     m->readaddr = addr;
+     m->readsize = size;
++    if (m->gem_access_segment)
++      CheckLegacySegmentAccess(m, m->gem_access_segment, m->gem_access_offset,
++                               size, false, false);
+   }
+ }
+
+@@ -50,6 +53,9 @@
+   if (size) {
+     m->writeaddr = addr;
+     m->writesize = size;
++    if (m->gem_access_segment)
++      CheckLegacySegmentAccess(m, m->gem_access_segment, m->gem_access_offset,
++                               size, true, false);
+   }
+ }
+
+diff -ruN --exclude=*.orig a/blink/name.c b/blink/name.c
+--- a/blink/name.c	2026-07-15 23:18:26
++++ b/blink/name.c	2026-07-15 23:18:26
+@@ -559,8 +559,56 @@
+     XLAT(0x23e, "OpSsePmaxuw");
+     XLAT(0x23f, "OpSsePmaxud");
+     XLAT(0x240, "OpSsePmulld");
++    XLAT(0x210, "OpSse4");
++    XLAT(0x214, "OpSse4");
++    XLAT(0x215, "OpSse4");
++    XLAT(0x217, "OpSse4");
++    XLAT(0x220, "OpSse4");
++    XLAT(0x221, "OpSse4");
++    XLAT(0x222, "OpSse4");
++    XLAT(0x223, "OpSse4");
++    XLAT(0x224, "OpSse4");
++    XLAT(0x225, "OpSse4");
++    XLAT(0x228, "OpSse4");
++    XLAT(0x229, "OpSse4");
++    XLAT(0x22b, "OpSse4");
++    XLAT(0x230, "OpSse4");
++    XLAT(0x231, "OpSse4");
++    XLAT(0x232, "OpSse4");
++    XLAT(0x233, "OpSse4");
++    XLAT(0x234, "OpSse4");
++    XLAT(0x235, "OpSse4");
++    XLAT(0x237, "OpSse4");
++    XLAT(0x241, "OpSse4");
++    XLAT(0x2db, "OpAesimc");
++    XLAT(0x2dc, "OpAesenc");
++    XLAT(0x2dd, "OpAesenclast");
++    XLAT(0x2de, "OpAesdec");
++    XLAT(0x2df, "OpAesdeclast");
++    XLAT(0x308, "OpSse4");
++    XLAT(0x309, "OpSse4");
++    XLAT(0x30a, "OpSse4");
++    XLAT(0x30b, "OpSse4");
++    XLAT(0x30c, "OpSse4");
++    XLAT(0x30d, "OpSse4");
++    XLAT(0x30e, "OpSse4");
+     XLAT(0x30f, "OpSsePalignr");
+     XLAT(0x344, "OpSsePclmulqdq");
++    XLAT(0x314, "OpSse4");
++    XLAT(0x315, "OpSse4");
++    XLAT(0x316, "OpSse4");
++    XLAT(0x317, "OpSse4");
++    XLAT(0x320, "OpSse4");
++    XLAT(0x321, "OpSse4");
++    XLAT(0x322, "OpSse4");
++    XLAT(0x340, "OpSse4");
++    XLAT(0x341, "OpSse4");
++    XLAT(0x342, "OpSse4");
++    XLAT(0x360, "OpSse4");
++    XLAT(0x361, "OpSse4");
++    XLAT(0x362, "OpSse4");
++    XLAT(0x363, "OpSse4");
++    XLAT(0x3df, "OpAeskeygenassist");
+     default:
+       return "UNKNOWN";
+   }
+diff -ruN --exclude=*.orig a/blink/sse4.c b/blink/sse4.c
+--- a/blink/sse4.c	1969-12-31 17:00:00
++++ b/blink/sse4.c	2026-07-15 23:18:26
+@@ -0,0 +1,354 @@
++/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
++│ Copyright 2026 MetalSharp contributors                                      │
++│ SPDX-License-Identifier: ISC                                                │
++╚─────────────────────────────────────────────────────────────────────────────*/
++#include <math.h>
++#include <string.h>
++
++#include "blink/endian.h"
++#include "blink/flags.h"
++#include "blink/machine.h"
++#include "blink/modrm.h"
++#include "blink/rde.h"
++#include "blink/x86.h"
++
++static u8 *Dst(P) { return XmmRexrReg(m, rde); }
++static const u8 *Src(P) { return GetModrmRegisterXmmPointerRead16(A); }
++
++static i64 SignedElement(const u8 *p, unsigned size) {
++  if (size == 1) return (i8)Get8(p);
++  return (i16)Get16(p);
++}
++
++static u64 UnsignedElement(const u8 *p, unsigned size) {
++  return size == 1 ? Get8(p) : Get16(p);
++}
++
++static void PutElement(u8 *p, unsigned size, u64 value) {
++  if (size == 1) Put8(p, value);
++  else if (size == 2) Put16(p, value);
++  else if (size == 4) Put32(p, value);
++  else Put64(p, value);
++}
++
++static void Blend(P, unsigned size, unsigned mask) {
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  unsigned i, count = 16 / size;
++  for (i = 0; i < count; ++i)
++    if (mask & (1u << i)) memcpy(d + i * size, s + i * size, size);
++}
++
++static void BlendVariable(P, unsigned size) {
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  u8 mask[16];
++  unsigned i, count = 16 / size;
++  memcpy(mask, m->xmm[0], sizeof(mask));
++  for (i = 0; i < count; ++i)
++    if (mask[i * size + size - 1] & 0x80)
++      memcpy(d + i * size, s + i * size, size);
++}
++
++static double RoundValue(double x, unsigned mode) {
++  double lo, fraction;
++  switch (mode & 3) {
++    case 0:
++      if (!isfinite(x) || fabs(x) >= 0x1p52) return x;
++      lo = floor(x);
++      fraction = x - lo;
++      if (fraction > .5 || (fraction == .5 && fmod(fabs(lo), 2) == 1)) lo += 1;
++      return lo;
++    case 1: return floor(x);
++    case 2: return ceil(x);
++    default: return trunc(x);
++  }
++}
++
++static unsigned RoundMode(P) {
++  return (uimm0 & 4) ? ((m->mxcsr >> 13) & 3) : (uimm0 & 3);
++}
++
++static void RoundPacked(P, bool doubles) {
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  unsigned i, n = doubles ? 2 : 4, mode = RoundMode(A);
++  for (i = 0; i < n; ++i) {
++    if (doubles) {
++      double x;
++      memcpy(&x, s + 8 * i, 8);
++      x = RoundValue(x, mode);
++      memcpy(d + 8 * i, &x, 8);
++    } else {
++      float x;
++      memcpy(&x, s + 4 * i, 4);
++      x = (float)RoundValue(x, mode);
++      memcpy(d + 4 * i, &x, 4);
++    }
++  }
++}
++
++static void RoundScalar(P, bool doubles) {
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  unsigned mode = RoundMode(A);
++  if (doubles) {
++    double x;
++    memcpy(&x, s, 8);
++    x = RoundValue(x, mode);
++    memcpy(d, &x, 8);
++  } else {
++    float x;
++    memcpy(&x, s, 4);
++    x = (float)RoundValue(x, mode);
++    memcpy(d, &x, 4);
++  }
++}
++
++static void Extend(P, unsigned in_size, unsigned out_size, bool sign) {
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  unsigned i, n = 16 / out_size;
++  u8 result[16] = {0};
++  for (i = 0; i < n; ++i) {
++    u64 value = sign ? (u64)SignedElement(s + i * in_size, in_size)
++                     : UnsignedElement(s + i * in_size, in_size);
++    PutElement(result + i * out_size, out_size, value);
++  }
++  memcpy(d, result, 16);
++}
++
++static void PmulDq(P) {
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  i64 a0 = (i32)Get32(d), a1 = (i32)Get32(d + 8);
++  i64 b0 = (i32)Get32(s), b1 = (i32)Get32(s + 8);
++  Put64(d, a0 * b0);
++  Put64(d + 8, a1 * b1);
++}
++
++static void Packusdw(P) {
++  u8 result[16], old[16];
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  unsigned i;
++  memcpy(old, d, 16);
++  for (i = 0; i < 8; ++i) {
++    i32 x = (i32)Get32(i < 4 ? old + 4 * i : s + 4 * (i - 4));
++    Put16(result + 2 * i, x < 0 ? 0 : x > 65535 ? 65535 : x);
++  }
++  memcpy(d, result, 16);
++}
++
++static void CompareQword(P) {
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  Put64(d, (i64)Get64(d) > (i64)Get64(s) ? UINT64_MAX : 0);
++  Put64(d + 8, (i64)Get64(d + 8) > (i64)Get64(s + 8) ? UINT64_MAX : 0);
++}
++
++static void Ptest(P) {
++  const u8 *a = Dst(A), *b = Src(A);
++  u64 av = Get64(a) | Get64(a + 8);
++  u64 andv = (Get64(a) & Get64(b)) | (Get64(a + 8) & Get64(b + 8));
++  u64 andnv = (~Get64(a) & Get64(b)) | (~Get64(a + 8) & Get64(b + 8));
++  (void)av;
++  m->flags = SetFlag(m->flags, FLAGS_ZF, !andv);
++  m->flags = SetFlag(m->flags, FLAGS_CF, !andnv);
++  m->flags = SetFlag(m->flags, FLAGS_AF, false);
++  m->flags = SetFlag(m->flags, FLAGS_OF, false);
++  m->flags = SetFlag(m->flags, FLAGS_PF, false);
++  m->flags = SetFlag(m->flags, FLAGS_SF, false);
++}
++
++static void Phminposuw(P) {
++  const u8 *s = Src(A);
++  u8 result[16] = {0};
++  unsigned i, index = 0;
++  u16 value = Get16(s);
++  for (i = 1; i < 8; ++i)
++    if (Get16(s + 2 * i) < value) value = Get16(s + 2 * (index = i));
++  Put16(result, value);
++  Put16(result + 2, index);
++  memcpy(Dst(A), result, 16);
++}
++
++static void Dot(P, bool doubles) {
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  unsigned i, n = doubles ? 2 : 4;
++  double sum = 0;
++  if (doubles) {
++    double a, b;
++    for (i = 0; i < n; ++i) if (uimm0 & (1u << (4 + i))) {
++      memcpy(&a, d + 8 * i, 8); memcpy(&b, s + 8 * i, 8); sum += a * b;
++    }
++    for (i = 0; i < n; ++i) { double x = (uimm0 & (1u << i)) ? sum : 0; memcpy(d + 8 * i, &x, 8); }
++  } else {
++    float a, b, fsum;
++    for (i = 0; i < n; ++i) if (uimm0 & (1u << (4 + i))) {
++      memcpy(&a, d + 4 * i, 4); memcpy(&b, s + 4 * i, 4); sum += (double)a * b;
++    }
++    fsum = (float)sum;
++    for (i = 0; i < n; ++i) { float x = (uimm0 & (1u << i)) ? fsum : 0; memcpy(d + 4 * i, &x, 4); }
++  }
++}
++
++static void Mpsadbw(P) {
++  u8 old[16], result[16];
++  u8 *d = Dst(A);
++  const u8 *s = Src(A);
++  unsigned i, j, aoff = ((uimm0 >> 2) & 1) * 4, boff = (uimm0 & 3) * 4;
++  memcpy(old, d, 16);
++  for (i = 0; i < 8; ++i) {
++    unsigned sum = 0;
++    for (j = 0; j < 4; ++j) {
++      int x = old[aoff + i + j] - s[boff + j];
++      sum += x < 0 ? -x : x;
++    }
++    Put16(result + 2 * i, sum);
++  }
++  memcpy(d, result, 16);
++}
++
++static unsigned StringLength(const u8 *p, unsigned count, unsigned size) {
++  unsigned i;
++  for (i = 0; i < count; ++i)
++    if (size == 1 ? !p[i] : !Get16(p + 2 * i)) return i;
++  return count;
++}
++
++static bool StringEqual(const u8 *a, const u8 *b, unsigned i, unsigned j,
++                        unsigned size, bool sign) {
++  return sign ? SignedElement(a + i * size, size) == SignedElement(b + j * size, size)
++              : UnsignedElement(a + i * size, size) == UnsignedElement(b + j * size, size);
++}
++
++static void PackedStringCompare(P, bool explicit_length, bool return_mask) {
++  u8 *a = Dst(A);
++  const u8 *b = Src(A);
++  unsigned mode = uimm0 & 3, size = (mode & 1) ? 2 : 1;
++  bool sign = (mode & 2) != 0;
++  unsigned max = 16 / size, aggregation = (uimm0 >> 2) & 3;
++  unsigned la, lb, i, j, bits = 0, valid_b;
++  if (explicit_length) {
++    i32 xa = (i32)Get32(m->ax), xb = (i32)Get32(m->dx);
++    la = (unsigned)(xa < 0 ? -(i64)xa : xa); if (la > max) la = max;
++    lb = (unsigned)(xb < 0 ? -(i64)xb : xb); if (lb > max) lb = max;
++  } else {
++    la = StringLength(a, max, size);
++    lb = StringLength(b, max, size);
++  }
++  valid_b = lb == 32 ? UINT32_MAX : ((1u << lb) - 1);
++  for (j = 0; j < max; ++j) {
++    bool value = false;
++    if (aggregation == 0) {
++      for (i = 0; i < la && j < lb; ++i) value |= StringEqual(a, b, i, j, size, sign);
++    } else if (aggregation == 1) {
++      for (i = 0; i + 1 < la && j < lb; i += 2) {
++        i64 x = sign ? SignedElement(b + j * size, size) : (i64)UnsignedElement(b + j * size, size);
++        i64 lo = sign ? SignedElement(a + i * size, size) : (i64)UnsignedElement(a + i * size, size);
++        i64 hi = sign ? SignedElement(a + (i + 1) * size, size) : (i64)UnsignedElement(a + (i + 1) * size, size);
++        value |= lo <= x && x <= hi;
++      }
++    } else if (aggregation == 2) {
++      value = (j < la && j < lb) ? StringEqual(a, b, j, j, size, sign)
++                                 : (j >= la && j >= lb);
++    } else if (j < lb) {
++      value = true;
++      for (i = 0; i < la; ++i)
++        if (j + i >= lb || !StringEqual(a, b, i, j + i, size, sign)) value = false;
++    }
++    if (value) bits |= 1u << j;
++  }
++  switch ((uimm0 >> 4) & 3) {
++    case 1: bits = (~bits) & ((1u << max) - 1); break;
++    case 2: bits &= valid_b; break;
++    case 3: bits = (~bits) & valid_b; break;
++  }
++  m->flags = SetFlag(m->flags, FLAGS_CF, bits != 0);
++  m->flags = SetFlag(m->flags, FLAGS_ZF, lb < max);
++  m->flags = SetFlag(m->flags, FLAGS_SF, la < max);
++  m->flags = SetFlag(m->flags, FLAGS_OF, bits & 1);
++  m->flags = SetFlag(m->flags, FLAGS_AF, false);
++  m->flags = SetFlag(m->flags, FLAGS_PF, false);
++  if (return_mask) {
++    memset(m->xmm[0], 0, 16);
++    if (uimm0 & 0x40) {
++      for (i = 0; i < max; ++i) if (bits & (1u << i))
++        PutElement(m->xmm[0] + i * size, size, size == 1 ? 0xff : 0xffff);
++    } else {
++      Put16(m->xmm[0], bits);
++    }
++  } else {
++    unsigned index = max;
++    if (bits) {
++      if (uimm0 & 0x40) {
++        for (i = max; i-- > 0;)
++          if (bits & (1u << i)) { index = i; break; }
++      } else {
++        for (i = 0; i < max; ++i)
++          if (bits & (1u << i)) { index = i; break; }
++      }
++    }
++    Put32(m->cx, index);
++  }
++}
++
++void OpSse4(P) {
++  u8 *d;
++  const u8 *s;
++  unsigned i, op = Mopcode(rde);
++  if (!Osz(rde)) { OpUdImpl(m); return; }
++  switch (op) {
++    case 0x210: BlendVariable(A, 1); break;
++    case 0x214: BlendVariable(A, 4); break;
++    case 0x215: BlendVariable(A, 8); break;
++    case 0x217: Ptest(A); break;
++    case 0x220: Extend(A, 1, 2, true); break;
++    case 0x221: Extend(A, 1, 4, true); break;
++    case 0x222: Extend(A, 1, 8, true); break;
++    case 0x223: Extend(A, 2, 4, true); break;
++    case 0x224: Extend(A, 2, 8, true); break;
++    case 0x225: Extend(A, 4, 8, true); break;
++    case 0x228: PmulDq(A); break;
++    case 0x229:
++      d = Dst(A); s = Src(A); Put64(d, Get64(d) == Get64(s) ? UINT64_MAX : 0);
++      Put64(d + 8, Get64(d + 8) == Get64(s + 8) ? UINT64_MAX : 0); break;
++    case 0x22a: memcpy(Dst(A), Src(A), 16); break;
++    case 0x22b: Packusdw(A); break;
++    case 0x230: Extend(A, 1, 2, false); break;
++    case 0x231: Extend(A, 1, 4, false); break;
++    case 0x232: Extend(A, 1, 8, false); break;
++    case 0x233: Extend(A, 2, 4, false); break;
++    case 0x234: Extend(A, 2, 8, false); break;
++    case 0x235: Extend(A, 4, 8, false); break;
++    case 0x237: CompareQword(A); break;
++    case 0x241: Phminposuw(A); break;
++    case 0x308: RoundPacked(A, false); break;
++    case 0x309: RoundPacked(A, true); break;
++    case 0x30a: RoundScalar(A, false); break;
++    case 0x30b: RoundScalar(A, true); break;
++    case 0x30c: Blend(A, 4, uimm0); break;
++    case 0x30d: Blend(A, 8, uimm0); break;
++    case 0x30e: Blend(A, 2, uimm0); break;
++    case 0x314: Put8(GetModrmRegisterBytePointerWrite1(A), Dst(A)[uimm0 & 15]); break;
++    case 0x315: Put16(GetModrmRegisterWordPointerWrite2(A), Get16(Dst(A) + 2 * (uimm0 & 7))); break;
++    case 0x316: Put32(GetModrmRegisterWordPointerWrite4(A), Get32(Dst(A) + 4 * (uimm0 & 3))); break;
++    case 0x317: Put32(GetModrmRegisterWordPointerWrite4(A), Get32(Dst(A) + 4 * (uimm0 & 3))); break;
++    case 0x320: d = Dst(A); Put8(d + (uimm0 & 15), Get8(GetModrmRegisterBytePointerRead1(A))); break;
++    case 0x321:
++      d = Dst(A); s = Src(A); { u8 old[16]; memcpy(old, d, 16); memcpy(d, old, 16);
++      memcpy(d + 4 * ((uimm0 >> 4) & 3), s + 4 * ((uimm0 >> 6) & 3), 4);
++      for (i = 0; i < 4; ++i) if (uimm0 & (1u << i)) Put32(d + 4 * i, 0); } break;
++    case 0x322: d = Dst(A); Put32(d + 4 * (uimm0 & 3), Get32(GetModrmRegisterWordPointerRead4(A))); break;
++    case 0x340: Dot(A, false); break;
++    case 0x341: Dot(A, true); break;
++    case 0x342: Mpsadbw(A); break;
++    case 0x360: PackedStringCompare(A, true, true); break;
++    case 0x361: PackedStringCompare(A, true, false); break;
++    case 0x362: PackedStringCompare(A, false, true); break;
++    case 0x363: PackedStringCompare(A, false, false); break;
++    default: OpUdImpl(m); break;
++  }
++}
+diff -ruN --exclude=*.orig a/blink/string.c b/blink/string.c
+--- a/blink/string.c	2026-07-15 23:18:26
++++ b/blink/string.c	2026-07-15 23:18:26
+@@ -318,7 +318,7 @@
+ }
+
+ void OpMovsb(P) {
+-  if (Rep(rde)) {
++  if (Rep(rde) && !(m->gemembed && m->mode.omode == XED_MODE_LEGACY)) {
+     RepMovsbEnhanced(A);
+   } else {
+     OpMovs(A);
+@@ -326,7 +326,8 @@
+ }
+
+ void OpStosb(P) {
+-  if (Rep(rde) && !GetFlag(m->flags, FLAGS_DF)) {
++  if (Rep(rde) && !GetFlag(m->flags, FLAGS_DF) &&
++      !(m->gemembed && m->mode.omode == XED_MODE_LEGACY)) {
+     RepStosbEnhanced(A);
+   } else {
+     OpStos(A);
