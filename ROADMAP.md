@@ -190,15 +190,145 @@ zero-Rosetta audits. Local Apple Clang ASan+UBSan passed the complete 15-test ma
 
 **Exit gate:** all release acceptance criteria have links to CI runs, fixtures, test names, and architecture records; the accepted native ARM64 Wine build is packaged and uploaded by the release operator, then the protected-main workflow redownloads, validates, exercises, and publishes the hash-bound `.tar.zst`, checksum, SBOM, provenance, limitations, and evidence assets. The README on `main` reports the final supported v0.1.0 status and links to those published records rather than retaining the architecture-foundation notice.
 
-## After v0.1
+## Native ARM64 compatibility roadmap
 
-The second roadmap improves performance and product coverage without changing the accepted v0.1 state contracts:
+Each phase ends with a dedicated, reviewed commit after its phase-specific tests pass. A phase checkbox is marked complete only after that commit is pushed and its evidence is recorded.
 
-1. introduce a validated accelerated ARM64EC engine while retaining the correctness fallback;
-2. expand hybrid application and concurrent-transition coverage;
-3. build and stage DXMT and Winemetal;
-4. address i386 only through a complete translated 32-bit address space;
-5. add updater and signing/notarization policy after reproducible unsigned artifacts are established.
+- [x] **Phase 0 — Freeze the initial i386 semantic baseline**
+  - preserve the current 514-case deterministic corpus
+  - replay every case through the native ARM64 interpreter and JIT paths
+  - retain the verified 1,028/1,028 comparison result
+  - freeze arithmetic flags, CMPXCHG, LZCNT, unaligned atomics, and SSE4.1 packed min/max regressions in CI
+
+- [x] **Phase 1 — Expand deterministic core instruction coverage**
+  - cover 8-, 16-, and 32-bit arithmetic, flag boundaries, branches, calls, returns, and stack behavior
+  - cover ModR/M, SIB, displacement, immediate, register, and memory forms
+  - expand multiply/divide, shifts/rotates, bit operations, and aligned/unaligned atomic families
+  - require identical interpreter/JIT state with no crashes or unsupported decoded instructions
+  - completed in `2e8bacb`: 1,458 cases captured and 2,916/2,916 native interpreter/JIT comparisons passed
+
+- [x] **Phase 2 — Add faults, memory boundaries, and code invalidation**
+  - normalize invalid-opcode, divide, access, protection, fetch, and stack faults
+  - cover instructions and operands crossing 4 KiB pages
+  - verify partial-write and rollback behavior
+  - cover self-modifying code and JIT invalidation
+  - verify GEM fault results map into the correct Windows exception path
+
+- [x] **Phase 3 — Complete legacy and Steam-relevant instruction state**
+  - add x87 control, status, tag, and 80-bit value coverage
+  - add MMX aliasing and transition coverage
+  - extend packed/vector coverage through every feature advertised by CPUID
+  - cover REP string instructions, direction-flag behavior, segmentation, and WoW64 context restoration
+  - prevent CPUID from advertising any instruction family the runtime cannot execute
+
+- [x] **Phase 4 — Add seeded randomized differential coverage**
+  - generate valid cases from reviewed instruction templates
+  - record seeds and defined-state masks for exact reproduction
+  - isolate each case with watchdog and crash classification
+  - automatically minimize mismatches
+  - promote every discovered defect into a deterministic CI regression
+  - completed in `739fdd3`: 20,313 pinned compatibility baseline records, 40,626/40,626 native comparisons, and 20,313/20,313 interpreter/JIT parity checks passed with zero failures; 45,810 native compatibility comparisons overall; evidence SHA-256 `799de284a2aebc46a4745d403742af968169ba737cfffe3ea4b7556ad0d5c36b`
+
+- [x] **Phase 5 — Integrate the compatibility corpus into SharpWine CI**
+  - maintain a hash-bound golden corpus that normal CI can replay without external runtime dependencies
+  - run both native ARM64 interpreter and JIT replay jobs
+  - track coverage by handler, width, operand form, addressing form, and fault class
+  - reject untested CPUID additions and unreviewed Blink source drift
+  - use real application traces to prioritize uncovered handlers
+  - completed in `739fdd3`: the accepted 20,313-case corpus is permanently bound by golden SHA-256 `179ed278a8382fa4b3066b73b2aecf5c791880492505c1b93ba6e6922d67755b`; separate native ARM64 interpreter and JIT replays pass in normal CI without external runtime dependencies
+
+- [x] **Phase 5.5 — Harden concurrent execution and remove prototype bottlenecks**
+  - replace process-wide serialized guest-memory execution with conflict-safe concurrent reads and atomic staged writes
+  - add deterministic page generations and retry behavior for write conflicts, mapping changes, and external host-backed memory
+  - add a true multi-instruction Blink execution path that amortizes state import/export, page synchronization, and decode/JIT setup
+  - preserve precise exits for syscalls, callbacks, faults, restartable REP operations, atomics, invalidation, and self-modifying code
+  - add multi-threaded read, write, RMW, mapping, teardown, race, and deadlock stress coverage
+  - retain every deterministic compatibility gate and require a measured improvement in visible 32-bit Notepad startup and interaction before resuming installer testing
+  - completed in `489a522` after the reviewed Phase 6 checkpoint `b77f7b8`: five-sample Release microbenchmark median is 9.003× locally and the hosted Release gate passed the required 3× floor; Linux ThreadSanitizer and native 4 KiB page-isolation/concurrency suites each passed 100 consecutive repetitions; all 45,810 compatibility comparisons remain retained; both visible Notepad launches were user-confirmed dramatically faster than the prototype, with zero perceived typing lag on the best sample
+
+- [ ] **Phase 6 — Import FEX-proven CPU coverage without replacing GEM/Blink ownership**
+  - keep GEM authoritative for i386 context, 4 KiB guest memory, faults, Windows boundaries, budgets, and teardown; keep Blink as the selected decoder/JIT and interpreter oracle
+  - add a private versioned `gem_i386_engine_ops` seam so execution backends can be compared without changing the Wine/GEM bridge ABI or silently falling back inside a process
+  - inventory FEX's stable x86 implementations, tests, ARM64 lowering strategies, and licenses by exact upstream revision; record which ideas are adapted, independently implemented, or rejected
+  - use FEX as implementation evidence only; retain the native-Windows exact-byte oracle and SharpWine's hash-bound interpreter/JIT corpus as the semantic acceptance authority
+  - expand the deterministic corpus around real Notepad, installer, and Steam traces before enabling any new CPUID bit
+  - add complete `CMPXCHG16B`, BMI1, BMI2, RDTSCP, and deterministic timestamp-policy coverage where applicable to the selected guest architecture
+  - add VEX decode and full XSAVE/XRSTOR/XGETBV state foundations before advertising OSXSAVE, AVX, AVX2, or FMA
+  - add AVX/AVX2/FMA instruction families incrementally with defined-state masks, interpreter/JIT parity, native-Windows comparison, cross-page operands, faults, and context-switch preservation
+  - retain explicit masking for every incomplete family, including AVX/AVX2/FMA, BMI, ADX, FSGSBASE, RDRAND/RDSEED, RDPID, and RDTSCP until its reviewed gate passes
+  - adapt proven DBT techniques where they fit Blink: multi-instruction basic blocks, deferred flag materialization, guest-register caching, direct block linking, call/return prediction, SIMD register caching, and precise self-modifying-code invalidation
+  - preserve exact exits for `sysenter`, WoW64 Unix calls, callbacks, exceptions, APCs, suspend/resume, atomics, restartable REP, executable writes, and asynchronous stop requests
+  - compare one-step, bounded-quantum, and optimized-block execution at every budget boundary used by CI; a faster path must produce the same complete context, touched bytes, stop reason, and retired count
+  - add explicit engine identity, block/JIT cache, invalidation, fallback, unsupported-opcode, and CPUID capability diagnostics to every application trace
+  - require Linux ThreadSanitizer, native ARM64 stress, TSO, 4 KiB-on-16 KiB isolation, and the complete 45,810-comparison baseline to remain green
+  - require a reviewed performance report covering instruction throughput, state transfers, page snapshots, bytes copied/committed, block reuse, invalidations, conflict retries, lock wait, and Notepad startup distributions
+  - exit gate: the expanded engine runs the existing interactive Notepad path with no new unsupported instruction, no widened CPUID lie, no silent fallback, and a measured improvement or clearly documented compatibility gain
+
+- [ ] **Phase 7 — Establish native graphics bootstrap, software rendering, and presentation lanes**
+  - treat GUI presentation and graphics translation as explicit runtime components rather than incidental Wine DLL loading
+  - preserve or port the native Swift/CoreGraphics/Metal window and shader path already proven by MetalSharp's visible Steam bootstrap; bind its source, compiled shader artifacts, deployment target, and ARM64-only dependency closure before claiming it in SharpWine
+  - distinguish the native Swift/Metal presentation helper from Google's SwiftShader software renderer in code, logs, manifests, and user-facing diagnostics
+  - define four non-ambiguous graphics lanes: `gdi_native`, `opengl_native`, `vulkan_swiftshader`, and `dxmt_metal`; never select a lane solely because a DLL happens to load
+  - keep GDI/User32 controls, menus, text, and ordinary installer windows on native `winemac.drv`/CoreGraphics presentation with no 3D dependency
+  - bring up Wine's OpenGL path against an ARM64 macOS OpenGL host module for compatibility workloads that can tolerate Apple's legacy OpenGL surface; audit pixel formats, contexts, child windows, resize, swap, threading, and teardown
+  - add deterministic OpenGL fixtures for context creation, clear, textured draw, readback, resize, visibility, and destruction before enabling the lane for applications
+  - package an ARM64-only Vulkan loader and SwiftShader Vulkan ICD as a deliberate software/bootstrap route for Chromium/CEF and Steam UI experiments
+  - verify SwiftShader's complete Mach-O closure, ICD manifest paths, code signing, executable-memory behavior, deployment target, licenses, and relocatability without Homebrew or build-tree paths
+  - add Vulkan fixtures for instance/device creation, queue selection, surface creation, clear/present/readback, resize, device loss, multithreaded submission, cache cleanup, and deterministic teardown
+  - test Steam bootstrap combinations explicitly: `-disable-gpu`, Vulkan plus SwiftShader, native OpenGL where supported, and software compositing; record command line, loaded DLLs, ICD, renderer strings, window evidence, CPU usage, and failure boundary
+  - do not call `-disable-gpu` a graphics solution by itself; verify whether Chromium selects software compositing, SwiftShader, OpenGL, or another path and preserve that selection in evidence
+  - retain DXMT/Winemetal as the paired ARM64 game-rendering lane and prove that enabling OpenGL or SwiftShader for Steam does not replace or contaminate per-game DXMT routing
+  - add route isolation tests showing Steam may use a bootstrap renderer while a launched game independently uses DXMT/Metal in the same prefix and process tree
+  - add capability-driven selection and a fail-closed doctor report for missing ICDs, wrong architecture, mismatched PE/native halves, unavailable surfaces, shader compilation errors, and accidental Rosetta dependencies
+  - measure window time-to-first-paint, frame cadence, resize latency, CPU consumption, memory growth, and clean shutdown for every lane
+  - exit gate: at least one fully audited ARM64 software/bootstrap lane and the native presentation lane produce a persistent interactive SteamSetup/CEF-class test window, while DXMT/Metal remains independently verified for game rendering
+
+- [ ] **Phase 8 — Complete Steam-relevant Win32 subsystems, observability, and sustained-runtime hardening**
+  - convert the first Steam/installer failure into a structured trace that identifies the earliest bad CPU, memory, syscall, callback, GUI, graphics, COM, process, service, TLS, or filesystem boundary
+  - add versioned, redacted event tracing across GEM stops, Wine syscalls/Unix calls, exceptions, callbacks, process/thread creation, DLL resolution, graphics-lane selection, and window lifecycle
+  - validate common controls and dialogs, menus, fonts, icons, cursors, clipboard, timers, drag/drop, focus, IME/text input, DPI changes, multiple windows, minimize/restore, and deterministic window destruction
+  - validate COM/OLE initialization, apartments, marshaling, callbacks, class registration, shell integration, URL handling, and the specific interfaces exercised by SteamSetup and steamwebhelper
+  - validate BCrypt/SChannel/certificate-store behavior, HTTPS downloads, proxy discovery, DNS, sockets, WebSocket use, clock/timezone behavior, and updater signature/hash verification
+  - validate process creation, inherited handles, job-like cleanup policy, named pipes, shared memory, events, mutexes, semaphores, file locking, temporary files, environment propagation, and mixed-bitness child processes
+  - validate registry redirection, Known Folders, Program Files/SysWOW64 selection, fonts and cache paths, installer state, uninstall metadata, and prefix persistence across restart
+  - validate CEF/Chromium sandbox decisions explicitly; never disable a sandbox or security boundary without a scoped rationale, diagnostic, and separate hardened acceptance plan
+  - add watchdog classification for hangs, livelocks, callback recursion, lock inversion, runaway child processes, repeated fault loops, renderer crashes, and updater restart loops
+  - run long-lived multithreaded stress with concurrent GUI events, rendering, network traffic, process creation, self-modifying code, mapping churn, and clean shutdown
+  - add memory and resource accounting for GEM pages, shadow snapshots, translated blocks, JIT arenas, Wine handles, Mach ports, file descriptors, windows, graphics objects, and child processes
+  - require repeated launch/close cycles to return resources to a reviewed steady-state envelope with no orphan Wine, helper, renderer, or wineserver process
+  - retain ARM64-only process/Mach-O audits throughout success, crash, timeout, update, and teardown paths
+  - exit gate: the diagnosed SteamSetup path reaches its first interactive page repeatedly with no unknown stop, deadlock, graphics ambiguity, or unbounded resource growth, and every remaining failure is assigned to a named subsystem with a reproducer
+
+- [ ] **Phase 9 — Pass visible 32-bit application and installer gates (partially complete)**
+  - status: partially complete; a real 32-bit Notepad window already launches through the native SharpWine i386/WoW64 path, draws correctly, and accepts keyboard input
+  - [x] repeatedly launch an interactive Notepad window
+  - [x] verify keyboard input and visible text rendering
+  - [x] complete initial performance hardening and verify mouse, focus, move, close, and clean process teardown
+  - [ ] rerun Notepad against the completed Phase 6 engine and Phase 7 graphics matrix and retain equivalent or better behavior
+  - [ ] validate common dialogs, controls, fonts, icons, timers, COM, clipboard, DPI, multiple windows, and window destruction through the Phase 8 subsystem gates
+  - [ ] launch a persistent, interactive `SteamSetup.exe` window with the selected graphics lane recorded
+  - [ ] advance through every installer page using real mouse and keyboard input
+  - [ ] verify downloads, child processes, prefix files, registry state, shortcuts, uninstall metadata, and installer cleanup
+  - [ ] close and resume or restart the installer without corrupting prefix or cached payload state
+  - [ ] repeat from at least three fresh prefixes and archive normalized logs, screenshots/window metadata, process proofs, renderer identity, installed state, and teardown evidence
+  - exit gate: Steam installation completes visibly and repeatably without Rosetta, translated host executables, an unidentified renderer, or manual mutation of the resulting prefix
+
+- [ ] **Phase 10 — Pass the clean-prefix Steam product gate**
+  - start from a newly initialized SharpWine prefix and signed native ARM64 bundle
+  - prove that the complete SharpWine process tree and Mach-O closure use no translated host executable or fallback runtime
+  - complete the visible Steam installation through the accepted Phase 9 route
+  - allow the bootstrap client to download, verify, and apply updates
+  - visibly launch the installed Steam client using an explicitly recorded bootstrap graphics lane
+  - verify login presentation, common controls, library rendering, keyboard, mouse, scrolling, links, dialogs, and multiple-window behavior
+  - verify steamwebhelper/CEF child creation, crash recovery, renderer selection, shared memory, IPC, networking, and cleanup
+  - launch a bounded test game through an independently selected DXMT/Metal route while Steam remains on its bootstrap renderer
+  - close Steam cleanly, prove complete child/helper teardown, and relaunch it directly from the installed prefix
+  - repeat install/update/launch/close/relaunch from clean prefixes and after an interrupted update
+  - record bundle hashes, engine and CPUID profile, graphics lanes, installer, logs, process proof, renderer strings, installed state, screenshots/window metadata, resource envelope, and visible-window evidence
+
+### Final acceptance gate
+
+A clean native ARM64 SharpWine build must visibly install, update, launch, render, close, and relaunch Steam from its own prefix, then launch a bounded DXMT/Metal test game without changing Steam's accepted bootstrap renderer. A transient setup window, installer-only launch, unidentified software renderer, or one-time success does not satisfy this gate.
 
 ## Working rules
 
