@@ -1,10 +1,90 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "blink/gem_embed.h"
 #include "i386_engine_internal.h"
+#include "i386_engine_trace.h"
 #include "metalsharp/gem/i386_memory.h"
 
+#include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define GEM_I386_TRACE_ID_SLOTS UINT32_C(0x1400)
+#define GEM_I386_TRACE_PATH_BYTES 4096
+
+static atomic_uint_fast64_t trace_counts[GEM_I386_TRACE_ID_SLOTS];
+static atomic_uint_fast64_t trace_out_of_range;
+static atomic_uint_fast64_t trace_drained_total;
+static atomic_uint_fast64_t trace_overflow_events;
+static pthread_mutex_t trace_write_mutex = PTHREAD_MUTEX_INITIALIZER;
+static char trace_path[GEM_I386_TRACE_PATH_BYTES];
+static atomic_bool trace_path_valid;
+
+static void gem_i386_blink_trace_init(struct gem_i386_runtime *runtime) {
+    const char *path = getenv(GEM_I386_HANDLER_TRACE_ENV_VAR);
+    runtime->trace_drain = false;
+    if (path == NULL || path[0] == '\0' || strlen(path) >= sizeof(trace_path))
+        return;
+    pthread_mutex_lock(&trace_write_mutex);
+    if (!atomic_load_explicit(&trace_path_valid, memory_order_acquire)) {
+        memcpy(trace_path, path, strlen(path) + 1U);
+        atomic_store_explicit(&trace_path_valid, true, memory_order_release);
+    }
+    pthread_mutex_unlock(&trace_write_mutex);
+    runtime->trace_drain = true;
+}
+
+static void gem_i386_blink_trace_drain(struct gem_i386_runtime *runtime) {
+    struct blink_gem_trace_info info;
+    uint32_t i;
+    memset(&info, 0, sizeof(info));
+    info.abi_version = BLINK_GEM_TRACE_ABI_VERSION;
+    info.size = sizeof(info);
+    if (!blink_gem_machine_trace_info(runtime->backend, &info))
+        return;
+    for (i = 0U; i < info.count; ++i) {
+        struct blink_gem_trace_entry entry;
+        if (!blink_gem_machine_trace_read(runtime->backend, i, &entry))
+            break;
+        if (entry.handler_id < GEM_I386_TRACE_ID_SLOTS)
+            atomic_fetch_add_explicit(&trace_counts[entry.handler_id], 1U, memory_order_relaxed);
+        else
+            atomic_fetch_add_explicit(&trace_out_of_range, 1U, memory_order_relaxed);
+    }
+    atomic_fetch_add_explicit(&trace_drained_total, i, memory_order_relaxed);
+    if (info.overflowed != 0U)
+        atomic_fetch_add_explicit(&trace_overflow_events, 1U, memory_order_relaxed);
+    blink_gem_machine_trace_reset(runtime->backend);
+}
+
+static void gem_i386_blink_trace_write(void) {
+    FILE *file;
+    uint32_t id;
+    if (!atomic_load_explicit(&trace_path_valid, memory_order_acquire))
+        return;
+    pthread_mutex_lock(&trace_write_mutex);
+    file = fopen(trace_path, "w");
+    if (file != NULL) {
+        fprintf(file, "gem_i386_handler_trace 1\n");
+        fprintf(
+            file, "total_drained %llu\n",
+            (unsigned long long)atomic_load_explicit(&trace_drained_total, memory_order_relaxed));
+        fprintf(
+            file, "overflow_events %llu\n",
+            (unsigned long long)atomic_load_explicit(&trace_overflow_events, memory_order_relaxed));
+        fprintf(
+            file, "out_of_range %llu\n",
+            (unsigned long long)atomic_load_explicit(&trace_out_of_range, memory_order_relaxed));
+        for (id = 0U; id < GEM_I386_TRACE_ID_SLOTS; ++id) {
+            uint64_t count = atomic_load_explicit(&trace_counts[id], memory_order_relaxed);
+            if (count != 0U)
+                fprintf(file, "handler %u %s %llu\n", id, blink_gem_handler_name(id),
+                        (unsigned long long)count);
+        }
+        fclose(file);
+    }
+    pthread_mutex_unlock(&trace_write_mutex);
+}
 
 static bool i386_range(uint64_t address, uint64_t size) {
     return size != 0U && size <= GEM_I386_ADDRESS_SPACE_SIZE &&
@@ -153,10 +233,15 @@ bool gem_i386_blink_create(struct gem_i386_runtime *runtime) {
                                                 : BLINK_GEM_ENGINE_INTERPRETER,
                                             BLINK_GEM_GUEST_LEGACY_32};
     runtime->backend = blink_gem_machine_create_with_config(&config, &callbacks, runtime);
-    return runtime->backend != NULL;
+    if (runtime->backend == NULL)
+        return false;
+    gem_i386_blink_trace_init(runtime);
+    return true;
 }
 
 void gem_i386_blink_destroy(struct gem_i386_runtime *runtime) {
+    if (runtime->trace_drain)
+        gem_i386_blink_trace_write();
     blink_gem_machine_destroy(runtime->backend);
     runtime->backend = NULL;
 }
@@ -174,6 +259,8 @@ enum gem_stop_reason gem_i386_blink_step(struct gem_i386_runtime *runtime,
     import_state(in, &blink_in);
     ++runtime->performance.state_imports;
     result = blink_gem_machine_step(runtime->backend, &blink_in, &blink_out);
+    if (runtime->trace_drain)
+        gem_i386_blink_trace_drain(runtime);
     *retired = result.retired;
     runtime->last_stop.fault_address = (uint32_t)result.fault_address;
     runtime->last_stop.access = (enum gem_i386_memory_access)result.access;
@@ -266,6 +353,8 @@ enum gem_stop_reason gem_i386_blink_run(struct gem_i386_runtime *runtime,
     import_state(in, &blink_in);
     ++runtime->performance.state_imports;
     result = blink_gem_machine_run(runtime->backend, &request, &blink_in, &blink_out);
+    if (runtime->trace_drain)
+        gem_i386_blink_trace_drain(runtime);
     *retired = result.retired;
     runtime->last_stop.fault_address = (uint32_t)result.fault_address;
     runtime->last_stop.access = (enum gem_i386_memory_access)result.access;
@@ -371,6 +460,63 @@ bool gem_i386_blink_invalidate_code(struct gem_i386_runtime *runtime, uint32_t a
                                     uint64_t size) {
     return runtime != NULL && i386_range(address, size) &&
            blink_gem_machine_invalidate_code(runtime->backend, address, size);
+}
+
+void gem_i386_runtime_handler_trace_reset(struct gem_i386_runtime *runtime) {
+    if (runtime != NULL)
+        blink_gem_machine_trace_reset(runtime->backend);
+}
+
+bool gem_i386_runtime_handler_trace_info(const struct gem_i386_runtime *runtime, uint32_t *count,
+                                         uint32_t *overflowed) {
+    struct blink_gem_trace_info info;
+    if (runtime == NULL)
+        return false;
+    memset(&info, 0, sizeof(info));
+    info.abi_version = BLINK_GEM_TRACE_ABI_VERSION;
+    info.size = sizeof(info);
+    if (!blink_gem_machine_trace_info(runtime->backend, &info))
+        return false;
+    if (count != NULL)
+        *count = info.count;
+    if (overflowed != NULL)
+        *overflowed = info.overflowed;
+    return true;
+}
+
+bool gem_i386_runtime_handler_trace_read(const struct gem_i386_runtime *runtime, size_t index,
+                                         uint64_t *rip, uint32_t *handler_id) {
+    struct blink_gem_trace_entry entry;
+    if (runtime == NULL || !blink_gem_machine_trace_read(runtime->backend, index, &entry))
+        return false;
+    if (rip != NULL)
+        *rip = entry.rip;
+    if (handler_id != NULL)
+        *handler_id = entry.handler_id;
+    return true;
+}
+
+const char *gem_i386_runtime_handler_name(uint32_t handler_id) {
+    return blink_gem_handler_name(handler_id);
+}
+
+bool gem_i386_runtime_decode_attempt_info(const struct gem_i386_runtime *runtime,
+                                          struct blink_gem_decode_attempt *out) {
+    struct blink_gem_decode_attempt probe;
+    if (runtime == NULL || out == NULL)
+        return false;
+    /* Validate the caller's struct ABI up front so a future caller ABI drift
+     * fails closed at the wrapper boundary instead of silently reading or
+     * writing past the destination buffer. */
+    if (out->abi_version != BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION || out->size != sizeof(probe))
+        return false;
+    memset(&probe, 0, sizeof(probe));
+    probe.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
+    probe.size = sizeof(probe);
+    if (!blink_gem_machine_decode_attempt_info(runtime->backend, &probe))
+        return false;
+    *out = probe;
+    return true;
 }
 
 const struct gem_i386_engine_ops gem_i386_blink_jit_ops = {

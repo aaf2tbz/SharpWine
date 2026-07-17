@@ -22,6 +22,7 @@ struct gem_i386_runtime {
     uint32_t consecutive_conflicts;
     bool running;
     bool backend_failed;
+    bool trace_drain;
     atomic_bool async_stop_requested;
 };
 

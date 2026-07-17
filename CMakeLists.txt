@@ -398,6 +398,15 @@ if(BUILD_TESTING)
         set_tests_properties(gem.i386_engine_ops_conformance PROPERTIES
             LABELS "i386;zero-rosetta")
 
+        add_executable(i386_handler_trace_conformance tests/i386_handler_trace_conformance.c)
+        target_link_libraries(i386_handler_trace_conformance PRIVATE metalsharp_gem)
+        target_include_directories(i386_handler_trace_conformance PRIVATE
+            "${blink_gem_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+        mswr_enable_warnings(i386_handler_trace_conformance)
+        add_test(NAME gem.i386_handler_trace_conformance COMMAND i386_handler_trace_conformance)
+        set_tests_properties(gem.i386_handler_trace_conformance PROPERTIES
+            LABELS "i386;zero-rosetta")
+
         add_executable(i386_phase55_performance tests/i386_phase55_performance.c)
         target_link_libraries(i386_phase55_performance PRIVATE metalsharp_gem)
         target_include_directories(i386_phase55_performance PRIVATE
@@ -541,7 +550,7 @@ if(BUILD_TESTING)
         context_test context_layout_test gem_headers_cxx_test
         context_conversion_test context_serialization_test memory_test
         i386_context_test i386_memory_test i386_engine_conformance i386_engine_ops_conformance
-        i386_phase2_conformance
+        i386_handler_trace_conformance i386_phase2_conformance
         i386_phase3_conformance i386_phase4_conformance i386_phase5_ci
         memory_page_isolation_test macos_tso_api_probe
         arm64ec_engine_conformance wine_bridge_conformance wine_i386_bridge_conformance
