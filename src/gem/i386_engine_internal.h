@@ -2,6 +2,7 @@
 #ifndef METALSHARP_GEM_I386_ENGINE_INTERNAL_H
 #define METALSHARP_GEM_I386_ENGINE_INTERNAL_H
 
+#include "i386_engine_ops.h"
 #include "memory_internal.h"
 #include "metalsharp/gem/i386_engine.h"
 
@@ -13,6 +14,7 @@ struct gem_i386_runtime {
     struct gem_memory *memory;
     struct gem_i386_runtime_config config;
     struct gem_i386_stop_info last_stop;
+    const struct gem_i386_engine_ops *ops;
     void *backend;
     struct gem_memory_transaction *transaction;
     struct gem_i386_performance_info performance;

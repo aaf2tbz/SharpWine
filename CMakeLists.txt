@@ -389,6 +389,15 @@ if(BUILD_TESTING)
         set_tests_properties(gem.i386_engine_conformance PROPERTIES
             LABELS "i386;zero-rosetta;gem.engine;production-jit;interpreter-oracle")
 
+        add_executable(i386_engine_ops_conformance tests/i386_engine_ops_conformance.c)
+        target_link_libraries(i386_engine_ops_conformance PRIVATE metalsharp_gem)
+        target_include_directories(i386_engine_ops_conformance PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+        mswr_enable_warnings(i386_engine_ops_conformance)
+        add_test(NAME gem.i386_engine_ops_conformance COMMAND i386_engine_ops_conformance)
+        set_tests_properties(gem.i386_engine_ops_conformance PROPERTIES
+            LABELS "i386;zero-rosetta")
+
         add_executable(i386_phase55_performance tests/i386_phase55_performance.c)
         target_link_libraries(i386_phase55_performance PRIVATE metalsharp_gem)
         target_include_directories(i386_phase55_performance PRIVATE
@@ -531,7 +540,8 @@ if(BUILD_TESTING)
     set(mswr_assert_test_targets
         context_test context_layout_test gem_headers_cxx_test
         context_conversion_test context_serialization_test memory_test
-        i386_context_test i386_memory_test i386_engine_conformance i386_phase2_conformance
+        i386_context_test i386_memory_test i386_engine_conformance i386_engine_ops_conformance
+        i386_phase2_conformance
         i386_phase3_conformance i386_phase4_conformance i386_phase5_ci
         memory_page_isolation_test macos_tso_api_probe
         arm64ec_engine_conformance wine_bridge_conformance wine_i386_bridge_conformance
