@@ -10,12 +10,22 @@
 #include <sched.h>
 #endif
 
+#define GEM_I386_INITIAL_QUANTUM_BUDGET UINT32_C(64)
+#define GEM_I386_MAX_QUANTUM_BUDGET UINT32_C(4096)
+
 static void yield_execution(void) {
 #if defined(_WIN32)
     (void)SwitchToThread();
 #else
     (void)sched_yield();
 #endif
+}
+
+static uint32_t maximum_quantum_budget(const struct gem_i386_runtime *runtime) {
+    if (runtime->config.max_budget != 0U &&
+        runtime->config.max_budget < GEM_I386_MAX_QUANTUM_BUDGET)
+        return (uint32_t)runtime->config.max_budget;
+    return GEM_I386_MAX_QUANTUM_BUDGET;
 }
 
 struct gem_i386_runtime *gem_i386_runtime_create(struct gem_memory *memory,
@@ -73,7 +83,9 @@ gem_i386_runtime_create_with_ops(struct gem_memory *memory,
         return NULL;
     }
     atomic_init(&runtime->async_stop_requested, false);
-    runtime->quantum_budget = 64U;
+    runtime->quantum_budget = maximum_quantum_budget(runtime);
+    if (runtime->quantum_budget > GEM_I386_INITIAL_QUANTUM_BUDGET)
+        runtime->quantum_budget = GEM_I386_INITIAL_QUANTUM_BUDGET;
     runtime->performance.abi_version = GEM_I386_PERFORMANCE_INFO_ABI_VERSION;
     runtime->performance.size = sizeof(runtime->performance);
     return runtime;
@@ -167,10 +179,11 @@ enum gem_stop_reason gem_i386_runtime_run(struct gem_i386_runtime *runtime,
         }
         runtime->consecutive_conflicts = 0U;
         if (reason == GEM_STOP_NONE) {
-            if (runtime->quantum_budget < 256U)
+            const uint32_t maximum_budget = maximum_quantum_budget(runtime);
+            if (runtime->quantum_budget < maximum_budget)
                 runtime->quantum_budget *= 2U;
-            if (runtime->quantum_budget > 256U)
-                runtime->quantum_budget = 256U;
+            if (runtime->quantum_budget > maximum_budget)
+                runtime->quantum_budget = maximum_budget;
         } else {
             break;
         }

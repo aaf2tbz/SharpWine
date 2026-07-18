@@ -339,6 +339,43 @@ int main(void) {
 
 #if defined(__APPLE__)
     {
+        static const uint8_t external_load_code[] = {
+            0xa1U, 0x00U, 0x00U, 0x60U, 0x00U, /* mov eax,[0x00600000] */
+            0x83U, 0xc0U, 0x01U                /* add eax,1 */
+        };
+        const uint32_t external_data = UINT32_C(0x00600000);
+        uint32_t *host = mmap(NULL, host_page, PROT_READ | PROT_WRITE,
+                              MAP_PRIVATE | MAP_ANON, -1, 0);
+        assert(host != MAP_FAILED);
+        *host = UINT32_C(1);
+        assert(gem_wine_process_reserve(process, external_data, GEM_WINE_GUEST_PAGE_SIZE) ==
+               GEM_WINE_OK);
+        assert(gem_wine_process_commit_i386_host(process, external_data, host,
+                                                 GEM_WINE_GUEST_PAGE_SIZE,
+                                                 GEM_WINE_PAGE_READWRITE) == GEM_WINE_OK);
+        memcpy(image + 0x1000U, external_load_code, sizeof(external_load_code));
+        assert(gem_wine_process_invalidate_code(process, CODE_ADDRESS,
+                                                sizeof(external_load_code)) == GEM_WINE_OK);
+        input.eip = CODE_ADDRESS;
+        input.stop_reason = GEM_STOP_NONE;
+        assert(gem_wine_i386_thread_run(thread, &input, &output, &result) == GEM_WINE_OK);
+        assert(result.outcome == GEM_WINE_RUN_COMPLETE);
+        assert(output.gpr[GEM_I386_EAX] == UINT32_C(2));
+
+        /* Host callbacks may mutate writable external pages without going
+         * through the guest memory API.  The next checked run must refresh
+         * that data while retaining the separately invalidated code page. */
+        *host = UINT32_C(41);
+        input.eip = CODE_ADDRESS;
+        input.stop_reason = GEM_STOP_NONE;
+        assert(gem_wine_i386_thread_run(thread, &input, &output, &result) == GEM_WINE_OK);
+        assert(result.outcome == GEM_WINE_RUN_COMPLETE);
+        assert(output.gpr[GEM_I386_EAX] == UINT32_C(42));
+        assert(gem_wine_process_release(process, external_data, GEM_WINE_GUEST_PAGE_SIZE) ==
+               GEM_WINE_OK);
+        assert(munmap(host, host_page) == 0);
+    }
+    {
         const uint32_t stale_code = UINT32_C(0x00600000);
         uint8_t *host =
             mmap(NULL, host_page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);

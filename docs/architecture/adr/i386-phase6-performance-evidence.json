@@ -1,0 +1,75 @@
+{
+  "schema": "sharpwine.i386.phase6.performance.v1",
+  "capturedAt": "2026-07-18",
+  "baseRevision": "9086791",
+  "host": {
+    "architecture": "arm64",
+    "product": "macOS",
+    "version": "27.0",
+    "build": "26A5378n",
+    "compiler": "Apple clang 21.0.0"
+  },
+  "build": {
+    "type": "Release",
+    "directory": "sharpwine-phase-6-w9-final",
+    "blinkPatch0046Sha256": "8e8aaa254d8098b6c29aea2f729171c79b9d126e3ef1eeafbc1dc9a531041615",
+    "blinkGemEmbedCSha256": "4590a5fb149a95d9f7f0a928686c0e0b7cd6c704773a4e6ba0f720d81b395b61",
+    "blinkGemEmbedHSha256": "f3a941309e84904910df26a3650883a58d487ca9932834cb224a241fbc1ad8f0"
+  },
+  "samples": [
+    {"stepMedianNs": 39781000, "runMedianNs": 3816000, "speedup": 10.425, "instructionsPerSecond": 17174004},
+    {"stepMedianNs": 37782000, "runMedianNs": 4004000, "speedup": 9.436, "instructionsPerSecond": 16367632},
+    {"stepMedianNs": 37393000, "runMedianNs": 3848000, "speedup": 9.718, "instructionsPerSecond": 17031185},
+    {"stepMedianNs": 39021000, "runMedianNs": 3857000, "speedup": 10.117, "instructionsPerSecond": 16991444},
+    {"stepMedianNs": 38922000, "runMedianNs": 3779000, "speedup": 10.300, "instructionsPerSecond": 17342154}
+  ],
+  "medians": {
+    "stepNs": 38922000,
+    "runNs": 3848000,
+    "speedup": 10.117,
+    "instructionsPerSecond": 17031185,
+    "requiredSpeedup": 3.0
+  },
+  "checkedRun": {
+    "retiredInstructions": 360576,
+    "quanta": 336,
+    "formerCeilingQuanta": 1536,
+    "maximumQuantumInstructions": 4096,
+    "retries": 0,
+    "pageSnapshots": 336,
+    "bytesCopied": 1376256,
+    "bytesCommitted": 0,
+    "stateImports": 336,
+    "stateExports": 336,
+    "decodeResets": 336,
+    "representativeLockWaitNs": 43000
+  },
+  "jitEqualityLane": {
+    "retiredInstructions": 32896,
+    "compilations": 8,
+    "executions": 32896,
+    "cacheHits": 32888,
+    "failures": 0,
+    "codeInvalidations": 0,
+    "blocksCreated": 8,
+    "blockLookups": 32640,
+    "blockCacheHits": 32633,
+    "directLinkHits": 32633
+  },
+  "callReturnProbe": {
+    "calls": 64,
+    "returns": 64,
+    "predictionHits": 64,
+    "predictionMisses": 0,
+    "blockInvalidations": 4
+  },
+  "verification": {
+    "freshConfiguredTestsPassed": 35,
+    "freshConfiguredTestsFailed": 0,
+    "broaderConfiguredTestsPassed": 42,
+    "broaderConfiguredTestsFailed": 0,
+    "authenticArm64xRoundtripPassed": true,
+    "externalHostMutationRefreshPassed": true,
+    "notepadVisibleDistributionComplete": false
+  }
+}

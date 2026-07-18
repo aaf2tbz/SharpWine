@@ -75,12 +75,13 @@
    bool batched_run;
    bool batched_continuation;
    /* ABI v3 state storage (SharpWine ADR 0013).  calloc() in
-@@ -73,6 +96,112 @@
+@@ -72,6 +95,113 @@
    uint64_t xcr0;
  };
  
 +static size_t block_slot(uint64_t pc) {
-+  return (size_t)((pc >> 1) & (BLINK_GEM_BLOCK_CACHE_ENTRIES - 1u));
++  return (size_t)((pc ^ (pc >> 8) ^ (pc >> 16)) &
++                  (BLINK_GEM_BLOCK_CACHE_ENTRIES - 1u));
 +}
 +static struct blink_gem_block_entry* block_lookup(
 +    struct blink_gem_machine* g, uint64_t pc) {
@@ -188,7 +189,24 @@
  static pthread_once_t_ g_blink_gem_init_once = PTHREAD_ONCE_INIT_;
  
  static void blink_gem_init_runtime(void) {
-@@ -375,17 +504,18 @@
+@@ -181,14 +311,14 @@
+   if (*error) return -1;
+   if (prot == p->protection && !memcmp(bytes, p->before, 4096)) return 0;
+ #ifdef HAVE_JIT
+-  if (g->engine == BLINK_GEM_ENGINE_JIT) {
++  if (g->engine == BLINK_GEM_ENGINE_JIT && ((p->protection | prot) & 4)) {
+     if (p->address >= 4096 &&
+         ResetJitPage(&g->system->jit, (int64_t)(p->address - 4096)))
+       return -1;
+     if (ResetJitPage(&g->system->jit, (int64_t)p->address)) return -1;
+   }
+ #endif
+-  ResetInstructionCache(g->machine);
++  if ((p->protection | prot) & 4) ResetInstructionCache(g->machine);
+   if (!refresh_page(g, p, error)) return -1;
+   return 1;
+ }
+@@ -375,17 +505,18 @@
           handler_id != BLINK_GEM_HANDLER_OP_ADD_PSD &&
           handler_id != BLINK_GEM_HANDLER_OP_SUB_PSD;
  }
@@ -213,7 +231,22 @@
  }
  static int end_quantum_after_instruction(struct blink_gem_machine* g) {
    uint64_t page, end;
-@@ -906,6 +1036,8 @@
+@@ -510,6 +641,14 @@
+   uint32_t error = 0;
+   if (!g) return;
+   for (i = 0; i < g->page_count;) {
++    if (g->pages[i].protection & 16) {
++      if ((g->pages[i].protection & 2) && !(g->pages[i].protection & 4)) {
++        drop_page(g, i);
++        continue;
++      }
++      ++i;
++      continue;
++    }
+     if (reconcile_page(g, g->pages + i, &error) < 0) {
+       drop_page(g, i);
+       continue;
+@@ -906,6 +1045,8 @@
      for (i = 0; i < nwrites; ++i) {
        struct shadow_page* p = find_page(g, writes[i].address);
        if (!p) return result(BLINK_GEM_INVALID);
@@ -222,7 +255,7 @@
  #ifdef HAVE_JIT
        if (g->engine == BLINK_GEM_ENGINE_JIT && (p->protection & 4)) {
          if (p->address >= 4096 &&
-@@ -951,6 +1083,9 @@
+@@ -951,6 +1092,9 @@
    uint32_t retired = 0;
    int halt;
    size_t i;
@@ -232,7 +265,7 @@
    if (!g || !request || !in || !out ||
        in->abi_version != BLINK_GEM_STATE_ABI_VERSION ||
        in->size != sizeof(*in) ||
-@@ -963,6 +1098,7 @@
+@@ -963,6 +1107,7 @@
    g->batched_run = true;
    g->batched_continuation = false;
  FirstInstruction:
@@ -240,7 +273,7 @@
    for (i = 0; i < request->stop_pc_count; ++i) {
      if (current.rip == request->stop_pcs[i]) {
        g->batched_run = false;
-@@ -979,6 +1115,7 @@
+@@ -979,6 +1124,7 @@
      r.retired = retired;
      return r;
    }
@@ -248,7 +281,7 @@
    next = current;
    r = blink_gem_machine_step(g, &current, &next);
    if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
-@@ -992,6 +1129,10 @@
+@@ -992,6 +1138,10 @@
      return r;
    }
    current = next;
@@ -259,7 +292,7 @@
    ++retired;
    if (retired >= request->instruction_budget) goto Finished;
  
-@@ -1023,8 +1164,12 @@
+@@ -1023,8 +1173,12 @@
        r.retired = retired;
        return r;
      }
@@ -273,7 +306,7 @@
        next = current;
        r = blink_gem_machine_step(g, &current, &next);
        if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
-@@ -1038,6 +1183,10 @@
+@@ -1038,6 +1192,10 @@
          return r;
        }
        current = next;
@@ -284,7 +317,7 @@
        ++retired;
        if (end_quantum_after_instruction(g)) {
          g->batched_run = false;
-@@ -1049,6 +1198,7 @@
+@@ -1049,6 +1207,7 @@
        if (retired >= request->instruction_budget) goto Finished;
        goto RestartBatch;
      }
@@ -292,7 +325,7 @@
      next = current;
      r = blink_gem_machine_step(g, &current, &next);
      if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
-@@ -1062,6 +1212,10 @@
+@@ -1062,6 +1221,10 @@
        return r;
      }
      current = next;
@@ -303,7 +336,7 @@
      ++retired;
    }
  Finished:
-@@ -1103,6 +1257,22 @@
+@@ -1103,6 +1266,22 @@
    out->reserved = 0;
    return true;
  }
@@ -326,7 +359,7 @@
  bool blink_gem_machine_invalidate_code(struct blink_gem_machine* g,
                                         uint64_t address, uint64_t size) {
    uint64_t end, page;
-@@ -1126,6 +1296,7 @@
+@@ -1126,6 +1305,7 @@
    }
  #endif
    ResetInstructionCache(g->machine);

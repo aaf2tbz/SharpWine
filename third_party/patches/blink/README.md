@@ -325,10 +325,16 @@ then fully exported at every observable boundary. The patch also prevents the
 internal lazy-parity byte from leaking through architectural EFLAGS export.
 
 `0046-gem-i386-block-linking.patch` (SHA-256
-`fed13f49d9f8dea0248d18a5b2ab40de852d3232f9fb94cd87c492bca2779853`)
+`8e8aaa254d8098b6c29aea2f729171c79b9d126e3ef1eeafbc1dc9a531041615`)
 adds a bounded, fixed-size i386 block-dispatch cache. Successor blocks are
 linked by exact guest PC and validated tags, cached no-fault classifications
 remove redundant lookahead decode, and a bounded return-address stack predicts
 near CALL/RET pairs. Every instruction still passes the existing transaction,
 budget, stop-PC, async-stop, fault, and export boundaries. Explicit and
 executable-write invalidation remove overlapping blocks and incoming links.
+At host boundaries, writable non-executable external shadow pages are discarded
+and lazily reloaded while executable pages retain their reviewed decode/JIT state;
+Wine map, protect, decommit, release, and explicit invalidate callbacks remain
+the authority for executable-page changes. Internal data reconciliation resets
+decode/JIT state only when the old or new page protection is executable, so
+ordinary host data writes cannot evict neighboring translated code.

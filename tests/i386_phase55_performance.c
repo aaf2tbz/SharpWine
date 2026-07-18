@@ -178,7 +178,8 @@ static void execute_lane_steps(struct equality_lane *lane, struct gem_i386_conte
     context->stop_reason = GEM_STOP_BUDGET_EXPIRED;
 }
 
-static void verify_three_way_boundaries(void) {
+static void verify_three_way_boundaries(struct gem_i386_performance_info_v2 *performance_evidence,
+                                        struct gem_i386_block_info *block_evidence) {
     struct equality_lane stepped_lane = equality_lane_create(GEM_I386_ENGINE_INTERPRETER);
     struct equality_lane bounded_lane = equality_lane_create(GEM_I386_ENGINE_INTERPRETER);
     struct equality_lane jit_lane = equality_lane_create(GEM_I386_ENGINE_JIT);
@@ -262,12 +263,14 @@ static void verify_three_way_boundaries(void) {
     assert(gem_i386_runtime_block_info(jit_lane.runtime, &block_info));
     assert(block_info.blocks_created != 0U && block_info.block_cache_hits != 0U);
     assert(block_info.direct_link_hits != 0U);
+    *performance_evidence = jit_performance;
+    *block_evidence = block_info;
     equality_lane_destroy(&jit_lane);
     equality_lane_destroy(&bounded_lane);
     equality_lane_destroy(&stepped_lane);
 }
 
-static void verify_block_links_and_predictions(void) {
+static void verify_block_links_and_predictions(struct gem_i386_block_info *prediction_evidence) {
     static const uint8_t program[] = {0xe8U, 0x02U, 0x00U, 0x00U, 0x00U,
                                       0xebU, 0x02U, 0x40U, 0xc3U};
     struct gem_i386_runtime_config config = {0};
@@ -327,6 +330,7 @@ static void verify_block_links_and_predictions(void) {
     diagnostics.size = sizeof(diagnostics);
     assert(gem_i386_runtime_diagnostics(runtime, &diagnostics));
     assert(diagnostics.block_invalidations == blocks.block_invalidations);
+    *prediction_evidence = blocks;
     gem_i386_runtime_destroy(runtime);
     gem_memory_destroy(memory);
 }
@@ -403,14 +407,17 @@ int main(void) {
     struct gem_i386_context batched;
     struct gem_i386_performance_info performance;
     struct gem_i386_performance_info_v2 performance_v2;
+    struct gem_i386_performance_info_v2 jit_performance;
+    struct gem_i386_block_info jit_blocks;
+    struct gem_i386_block_info predictions;
     uint64_t step_samples[GEM_PHASE55_PERFORMANCE_SAMPLES];
     uint64_t run_samples[GEM_PHASE55_PERFORMANCE_SAMPLES];
     uint64_t step_ns, run_ns;
     size_t sample;
     double speedup;
     verify_boundaries(&fixture);
-    verify_three_way_boundaries();
-    verify_block_links_and_predictions();
+    verify_three_way_boundaries(&jit_performance, &jit_blocks);
+    verify_block_links_and_predictions(&predictions);
     for (sample = 0U; sample < GEM_PHASE55_PERFORMANCE_SAMPLES; ++sample) {
         uint64_t begin;
         stepped = initial_context(&fixture);
@@ -445,6 +452,11 @@ int main(void) {
     assert(gem_i386_runtime_performance_info(fixture.run_runtime, &performance));
     assert(performance.retired_instructions >= budget);
     assert(performance.quanta < performance.retired_instructions);
+    /* A 4,096-instruction adaptive ceiling amortizes checked external-page
+     * snapshots for real Wine workloads while every instruction still crosses
+     * Blink's stop/fault checks. This workload used 1,536 quanta at the former
+     * 256-instruction ceiling. */
+    assert(performance.quanta < UINT32_C(512));
     assert(performance.state_imports == performance.quanta);
     memset(&performance_v2, 0, sizeof(performance_v2));
     assert(!gem_i386_runtime_performance_info_v2(fixture.run_runtime, &performance_v2));
@@ -459,9 +471,42 @@ int main(void) {
     assert(performance_v2.code_invalidations == 0U);
     speedup = (double)step_ns / (double)run_ns;
     printf("phase55 median_step_ns=%llu median_run_ns=%llu speedup=%.3fx required=%.3fx "
-           "quanta=%llu\n",
+           "throughput_instructions_per_second=%.0f quanta=%llu\n",
            (unsigned long long)step_ns, (unsigned long long)run_ns, speedup,
-           (double)GEM_PHASE55_REQUIRED_SPEEDUP, (unsigned long long)performance.quanta);
+           (double)GEM_PHASE55_REQUIRED_SPEEDUP, (double)budget * 1000000000.0 / (double)run_ns,
+           (unsigned long long)performance.quanta);
+    printf("phase6 counters retired=%llu quanta=%llu retries=%llu page_snapshots=%llu "
+           "bytes_copied=%llu bytes_committed=%llu state_imports=%llu state_exports=%llu "
+           "decode_resets=%llu lock_wait_ns=%llu\n",
+           (unsigned long long)performance.retired_instructions,
+           (unsigned long long)performance.quanta, (unsigned long long)performance.retries,
+           (unsigned long long)performance.page_snapshots,
+           (unsigned long long)performance.bytes_copied,
+           (unsigned long long)performance.bytes_committed,
+           (unsigned long long)performance.state_imports,
+           (unsigned long long)performance.state_exports,
+           (unsigned long long)performance.decode_resets,
+           (unsigned long long)performance.lock_wait_nanoseconds);
+    printf("phase6 jit retired=%llu compilations=%llu executions=%llu cache_hits=%llu "
+           "failures=%llu invalidations=%llu blocks_created=%llu block_lookups=%llu "
+           "block_cache_hits=%llu direct_link_hits=%llu\n",
+           (unsigned long long)jit_performance.retired_instructions,
+           (unsigned long long)jit_performance.jit_compilations,
+           (unsigned long long)jit_performance.jit_executions,
+           (unsigned long long)jit_performance.jit_cache_hits,
+           (unsigned long long)jit_performance.jit_failures,
+           (unsigned long long)jit_performance.code_invalidations,
+           (unsigned long long)jit_blocks.blocks_created,
+           (unsigned long long)jit_blocks.block_lookups,
+           (unsigned long long)jit_blocks.block_cache_hits,
+           (unsigned long long)jit_blocks.direct_link_hits);
+    printf("phase6 callret calls=%llu returns=%llu hits=%llu misses=%llu "
+           "block_invalidations=%llu\n",
+           (unsigned long long)predictions.call_predictions,
+           (unsigned long long)predictions.return_predictions,
+           (unsigned long long)predictions.return_prediction_hits,
+           (unsigned long long)predictions.return_prediction_misses,
+           (unsigned long long)predictions.block_invalidations);
     assert(speedup >= GEM_PHASE55_REQUIRED_SPEEDUP);
     fixture_destroy(&fixture);
     return 0;
