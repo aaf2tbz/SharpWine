@@ -338,3 +338,17 @@ decode/JIT state, while writable executable pages are reconciled so host mutatio
 refresh bytes and invalidate affected code precisely. Internal data reconciliation
 resets decode/JIT state only when the old or new page protection is executable, so
 ordinary host data writes cannot evict neighboring translated code.
+
+`0047-gem-i386-aligned-simd-stores.patch` (SHA-256
+`efbd0eb8a558db2403cc09d427cadd019d9346e41a5d1eec374e423aca89126d`)
+retains SSE2 while making aligned 128-bit stores complete checked GEM
+transactions. The first store at a newly compiled PC retires through Blink's
+native dispatcher while its host hook remains installed for subsequent loop
+iterations; every aligned memory store supplies its exact 16-byte write range
+for validation and commit. Legacy REP MOVS/STOS/INS also retain their complete
+destination range instead of committing only the final element, so cross-page
+MSVC buffer copies cannot leave rolled-back shadow pages behind. Cold JIT
+rollback checks are restricted to that exact architectural write range and the
+guarded stack range instead of scanning every cached page. This fixes UCRT and
+Notepad++ partial-buffer copies and removes the measured full-cache compile scan
+without a CPUID mask or a global interpreter switch.

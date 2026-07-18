@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "profile": "gem-i386-phase6-v1",
+  "guestArchitecture": "i386-legacy32",
+  "host": "macOS-arm64",
+  "engine": "SharpWine GEM/Blink interpreter and native ARM64 JIT",
+  "policy": {
+    "authority": "SharpWine semantic, state, fault, interpreter/JIT, corpus, and guest-program loading evidence",
+    "oracleRole": "comparison only; never a capability ceiling or veto",
+    "missingHandler": "deliberate native GEM/Blink implementation task before masking",
+    "failClosed": "temporary only while a native implementation is genuinely incomplete",
+    "provenFamily": "retain and advertise"
+  },
+  "runtimeManifest": {
+    "path": "docs/architecture/adr/i386-phase3-capabilities.json",
+    "sha256": "0ac6e6b553e91cd2c6fcab0b68da4a4dd3a41a3dc6e92545dac5e1a124d40b9f",
+    "profile": "gem-i386-sse42-aes-pclmul-bmi1-bmi2-rdtscp-avx-avx2-fma-adx-rdpid-random-v10"
+  },
+  "advertised": [
+    "FPU",
+    "CX8",
+    "CMOV",
+    "MMX",
+    "FXSR",
+    "SSE",
+    "SSE2",
+    "SSE3",
+    "PCLMUL",
+    "SSSE3",
+    "SSE4.1",
+    "SSE4.2",
+    "POPCNT",
+    "AES",
+    "XSAVE",
+    "OSXSAVE",
+    "AVX",
+    "FMA",
+    "AVX2",
+    "ADX",
+    "RDPID",
+    "RDRAND",
+    "RDSEED",
+    "ERMS",
+    "BMI1",
+    "BMI2",
+    "RDTSCP"
+  ],
+  "phase6NativeFamilies": [
+    {
+      "name": "BMI1",
+      "programProof": "ANDN, BEXTR, BLSR, BLSMSK, BLSI, and TZCNT loaded and executed",
+      "oracle": "Prism unavailable; limitation not inherited"
+    },
+    {
+      "name": "BMI2",
+      "programProof": "BZHI, PDEP, PEXT, MULX, SHLX, SHRX, SARX, and RORX loaded and executed",
+      "oracle": "Prism unavailable; limitation not inherited"
+    },
+    {
+      "name": "RDTSCP",
+      "programProof": "deterministic retired-instruction timestamp and TSC_AUX zero",
+      "oracle": "host-derived comparison is non-authoritative"
+    },
+    {
+      "name": "AVX",
+      "programProof": "loaded YMM VMOVUPS, VADDPS, and VMOVUPS sequence"
+    },
+    {
+      "name": "AVX2",
+      "programProof": "loaded YMM VPADDD sequence plus precise gather restart state"
+    },
+    {
+      "name": "FMA",
+      "programProof": "loaded fused VFMADD132PS YMM sequence"
+    },
+    {
+      "name": "ADX",
+      "programProof": "loaded independent ADCX and ADOX carry chains"
+    },
+    {
+      "name": "RDPID",
+      "programProof": "loaded deterministic TSC_AUX read"
+    },
+    {
+      "name": "RDRAND/RDSEED",
+      "programProof": "loaded entropy instructions with complete defined-flag semantics"
+    }
+  ],
+  "notApplicable": [
+    {
+      "name": "FSGSBASE",
+      "reason": "all pinned Intel XED forms require mode64 and are not encodable in legacy32"
+    },
+    {
+      "name": "CX16",
+      "reason": "CMPXCHG16B is not encodable in the selected legacy32 guest"
+    },
+    {
+      "name": "LONG_MODE",
+      "reason": "selected guest architecture is i386 legacy32"
+    },
+    {
+      "name": "SYSCALL",
+      "reason": "selected guest uses reviewed WoW64 syscall and Unix-call boundaries"
+    }
+  ],
+  "silentFallbackAllowed": false,
+  "rosettaAllowed": false
+}

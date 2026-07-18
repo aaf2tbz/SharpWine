@@ -201,7 +201,7 @@ def audit_trace(provenance, machine_text, embedding_text, embedding_header):
     need(
         jit_policy.get("pathBound") == "exactly one decoded instruction per GEM path"
         and jit_policy.get("productionFallback")
-        == "none; interpreter mode is an explicit test oracle only",
+        == "a newly compiled aligned SIMD memory store retires once through Blink's native dispatcher; legacy REP string stores commit their complete destination range; compile rollback scans only the exact architectural write and guarded stack ranges; installed JIT hooks execute subsequent iterations; no CPUID family is masked",
         "bounded JIT policy provenance drift",
     )
 
@@ -417,13 +417,14 @@ def main():
     parser.add_argument("--random-cpuid-patch", type=Path, required=True)
     parser.add_argument("--resident-state-patch", type=Path, required=True)
     parser.add_argument("--block-linking-patch", type=Path, required=True)
+    parser.add_argument("--aligned-simd-store-patch", type=Path, required=True)
     parser.add_argument("--capability-manifest", type=Path, required=True)
     parser.add_argument("--phase3-corpus", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 43, "provenance schema")
+    need(provenance["schemaVersion"] == 44, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -558,6 +559,11 @@ def main():
     need(
         digest(args.block_linking_patch) == provenance["blockLinkingPatchSha256"],
         "block-linking patch hash",
+    )
+    need(
+        digest(args.aligned_simd_store_patch)
+        == provenance["alignedSimdStorePatchSha256"],
+        "aligned SIMD store patch hash",
     )
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")

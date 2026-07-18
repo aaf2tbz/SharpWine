@@ -1,7 +1,8 @@
 # i386 Phase 6 performance report
 
-Status: W9 engine measurements complete; final interactive Notepad distribution pending the
-remaining Wine callback/exception fix.
+Status: W10 complete; W11 active. Engine measurements, 32-bit Notepad, and interactive 32-bit
+Notepad++ native-window loading gates pass on macOS ARM64. W11 retains the observed input-latency
+and overlay-repaint work as the final performance gate.
 
 ## Acceptance policy
 
@@ -53,11 +54,30 @@ RWX page and a later host mutation is observed on the next run. A transaction co
 resynchronization before retry.
 
 With this synchronization policy, the real 32-bit Notepad path no longer consumes a stale
-`RtlGetLocaleFileMappingAddress` output pointer or takes the compiler's deliberate null trap. It
-progresses through DLL/NLS initialization into the window-class registration path at normal speed.
-That is substantive native program-loading evidence. The next reproducible ARM64EC/WoW64 callback
-and class-registration fault remains open, so the Phase 6 exit checkbox is not complete until that
-native state path is fixed and visible launch distributions are captured.
+`RtlGetLocaleFileMappingAddress` output pointer or takes the compiler's deliberate null trap. Wine
+patch 0022 then closes the later native Darwin ARM64 reentry defect: a native Wine service entering
+the guest-resident GEM syscall or Unix-call PE boundary is serviced and resumed instead of being
+converted into an access violation and recursive exception dispatch.
+
+With matching PE and Unix `win32u` artifacts, a clean production `WINEDEBUG=-all` execution remained
+alive beyond the former crash window and produced a visible, frontmost macOS window titled
+`Untitled - Notepad`. This is direct real-program loading and native-window evidence. It is also the
+reason the implementation is retained: external comparison runtimes are useful oracles, but are not
+capability ceilings or vetoes for behavior SharpWine proves on macOS ARM64.
+
+The W10 application gate extends that proof to the official Notepad++ 8.9.7 32-bit portable
+distribution (archive SHA-256
+`ce0690fac91c1fc5d61dcdf5b09733ff0d143a61d0a27c6cb9f4003ea92765bb`). Both the interpreter and
+production JIT loaded `C:\\npp-8.9.7\\notepad++.exe` into a visible 1016×705 native macOS window
+titled `new 1 - Notepad++ [Administrator]`. The JIT window appeared within 267 seconds in the
+instrumented run. Correcting aligned cold SIMD-store retirement and preserving the full destination
+range of cross-page legacy REP operations kept the generated `stylers.xml` and `langs.xml` files
+valid and eliminated the prior partial-buffer failure without masking SSE2 or another CPUID family.
+
+This is a program-loading acceptance result, not a claim that interactive performance is finished.
+User-observed typing can take about five seconds to appear, and menus or other overlay pages can
+remain blank until pointer hover causes repaint. Those are the explicit W11 startup, input-latency,
+and invalidation targets.
 
 ## Verification
 
@@ -69,3 +89,6 @@ native state path is fixed and visible launch distributions are captured.
 - The broader build passed all 42 configured tests, including both authentic ARM64X lanes. The
   roundtrip CI regression was fixed by removing a stale expectation that Blink's private lazy-parity
   byte appear in architectural RFLAGS.
+- Wine patch 0022 applies cleanly with `git am`; the Wine patch validator and five patch-policy unit
+  tests pass. Formatting, repository hygiene, the zero-Rosetta audit, and all 37 tests in the fresh
+  configured W9 build pass.

@@ -1,0 +1,145 @@
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -76,6 +76,8 @@
+   uint64_t jit_compilations;
+   uint64_t jit_executions;
+   uint64_t jit_failures;
++  uint64_t cold_aligned_store_pc;
++  bool cold_aligned_store_pending;
+   struct blink_gem_block_entry blocks[BLINK_GEM_BLOCK_CACHE_ENTRIES];
+   uint64_t return_stack[BLINK_GEM_RETURN_STACK_ENTRIES];
+   uint32_t return_stack_depth;
+@@ -676,6 +678,10 @@
+   volatile int restartable_gather = 0;
+   volatile int fetching;
+   uint64_t fetch_address = 0, fetch_size = 0, commit_fault = 0;
++  uint64_t rep_write_address = 0;
++  uint32_t rep_write_size = 0;
++  uint64_t compile_write_address = 0;
++  uint32_t compile_write_size = 0;
+   if (!g || !in || !out || in->abi_version != BLINK_GEM_STATE_ABI_VERSION ||
+       in->size != sizeof(*in) ||
+       !guest_address(g, in->rip) || !guest_address(g, in->gpr[4]) ||
+@@ -800,6 +806,30 @@
+       restartable_gather = Opmap(m->xedd->op.rde) == XED_ILD_MAP2 &&
+                                Opcode(m->xedd->op.rde) >= 0x90 &&
+                                Opcode(m->xedd->op.rde) <= 0x93;
++      rep_write_address = 0;
++      rep_write_size = 0;
++      if (g->guest_mode == BLINK_GEM_GUEST_LEGACY_32 && restartable_rep) {
++        uint64_t count = Get32(m->cx);
++        uint64_t element_size = UINT64_C(1) << RegLog2(m->xedd->op.rde);
++        uint64_t total_size = count * element_size;
++        switch (Mopcode(m->xedd->op.rde)) {
++          case 0x06c: /* INS */
++          case 0x06d:
++          case 0x0a4: /* MOVS */
++          case 0x0a5:
++          case 0x0aa: /* STOS */
++          case 0x0ab:
++            if (total_size && total_size <= UINT32_MAX) {
++              rep_write_address = Get32(m->di);
++              if (GetFlag(m->flags, FLAGS_DF))
++                rep_write_address -= total_size - element_size;
++              rep_write_size = (uint32_t)total_size;
++            }
++            break;
++          default:
++            break;
++        }
++      }
+       if (mmx) {
+         memcpy(saved_xmm, m->xmm, sizeof(saved_xmm));
+         import_mmx_alias(m);
+@@ -812,6 +842,11 @@
+ #ifdef HAVE_JIT
+         nexgen32e_f hook = (nexgen32e_f)GetJitHook(&m->system->jit, m->ip);
+         if (!hook || hook == JitlessDispatch) {
++          if (Mopcode(m->xedd->op.rde) == 0x17f && Osz(m->xedd->op.rde) &&
++              !IsModrmRegister(m->xedd->op.rde)) {
++            g->cold_aligned_store_pc = fetch_address;
++            g->cold_aligned_store_pending = true;
++          }
+           /* Compile exactly one GEM-owned transaction against disposable
+            * shadow state. machine.c forces gemembed paths to complete after
+            * one instruction. The compile pass is rolled back before the
+@@ -824,8 +859,34 @@
+           }
+           hook = (nexgen32e_f)GetJitHook(&m->system->jit, in->rip);
+           ++g->jit_compilations;
++          compile_write_address = (uint64_t)m->writeaddr;
++          compile_write_size = (uint32_t)m->writesize;
++          if (rep_write_size) {
++            compile_write_address = rep_write_address;
++            compile_write_size = rep_write_size;
++          } else if (Mopcode(m->xedd->op.rde) == 0x17f &&
++                     Osz(m->xedd->op.rde) &&
++                     !IsModrmRegister(m->xedd->op.rde)) {
++            compile_write_address =
++                ComputeAddress(m, m->xedd->op.rde, m->xedd->op.disp,
++                               m->xedd->op.uimm0);
++            compile_write_size = 16;
++          }
+           for (i = 0; i < g->page_count; ++i) {
+-            if (memcmp(g->pages[i].host, g->pages[i].before, 4096) &&
++            uint64_t compile_write_end = 0;
++            uint64_t stack_begin = in->gpr[4] >= 128 ? in->gpr[4] - 128 : 0;
++            uint64_t stack_end = stack_begin + 255;
++            int write_candidate =
++                compile_write_size &&
++                !__builtin_add_overflow(compile_write_address,
++                                        (uint64_t)compile_write_size - 1,
++                                        &compile_write_end) &&
++                g->pages[i].address <= compile_write_end &&
++                g->pages[i].address + 4095 >= compile_write_address;
++            int stack_candidate = g->pages[i].address <= stack_end &&
++                                  g->pages[i].address + 4095 >= stack_begin;
++            if ((write_candidate || stack_candidate) &&
++                memcmp(g->pages[i].host, g->pages[i].before, 4096) &&
+                 !refresh_page(g, g->pages + i, &error)) {
+               ++g->jit_failures;
+               r = result(BLINK_GEM_MEMORY_FAULT);
+@@ -852,8 +913,19 @@
+           r.engine_status = 0xffffff03u;
+           return r;
+         }
+-        ExecuteInstruction(m);
+-        ++g->jit_executions;
++        /* Blink's aligned SIMD store helper mutates the disposable shadow
++         * while its first host path is being compiled. Retire that cold store
++         * once through Blink's native dispatcher; the installed hook remains
++         * available for every subsequent iteration. The pending marker also
++         * survives a lazy shadow-page fault during compilation. */
++        if (g->cold_aligned_store_pending &&
++            g->cold_aligned_store_pc == fetch_address) {
++          JitlessDispatch(DISPATCH_NOTHING);
++          g->cold_aligned_store_pending = false;
++        } else {
++          ExecuteInstruction(m);
++          ++g->jit_executions;
++        }
+ #else
+         r = result(BLINK_GEM_INVALID);
+         r.engine_status = 0xffffff04u;
+@@ -861,7 +933,21 @@
+ #endif
+       } else {
+         ExecuteInstruction(m);
++      }
++      /* GetXmmAddress() classifies aligned SIMD operands as reads. Supply the
++       * architectural write range after execution so GEM validates and commits
++       * both interpreter and generated-host stores. */
++      if (Mopcode(m->xedd->op.rde) == 0x17f && Osz(m->xedd->op.rde) &&
++          !IsModrmRegister(m->xedd->op.rde)) {
++        SetWriteAddr(m,
++                     ComputeAddress(m, m->xedd->op.rde, m->xedd->op.disp,
++                                    m->xedd->op.uimm0),
++                     16);
+       }
++      /* Generic legacy REP string handlers report only their final element
++       * through EndStore(). Preserve the complete architectural destination
++       * range so every modified shadow page is validated and committed. */
++      if (rep_write_size) SetWriteAddr(m, rep_write_address, rep_write_size);
+       m->canhalt = false;
+     } else {
+       m->canhalt = false;

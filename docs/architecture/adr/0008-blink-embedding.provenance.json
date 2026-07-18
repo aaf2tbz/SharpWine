@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 43,
+  "schemaVersion": 44,
   "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
   "archiveSha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
   "patchSha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
@@ -44,6 +44,7 @@
   "randomCpuidPatchSha256": "399d53904eb3b6320683525f44c0daf760ae81f476467a1fee4f5b683a567492",
   "residentStatePatchSha256": "e663cf701e713a181bd378d6ced9cd1cc57ad3435c33d45082476225b7f722e6",
   "blockLinkingPatchSha256": "2ab1e6b231b2e132898a5cc983df5d0565fff02a4a87f642f2e9e6bbdd34a579",
+  "alignedSimdStorePatchSha256": "efbd0eb8a558db2403cc09d427cadd019d9346e41a5d1eec374e423aca89126d",
   "license": "ISC",
   "prePatch": {
     "blink/machine.c": "73a32c95fbc191394c116bd2f41ebba464c963718b3785adaca22c5a93e8dc89",
@@ -54,7 +55,7 @@
     "blink/fusion.c": "492f2bf80ba626b63e37de749dcc679b439e44e135d01db718d84f9cb13dd7c7",
     "blink/avx.c": "c5bdb2c6f810cd884edc402b74268606a83af52ce3819658947e213f272890c4",
     "blink/avx.h": "2aba83f058c7097e31c1a1c67ea23757c57f37dd64cf894b374dc258cecdf8bd",
-    "blink/gem_embed.c": "5880d08128b08aac307ac03678030d51a697f08be8f274f7b4d8d1a759c132ca",
+    "blink/gem_embed.c": "77fc5eb3c79ccad598d513232b351f67936767261b27fa227eb33d9330bdf444",
     "blink/flags.c": "15aa6ee3f26fc5d4a35ef579de40439877d119d21db2d2c37a5ba15640c1ec7c",
     "blink/gem_embed.h": "f3a941309e84904910df26a3650883a58d487ca9932834cb224a241fbc1ad8f0",
     "blink/instruction.c": "643b63a9af36ab8732df8643552bd8b2ccf7c8e692ca58c6a4a209348e60e380",
@@ -96,7 +97,7 @@
     "crossPage": "one-instruction GEM paths may span two 4 KiB pages; invalidating either page also resets hooks beginning on its predecessor",
     "shadowPages": "bounded 64-page FIFO; long-mode paths reconcile cached pages per instruction, while legacy-32 paths reconcile at explicit GEM transaction boundaries",
     "serializing": "admitted serializing instructions use the same bounded GEM path; denied syscall, interrupt, and privileged handlers are rejected before execution",
-    "productionFallback": "none; interpreter mode is an explicit test oracle only"
+    "productionFallback": "a newly compiled aligned SIMD memory store retires once through Blink's native dispatcher; legacy REP string stores commit their complete destination range; compile rollback scans only the exact architectural write and guarded stack ranges; installed JIT hooks execute subsequent iterations; no CPUID family is masked"
   },
   "handlerManifest": [
     {
