@@ -157,11 +157,15 @@ def main() -> int:
     parser.add_argument("--cleanup-command", help="four-lane cleanup command template")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--shards", default="0", help="comma list, range A-B, or 'all'")
+    parser.add_argument("--cases", type=int, default=CASES_PER_SHARD,
+                        help="ordinals per shard to run (default: full shard)")
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--timeout", type=float, default=2.0)
     args = parser.parse_args()
     if not args.worker.is_file() or args.jobs < 1 or args.timeout <= 0:
         parser.error("invalid worker, jobs, or timeout")
+    if not 1 <= args.cases <= CASES_PER_SHARD:
+        parser.error("invalid case bound")
     if args.shards == "all":
         shards = list(range(SHARDS))
     elif "-" in args.shards:
@@ -178,7 +182,7 @@ def main() -> int:
     totals = {name: 0 for name in sorted(CLASSIFICATIONS)}
     try:
         with rows_path.open("w", encoding="utf-8") as output:
-            identities = ((shard, case) for shard in shards for case in range(CASES_PER_SHARD))
+            identities = ((shard, case) for shard in shards for case in range(args.cases))
             with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
                 pending: deque[concurrent.futures.Future[dict[str, Any]]] = deque()
                 for _ in range(args.jobs * 4):
@@ -196,7 +200,7 @@ def main() -> int:
     finally:
         cleanup(args)
     digest = hashlib.sha256(rows_path.read_bytes()).hexdigest()
-    cases = len(shards) * CASES_PER_SHARD
+    cases = len(shards) * args.cases
     baseline_records = sum(
         1 for line in rows_path.read_text(encoding="utf-8").splitlines()
         if json.loads(line)["baseline"]["classification"] == "pass"

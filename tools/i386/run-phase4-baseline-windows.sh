@@ -39,13 +39,15 @@ done
 base=$(basename -- "$fixture")
 local_sha=$(shasum -a 256 "$fixture" | awk '{print $1}')
 stamp="$guest_dir\\$base.sha256"
-guest_sha=$(prlctl exec "$vm" cmd.exe /c "type \"$stamp\"" 2>/dev/null || true)
+# The guest type/echo round-trip leaves a carriage return on the stamp;
+# strip it or every call would restage.
+guest_sha=$(prlctl exec "$vm" cmd.exe /c "type \"$stamp\"" 2>/dev/null | tr -d '\r' || true)
 
 if [ "$guest_sha" != "$local_sha" ]; then
     lock=${TMPDIR:-/tmp}/phase4-windows-stage.lock
     while ! mkdir "$lock" 2>/dev/null; do sleep 1; done
     trap 'rmdir "$lock" 2>/dev/null || true' EXIT INT TERM
-    guest_sha=$(prlctl exec "$vm" cmd.exe /c "type \"$stamp\"" 2>/dev/null || true)
+    guest_sha=$(prlctl exec "$vm" cmd.exe /c "type \"$stamp\"" 2>/dev/null | tr -d '\r' || true)
     if [ "$guest_sha" != "$local_sha" ]; then
         work=$(mktemp -d "${TMPDIR:-/tmp}/phase4-windows-stage.XXXXXX")
         trap 'rm -rf "$work"; rmdir "$lock" 2>/dev/null || true' EXIT INT TERM
@@ -56,7 +58,7 @@ if [ "$guest_sha" != "$local_sha" ]; then
             data=$(cat "$chunk")
             prlctl exec "$vm" cmd.exe /c "echo $data>> $guest_dir\\$base.b64" >/dev/null
         done
-        prlctl exec "$vm" cmd.exe /c "certutil -decode $guest_dir\\$base.b64 $guest_dir\\$base >nul" >/dev/null
+        prlctl exec "$vm" cmd.exe /c "certutil -decode $guest_dir\\$base.b64 $guest_dir\\$base >nul & del $guest_dir\\$base.b64" >/dev/null
         prlctl exec "$vm" cmd.exe /c "echo $local_sha> \"$stamp\"" >/dev/null
     fi
     rm -rf "${work:-}" 2>/dev/null || true

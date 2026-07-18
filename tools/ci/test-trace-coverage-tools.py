@@ -31,14 +31,16 @@ class TraceCoverageToolTests(unittest.TestCase):
     def test_phase4_template_parser(self):
         templates = mapcov.parse_phase4_templates(
             ROOT / "tests/fixtures/i386_phase4_generator.c")
-        self.assertEqual(len(templates), 36)
+        self.assertEqual(len(templates), 73)
         by_id = {template["templateId"]: template for template in templates}
-        self.assertEqual(sorted(by_id), [100, 101, 102, 103, 104, 105, 106, 107] +
-                         [200, 201, 202, 203, 204, 205] +
+        self.assertEqual(sorted(by_id), list(range(100, 132)) + list(range(200, 210)) +
                          [300, 301, 302, 303, 304, 305] +
-                         [400, 401, 402, 403, 404, 405] +
+                         list(range(400, 415)) +
                          [500, 501, 502, 503, 504, 505] + [600, 601, 602, 603])
         self.assertEqual(by_id[100]["bytes"], bytes([0x01, 0xd8]))
+        self.assertEqual(by_id[108]["bytes"], bytes([0x0f, 0xb7, 0xc3]))
+        self.assertEqual(by_id[131]["bytes"], bytes([0xff, 0xc0]))
+        self.assertEqual(by_id[209]["bytes"], bytes([0x33, 0x06]))
         self.assertEqual(by_id[500]["bytes"], bytes([0xf3, 0xa4]))
         self.assertEqual(by_id[601]["bytes"], bytes([0xc5, 0xf8, 0x77]))
         self.assertFalse(by_id[100]["negative"])
@@ -95,6 +97,9 @@ class TraceCoverageToolTests(unittest.TestCase):
             (bytes([0xf3, 0xa4]), [(4260, "OpMovsb")]),
             (bytes([0x01, 0xd8]), [(4097, "OpAluw")]),
             (bytes([0x0f, 0x0b]), []),
+            (bytes([0x0f, 0xb7, 0xc3]), [(4535, "OpMovzwGvqpEw")]),
+            (bytes([0x8d, 0x43, 0x40]), [(10, "OpLeaGvqpM")]),
+            (bytes([0xff, 0xc0]), [(4351, "Op0ff")]),
         ]
         for code, expected in expectations:
             self.assertEqual(mapcov.run_probe(probe, code), expected, code.hex())

@@ -10,7 +10,7 @@ decoder-owned trace entries it retires become the handler ids that sequence
 covers.
 
 Corpus sources:
-  * phase4: the 36 raw-byte templates in tests/fixtures/i386_phase4_generator.c
+  * phase4: the raw-byte templates in tests/fixtures/i386_phase4_generator.c
     (template_id = category * 100 + index within its category array)
   * phase3: replay records in tests/fixtures/i386_phase3_reference.bin
   * rosetta: CASES in tools/rosetta/run-i386-matrix.py, assembled to bytes

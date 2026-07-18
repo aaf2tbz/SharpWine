@@ -30,6 +30,33 @@ static const struct template_entry scalar_templates[] = {
     {{0x0f, 0xaf, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0x801},
     {{0xc1, 0xe0, 0x01}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0x8c5},
     {{0xf3, 0x0f, 0xb8, 0xc3}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0x041},
+    /* Phase 6 handler-coverage templates (W3d): application traces showed
+     * these handlers with zero corpus coverage.  Straight-line, no ESP/EIP
+     * redirection, so the unsandboxed native baseline executor stays safe. */
+    {{0x0f, 0xb7, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x8d, 0x43, 0x40}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x3b, 0xd8}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0x8d5},
+    {{0x0b, 0xd8}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0x8c5},
+    {{0x2b, 0xd8}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0x8d5},
+    {{0x23, 0xd8}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0x8c5},
+    {{0xa8, 0x5a}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0x8c5},
+    {{0x0f, 0xca}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x88, 0xd8}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xc6, 0xc0, 0x5a}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x42, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x43, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x45, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x46, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x47, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x48, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x49, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x4d, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x4e, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x4f, 0xc3}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x93, 0xc0}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x94, 0xc0}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x95, 0xc0}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xff, 0xc0}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0x8d4},
 };
 static const struct template_entry memory_templates[] = {
     {{0x8b, 0x06}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0},
@@ -38,6 +65,11 @@ static const struct template_entry memory_templates[] = {
     {{0x87, 0x06}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0},
     {{0xf0, 0x0f, 0xc1, 0x06}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0x8d5},
     {{0xf0, 0x0f, 0xb1, 0x1e}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0x8d5},
+    /* Phase 6 handler-coverage templates (W3d). */
+    {{0x88, 0x1e}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xc6, 0x06, 0x5a}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xc7, 0x06, 0x78, 0x56, 0x34, 0x12}, 6, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x33, 0x06}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0x8c5},
 };
 static const struct template_entry x87_mmx_templates[] = {
     {{0xd9, 0xe8}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0},
@@ -54,6 +86,16 @@ static const struct template_entry simd_templates[] = {
     {{0x66, 0x0f, 0x38, 0x39, 0xc1}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0},
     {{0x66, 0x0f, 0x38, 0xdc, 0xc1}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0},
     {{0x66, 0x0f, 0x3a, 0x44, 0xc1, 0x00}, 6, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    /* Phase 6 handler-coverage templates (W3d). */
+    {{0x0f, 0x29, 0xc1}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0x11, 0xc1}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x66, 0x0f, 0x62, 0xc1}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x66, 0x0f, 0x6f, 0xc1}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x66, 0x0f, 0x6c, 0xc1}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x66, 0x0f, 0x6e, 0xc0}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x66, 0x0f, 0x7e, 0xc0}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x66, 0x0f, 0xd6, 0xc1}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x66, 0x0f, 0xc5, 0xc0, 0x01}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0},
 };
 static const struct template_entry system_templates[] = {
     {{0xf3, 0xa4}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0},
@@ -101,43 +143,62 @@ static enum i386_phase4_category category_for_ordinal(uint32_t ordinal) {
     return I386_PHASE4_NEGATIVE;
 }
 
-static const struct template_entry *select_template(enum i386_phase4_category category,
-                                                    uint64_t random, uint32_t *count) {
-    const struct template_entry *entries = NULL;
+/* The hash-bound Phase 5 golden corpus pins shards 0-4 against the original
+ * 36-template selection (entries[random % count]).  The Phase 6
+ * handler-coverage templates appended above must not change any pinned case,
+ * so shards below this bound keep selecting from the legacy prefix counts;
+ * later shards select from the full tables.  Once the golden corpus is
+ * regenerated against the expanded tables this gate can be removed. */
+#define I386_PHASE4_LEGACY_GOLDEN_SHARDS 5U
+#define I386_PHASE4_LEGACY_SCALAR_COUNT 8U
+#define I386_PHASE4_LEGACY_MEMORY_COUNT 6U
+#define I386_PHASE4_LEGACY_X87_MMX_COUNT 6U
+#define I386_PHASE4_LEGACY_SIMD_COUNT 6U
+#define I386_PHASE4_LEGACY_SYSTEM_COUNT 6U
+#define I386_PHASE4_LEGACY_NEGATIVE_COUNT 4U
+
+static const struct template_entry *
+select_template(uint32_t shard, enum i386_phase4_category category, uint64_t random) {
+    /* Divisors must stay compile-time constants: the freestanding baseline
+     * fixture has no compiler runtime for a dynamic 64-bit modulo. */
     switch (category) {
     case I386_PHASE4_SCALAR:
-        entries = scalar_templates;
-        *count = (uint32_t)(sizeof(scalar_templates) / sizeof(scalar_templates[0]));
-        break;
+        return shard < I386_PHASE4_LEGACY_GOLDEN_SHARDS
+                   ? &scalar_templates[random % I386_PHASE4_LEGACY_SCALAR_COUNT]
+                   : &scalar_templates[random %
+                                       (sizeof(scalar_templates) / sizeof(scalar_templates[0]))];
     case I386_PHASE4_MEMORY:
-        entries = memory_templates;
-        *count = (uint32_t)(sizeof(memory_templates) / sizeof(memory_templates[0]));
-        break;
+        return shard < I386_PHASE4_LEGACY_GOLDEN_SHARDS
+                   ? &memory_templates[random % I386_PHASE4_LEGACY_MEMORY_COUNT]
+                   : &memory_templates[random %
+                                       (sizeof(memory_templates) / sizeof(memory_templates[0]))];
     case I386_PHASE4_X87_MMX:
-        entries = x87_mmx_templates;
-        *count = (uint32_t)(sizeof(x87_mmx_templates) / sizeof(x87_mmx_templates[0]));
-        break;
+        return shard < I386_PHASE4_LEGACY_GOLDEN_SHARDS
+                   ? &x87_mmx_templates[random % I386_PHASE4_LEGACY_X87_MMX_COUNT]
+                   : &x87_mmx_templates[random %
+                                        (sizeof(x87_mmx_templates) / sizeof(x87_mmx_templates[0]))];
     case I386_PHASE4_SIMD:
-        entries = simd_templates;
-        *count = (uint32_t)(sizeof(simd_templates) / sizeof(simd_templates[0]));
-        break;
+        return shard < I386_PHASE4_LEGACY_GOLDEN_SHARDS
+                   ? &simd_templates[random % I386_PHASE4_LEGACY_SIMD_COUNT]
+                   : &simd_templates[random % (sizeof(simd_templates) / sizeof(simd_templates[0]))];
     case I386_PHASE4_SYSTEM:
-        entries = system_templates;
-        *count = (uint32_t)(sizeof(system_templates) / sizeof(system_templates[0]));
-        break;
+        return shard < I386_PHASE4_LEGACY_GOLDEN_SHARDS
+                   ? &system_templates[random % I386_PHASE4_LEGACY_SYSTEM_COUNT]
+                   : &system_templates[random %
+                                       (sizeof(system_templates) / sizeof(system_templates[0]))];
     case I386_PHASE4_NEGATIVE:
-        entries = negative_templates;
-        *count = (uint32_t)(sizeof(negative_templates) / sizeof(negative_templates[0]));
-        break;
+        return shard < I386_PHASE4_LEGACY_GOLDEN_SHARDS
+                   ? &negative_templates[random % I386_PHASE4_LEGACY_NEGATIVE_COUNT]
+                   : &negative_templates[random % (sizeof(negative_templates) /
+                                                   sizeof(negative_templates[0]))];
     }
-    return entries ? &entries[random % *count] : NULL;
+    return NULL;
 }
 
 int i386_phase4_generate(uint32_t shard, uint32_t ordinal, struct i386_phase4_case *out) {
     const struct template_entry *entry;
     enum i386_phase4_category category;
     uint64_t state;
-    uint32_t count = 0;
     uint32_t i;
     if (!out || shard >= I386_PHASE4_SHARDS || ordinal >= I386_PHASE4_CASES_PER_SHARD)
         return 0;
@@ -150,7 +211,7 @@ int i386_phase4_generate(uint32_t shard, uint32_t ordinal, struct i386_phase4_ca
     out->seed = i386_phase4_case_seed(shard, ordinal);
     state = out->seed;
     category = category_for_ordinal(ordinal);
-    entry = select_template(category, next_random(&state), &count);
+    entry = select_template(shard, category, next_random(&state));
     if (!entry)
         return 0;
     out->category = category;
