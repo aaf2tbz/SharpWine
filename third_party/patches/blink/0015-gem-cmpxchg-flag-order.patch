@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Fri, 17 Jul 2026 22:30:00 -0600
+Subject: [PATCH] gem: fix cmpxchg flag operand order
+
+Intel CMPXCHG sets flags from EAX - destination, but Blink computed them
+from destination - EAX on every cmpxchg path except the unaligned
+LockCmpxchgMem32 branch.  After a failed C11 atomic_compare_exchange the
+expected value holds the current destination, so Sub*(m, x, eax) produced
+reversed borrow/sign flags whenever the exchange failed.  Compute flags as
+EAX - destination everywhere; the exchange and writeback semantics are
+unchanged, and the successful-exchange case is symmetric.
+
+Proven against the native Windows 11 ARM64 WoW64 oracle: unequal
+eax=0xff8061b2 vs [mem]=0xca4e7c1f must yield masked eflags 0x14 (PF+AF);
+unfixed Blink produced 0x81 (CF+SF).
+---
+ blink/cmpxchg.c | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+--- a/blink/cmpxchg.c
++++ b/blink/cmpxchg.c
+@@ -35,7 +35,7 @@
+       (_Atomic(u8) *)p, &ax,
+       atomic_load_explicit((_Atomic(u8) *)q, memory_order_relaxed),
+       memory_order_acq_rel, memory_order_acquire);
+-  Sub8(m, Little8(ax), Get8(m->ax));
++  Sub8(m, Get8(m->ax), Little8(ax));
+   atomic_store_explicit((_Atomic(u8) *)m->ax, ax, memory_order_relaxed);
+ }
+ 
+@@ -50,7 +50,7 @@
+         (_Atomic(u32) *)p, &x,
+         atomic_load_explicit((_Atomic(u32) *)q, memory_order_relaxed),
+         memory_order_acq_rel, memory_order_acquire);
+-    Sub32(m, Little32(x), Get32(m->ax));
++    Sub32(m, Get32(m->ax), Little32(x));
+     if (!didit) Put64(m->ax, Little32(x));
+   } else {
+     LockBus(p);
+@@ -78,7 +78,7 @@
+           (_Atomic(u64) *)p, &x,
+           atomic_load_explicit((_Atomic(u64) *)q, memory_order_relaxed),
+           memory_order_acq_rel, memory_order_acquire);
+-      Sub64(m, Little64(x), Get64(m->ax));
++      Sub64(m, Get64(m->ax), Little64(x));
+       atomic_store_explicit((_Atomic(u64) *)m->ax, x, memory_order_relaxed);
+       return;
+     }
+@@ -86,7 +86,7 @@
+     if (Lock(rde)) {
+       LockBus(p);
+       x = Load64Unlocked(p);
+-      Sub64(m, x, Get64(m->ax));
++      Sub64(m, Get64(m->ax), x);
+       if ((didit = x == Get64(m->ax))) {
+         Store64Unlocked(p, Get64(q));
+       } else {
+@@ -95,7 +95,7 @@
+       UnlockBus(p);
+     } else {
+       x = Load64(p);
+-      Sub64(m, x, Get64(m->ax));
++      Sub64(m, Get64(m->ax), x);
+       if ((didit = x == Get64(m->ax))) {
+         Store64(p, Get64(q));
+       } else {
+@@ -110,12 +110,12 @@
+           (_Atomic(u32) *)p, &ax,
+           atomic_load_explicit((_Atomic(u32) *)q, memory_order_relaxed),
+           memory_order_acq_rel, memory_order_acquire);
+-      Sub32(m, Little32(ax), Get32(m->ax));
++      Sub32(m, Get32(m->ax), Little32(ax));
+       if (!didit) Put64(m->ax, Little32(ax));
+     } else {
+       if (Lock(rde)) LockBus(p);
+       u32 x = Load32(p);
+-      Sub32(m, x, Get32(m->ax));
++      Sub32(m, Get32(m->ax), x);
+       if ((didit = x == Get32(m->ax))) {
+         Store32(p, Get32(q));
+       } else {
+@@ -134,12 +134,12 @@
+           (_Atomic(u16) *)p, &ax,
+           atomic_load_explicit((_Atomic(u16) *)q, memory_order_relaxed),
+           memory_order_acq_rel, memory_order_acquire);
+-      Sub16(m, Little16(ax), Get16(m->ax));
++      Sub16(m, Get16(m->ax), Little16(ax));
+       atomic_store_explicit((_Atomic(u16) *)m->ax, ax, memory_order_relaxed);
+     } else {
+       if (Lock(rde)) LockBus(p);
+       u16 x = Load16(p);
+-      Sub16(m, x, Get16(m->ax));
++      Sub16(m, Get16(m->ax), x);
+       if ((didit = x == Get16(m->ax))) {
+         Store16(p, Get16(q));
+       } else {
+
+-- 
+2.54.0 (Apple Git-157)

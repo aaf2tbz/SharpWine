@@ -364,13 +364,14 @@ def main():
     parser.add_argument("--phase55-patch", type=Path, required=True)
     parser.add_argument("--phase55-optimization-patch", type=Path, required=True)
     parser.add_argument("--phase55-concurrency-patch", type=Path, required=True)
+    parser.add_argument("--cmpxchg-patch", type=Path, required=True)
     parser.add_argument("--capability-manifest", type=Path, required=True)
     parser.add_argument("--phase3-corpus", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 11, "provenance schema")
+    need(provenance["schemaVersion"] == 12, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -398,6 +399,10 @@ def main():
     need(
         digest(args.phase55_concurrency_patch) == provenance["phase55ConcurrencyPatchSha256"],
         "phase 5.5 concurrency patch hash",
+    )
+    need(
+        digest(args.cmpxchg_patch) == provenance["cmpxchgPatchSha256"],
+        "cmpxchg flag-order patch hash",
     )
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
