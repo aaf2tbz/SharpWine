@@ -4,6 +4,7 @@
 
 #include "metalsharp/gem/context.h"
 #include "metalsharp/gem/i386_context.h"
+#include "metalsharp/gem/i386_engine.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -309,6 +310,8 @@ GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_thread_config) == 64U,
                        "gem_wine_i386_thread_config ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_run_result) == 88U,
                        "gem_wine_run_result ABI changed");
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_i386_diagnostics) == 256U,
+                       "gem_i386_diagnostics ABI changed");
 GEM_WINE_STATIC_ASSERT(offsetof(struct gem_wine_run_result, stop) == 48U,
                        "gem_wine_run_result stop offset changed");
 
@@ -388,6 +391,9 @@ GEM_WINE_API enum gem_wine_status gem_wine_i386_thread_run(struct gem_wine_threa
                                                            const struct gem_i386_context *input,
                                                            struct gem_i386_context *out_context,
                                                            struct gem_wine_run_result *result);
+GEM_WINE_API enum gem_wine_status
+gem_wine_i386_thread_diagnostics(struct gem_wine_thread *thread,
+                                 struct gem_i386_diagnostics *diagnostics);
 
 #ifdef __cplusplus
 }

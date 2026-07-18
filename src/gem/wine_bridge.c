@@ -1399,3 +1399,18 @@ enum gem_wine_status gem_wine_i386_thread_run(struct gem_wine_thread *thread,
     pthread_cleanup_pop(1);
     return status;
 }
+
+enum gem_wine_status gem_wine_i386_thread_diagnostics(struct gem_wine_thread *thread,
+                                                      struct gem_i386_diagnostics *diagnostics) {
+    enum gem_wine_status status = GEM_WINE_ENGINE_ERROR;
+    if (thread == NULL || !thread->i386_thread || diagnostics == NULL ||
+        diagnostics->abi_version != GEM_I386_DIAGNOSTICS_ABI_VERSION ||
+        diagnostics->size != sizeof(*diagnostics))
+        return GEM_WINE_INVALID_ARGUMENT;
+    if (pthread_mutex_trylock(&thread->runtime_lock) != 0)
+        return GEM_WINE_CONFLICT;
+    if (gem_i386_runtime_diagnostics(thread->i386_runtime, diagnostics))
+        status = GEM_WINE_OK;
+    (void)pthread_mutex_unlock(&thread->runtime_lock);
+    return status;
+}

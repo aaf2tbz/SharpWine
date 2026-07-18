@@ -164,6 +164,22 @@ context round-trip for every JIT slice. The total budget still bounds the
 complete run across resumed boundary segments. Exhausting the callback count
 also fails closed as a budget expiration.
 
+## i386 execution diagnostics
+
+`gem_wine_i386_thread_diagnostics()` returns a versioned 256-byte snapshot
+without exposing the thread's engine object. The snapshot carries the bound
+engine identity, host and mode, JIT compilation/execution/cache-hit/failure
+counts, precise code invalidations, the no-interpreter-fallback invariant, and
+the last genuinely unsupported decoded opcode. It also reports the exact raw
+CPUID registers advertised by the deterministic legacy profile. Conformance
+executes those CPUID leaves in both interpreter and production-JIT modes and
+requires bit-for-bit equality with the diagnostic snapshot.
+
+Wine patch 21 emits this record after every xtajit run. The trace is evidence
+about SharpWine's native implementation and guest program path: an external
+engine may be used as a comparison oracle, but it cannot mask a capability
+that SharpWine's semantic, state, fault, corpus, and program-load gates prove.
+
 ## Required evidence before Wine integration
 
 PR #20 may merge only after all of the following bridge-foundation evidence is

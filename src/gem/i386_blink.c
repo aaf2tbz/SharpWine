@@ -276,6 +276,16 @@ static bool is_virtual_rdtscp(const struct blink_gem_decode_attempt *attempt) {
            strcmp(attempt->name, "Op101") == 0;
 }
 
+static void record_unsupported(struct gem_i386_runtime *runtime,
+                               const struct blink_gem_decode_attempt *attempt) {
+    ++runtime->unsupported_instructions;
+    runtime->last_unsupported_eip = (uint32_t)attempt->rip;
+    runtime->last_unsupported_mopcode = attempt->mopcode;
+    runtime->last_unsupported_length = attempt->instruction_length;
+    snprintf(runtime->last_unsupported_name, sizeof(runtime->last_unsupported_name), "%s",
+             attempt->name);
+}
+
 static bool complete_virtual_timestamp(struct gem_i386_runtime *runtime,
                                        struct gem_i386_context *context,
                                        uint32_t instruction_length, uint32_t budget,
@@ -402,6 +412,7 @@ enum gem_stop_reason gem_i386_blink_step(struct gem_i386_runtime *runtime,
             runtime->last_stop.engine_status = GEM_I386_BOUNDARY_WINDOWS_SYSCALL;
             return GEM_STOP_SYSCALL;
         }
+        record_unsupported(runtime, &attempt);
         return GEM_STOP_UNSUPPORTED_INSTRUCTION;
     }
     return GEM_STOP_INVARIANT_VIOLATION;
@@ -540,6 +551,7 @@ enum gem_stop_reason gem_i386_blink_run(struct gem_i386_runtime *runtime,
             runtime->last_stop.engine_status = GEM_I386_BOUNDARY_WINDOWS_SYSCALL;
             return GEM_STOP_SYSCALL;
         }
+        record_unsupported(runtime, &attempt);
         return GEM_STOP_UNSUPPORTED_INSTRUCTION;
     }
     return GEM_STOP_INVARIANT_VIOLATION;

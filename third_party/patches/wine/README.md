@@ -201,3 +201,11 @@ Patches `0019` and `0020` preserve the complete i386 legacy and AVX state
 across the Wine/GEM boundary. Patch `0020` accepts only the standard
 non-compacted xstate layout described by ADR 0013; CPUID advertisement remains
 separately gated by the engine corpus and Windows oracle.
+
+Patch `0021` adds one stable GEM_i386 diagnostic record to every xtajit run
+trace. It identifies the native engine and version, reports JIT compilation,
+execution, cache-hit, failure, precise invalidation, and zero-fallback counts,
+records the last genuinely unsupported decoded opcode, and publishes the exact
+deterministic CPUID profile. These values are observations of SharpWine's
+native implementation; external execution remains comparison evidence rather
+than a capability veto.

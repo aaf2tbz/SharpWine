@@ -18,3 +18,4 @@
 0018-xtajit-map-normalized-i386-exceptions.patch
 0019-xtajit-preserve-i386-v2-legacy-state.patch
 0020-xtajit-map-i386-avx-xstate.patch
+0021-xtajit-trace-i386-diagnostics.patch

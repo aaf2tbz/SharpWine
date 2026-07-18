@@ -20,6 +20,7 @@ _Static_assert(sizeof(struct gem_i386_performance_info) == 88U,
                "performance query ABI size changed");
 _Static_assert(sizeof(struct gem_i386_performance_info_v2) == 128U,
                "performance v2 query ABI size changed");
+_Static_assert(sizeof(struct gem_i386_diagnostics) == 256U, "diagnostics query ABI size changed");
 
 struct fixture {
     struct gem_memory *memory;
@@ -184,6 +185,8 @@ static void verify_three_way_boundaries(void) {
     struct gem_i386_engine_info jit_info = {0};
     struct gem_i386_performance_info_v2 jit_performance = {
         .abi_version = GEM_I386_PERFORMANCE_INFO_V2_ABI_VERSION, .size = sizeof(jit_performance)};
+    struct gem_i386_diagnostics diagnostics = {.abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION,
+                                               .size = sizeof(diagnostics)};
     uint32_t budget;
     for (budget = 1U; budget <= 256U; ++budget) {
         struct gem_i386_context stepped = equality_initial_context(&stepped_lane);
@@ -238,6 +241,21 @@ static void verify_three_way_boundaries(void) {
     assert(gem_i386_runtime_performance_info_v2(jit_lane.runtime, &jit_performance));
     assert(jit_performance.jit_cache_hits != 0U && jit_performance.jit_failures == 0U &&
            jit_performance.code_invalidations == 0U);
+    assert(gem_i386_runtime_diagnostics(jit_lane.runtime, &diagnostics));
+    assert(diagnostics.engine_mode == GEM_I386_ENGINE_JIT);
+    assert(diagnostics.jit_compilations == jit_performance.jit_compilations);
+    assert(diagnostics.jit_executions == jit_performance.jit_executions);
+    assert(diagnostics.jit_cache_hits == jit_performance.jit_cache_hits);
+    assert(diagnostics.jit_failures == 0U && diagnostics.code_invalidations == 0U);
+    assert(diagnostics.interpreter_fallbacks == 0U && diagnostics.unsupported_instructions == 0U);
+    assert(strcmp(diagnostics.engine_name, "GEM_i386 Blink AArch64 JIT") == 0);
+    assert(strncmp(diagnostics.engine_version, "blink-", 6U) == 0);
+    assert(diagnostics.cpuid_leaf1_ecx ==
+           ((1U << 0U) | (1U << 1U) | (1U << 9U) | (1U << 12U) | (1U << 19U) | (1U << 20U) |
+            (1U << 23U) | (1U << 25U) | (1U << 26U) | (1U << 27U) | (1U << 28U) | (1U << 30U)));
+    assert(diagnostics.cpuid_leaf7_ebx ==
+           ((1U << 3U) | (1U << 5U) | (1U << 8U) | (1U << 9U) | (1U << 18U) | (1U << 19U)));
+    assert(diagnostics.cpuid_leaf7_ecx == (1U << 22U));
     equality_lane_destroy(&jit_lane);
     equality_lane_destroy(&bounded_lane);
     equality_lane_destroy(&stepped_lane);

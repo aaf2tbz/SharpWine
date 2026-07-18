@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "i386_engine_internal.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #if defined(_WIN32)
@@ -237,6 +238,50 @@ bool gem_i386_runtime_performance_info_v2(const struct gem_i386_runtime *runtime
                               : 0U;
     out->jit_failures = engine.jit_failures;
     out->code_invalidations = runtime->code_invalidations;
+    return true;
+}
+
+bool gem_i386_runtime_diagnostics(const struct gem_i386_runtime *runtime,
+                                  struct gem_i386_diagnostics *out) {
+    struct gem_i386_engine_info engine = {0};
+    if (runtime == NULL || out == NULL || out->abi_version != GEM_I386_DIAGNOSTICS_ABI_VERSION ||
+        out->size != sizeof(*out))
+        return false;
+    engine.abi_version = 1U;
+    engine.size = sizeof(engine);
+    if (!runtime->ops->engine_info(runtime, &engine))
+        return false;
+    memset(out, 0, sizeof(*out));
+    out->abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION;
+    out->size = sizeof(*out);
+    out->engine_mode = engine.engine_mode;
+    out->host_arch = engine.host_arch;
+    out->cpuid_leaf1_ecx = (1U << 0U) | (1U << 1U) | (1U << 9U) | (1U << 12U) | (1U << 19U) |
+                           (1U << 20U) | (1U << 23U) | (1U << 25U) | (1U << 26U) | (1U << 27U) |
+                           (1U << 28U) | (1U << 30U);
+    out->cpuid_leaf1_edx = (1U << 0U) | (1U << 8U) | (1U << 15U) | (1U << 23U) | (1U << 24U) |
+                           (1U << 25U) | (1U << 26U);
+    out->cpuid_leaf7_ebx =
+        (1U << 3U) | (1U << 5U) | (1U << 8U) | (1U << 9U) | (1U << 18U) | (1U << 19U);
+    out->cpuid_leaf7_ecx = 1U << 22U;
+    out->cpuid_extended1_edx =
+        (1U << 0U) | (1U << 8U) | (1U << 15U) | (1U << 23U) | (1U << 24U) | (1U << 27U);
+    out->last_unsupported_eip = runtime->last_unsupported_eip;
+    out->last_unsupported_mopcode = runtime->last_unsupported_mopcode;
+    out->last_unsupported_length = runtime->last_unsupported_length;
+    out->jit_compilations = engine.jit_compilations;
+    out->jit_executions = engine.jit_executions;
+    out->jit_cache_hits = engine.jit_executions > engine.jit_compilations
+                              ? engine.jit_executions - engine.jit_compilations
+                              : 0U;
+    out->jit_failures = engine.jit_failures;
+    out->code_invalidations = runtime->code_invalidations;
+    out->interpreter_fallbacks = 0U;
+    out->unsupported_instructions = runtime->unsupported_instructions;
+    snprintf(out->engine_name, sizeof(out->engine_name), "%s", runtime->ops->engine_name);
+    snprintf(out->engine_version, sizeof(out->engine_version), "%s", runtime->ops->engine_version);
+    memcpy(out->last_unsupported_name, runtime->last_unsupported_name,
+           sizeof(out->last_unsupported_name));
     return true;
 }
 

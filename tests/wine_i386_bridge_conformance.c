@@ -138,6 +138,8 @@ int main(void) {
     struct gem_wine_thread *thread = NULL;
     struct gem_i386_context input, output;
     struct gem_wine_run_result result;
+    struct gem_i386_diagnostics diagnostics = {.abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION,
+                                               .size = sizeof(diagnostics)};
     struct boundary_state boundary_state = {0};
     const size_t host_page = (size_t)sysconf(_SC_PAGESIZE);
     uint8_t *image = aligned_alloc(host_page, IMAGE_SIZE);
@@ -192,6 +194,10 @@ int main(void) {
     assert(result.instructions_retired == 2U);
     assert(output.gpr[GEM_I386_EAX] == UINT32_C(0x12345679));
     assert(output.eip == HOST_RETURN);
+    assert(gem_wine_i386_thread_diagnostics(thread, &diagnostics) == GEM_WINE_OK);
+    assert(diagnostics.engine_mode == GEM_I386_ENGINE_JIT);
+    assert(diagnostics.jit_executions != 0U && diagnostics.jit_failures == 0U);
+    assert(diagnostics.interpreter_fallbacks == 0U);
 
     {
         static const uint8_t breakpoint_code[] = {0xccU, 0xb8U, 0xefU, 0xbeU,
@@ -305,6 +311,30 @@ int main(void) {
         assert(boundary_state.calls == 1U);
         assert(result.stop.fault_address == UINT32_C(0x00500000));
         assert(result.stop.memory_error == GEM_MEMORY_NOT_RESERVED);
+    }
+    {
+        static const uint8_t unsupported_code[] = {0x0fU, 0xaeU, 0x36U};
+        memcpy(image + 0x1000U, unsupported_code, sizeof(unsupported_code));
+        assert(gem_wine_process_invalidate_code(process, CODE_ADDRESS, sizeof(unsupported_code)) ==
+               GEM_WINE_OK);
+        input.eip = CODE_ADDRESS;
+        input.stop_reason = GEM_STOP_NONE;
+        boundary_state.calls = 0U;
+        boundary_state.expected_event = GEM_WINE_EVENT_UNSUPPORTED_INSTRUCTION;
+        boundary_state.expected_engine_status = 0U;
+        boundary_state.expected_access = 0U;
+        boundary_state.resume_bytes = 0U;
+        assert(gem_wine_i386_thread_run(thread, &input, &output, &result) == GEM_WINE_TERMINATED);
+        assert(boundary_state.calls == 1U);
+        diagnostics.abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION;
+        diagnostics.size = sizeof(diagnostics);
+        assert(gem_wine_i386_thread_diagnostics(thread, &diagnostics) == GEM_WINE_OK);
+        assert(diagnostics.unsupported_instructions == 1U);
+        assert(diagnostics.last_unsupported_eip == CODE_ADDRESS);
+        assert(diagnostics.last_unsupported_length == sizeof(unsupported_code));
+        assert(strcmp(diagnostics.last_unsupported_name, "Op1ae") == 0);
+        assert(diagnostics.code_invalidations != 0U);
+        assert(diagnostics.interpreter_fallbacks == 0U);
     }
 
 #if defined(__APPLE__)

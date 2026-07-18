@@ -6,6 +6,7 @@
 #include "metalsharp/gem/i386_memory.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 #define CODE UINT32_C(0x00400000)
@@ -233,6 +234,38 @@ static void exercise_avx_cpuid(enum gem_i386_engine_mode mode) {
     assert(context.gpr[GEM_I386_EAX] == 256U);
     assert(context.gpr[GEM_I386_EBX] == 576U);
     assert(context.gpr[GEM_I386_ECX] == 0U && context.gpr[GEM_I386_EDX] == 0U);
+}
+
+static void exercise_diagnostics_cpuid(enum gem_i386_engine_mode mode) {
+    struct gem_memory *memory = make_memory(cpuid, sizeof(cpuid), GEM_GUEST_PAGE_SIZE);
+    struct gem_i386_runtime *runtime = make_runtime(memory, mode, sizeof(cpuid));
+    struct gem_i386_diagnostics diagnostics = {.abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION,
+                                               .size = sizeof(diagnostics)};
+    struct gem_i386_context context;
+    uint32_t leaf1_ecx, leaf1_edx, leaf7_ebx, leaf7_ecx, extended1_edx;
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    context.gpr[GEM_I386_EAX] = 1U;
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    leaf1_ecx = context.gpr[GEM_I386_ECX];
+    leaf1_edx = context.gpr[GEM_I386_EDX];
+    initialize(&context, DATA, 0U);
+    context.gpr[GEM_I386_EAX] = 7U;
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    leaf7_ebx = context.gpr[GEM_I386_EBX];
+    leaf7_ecx = context.gpr[GEM_I386_ECX];
+    initialize(&context, DATA, 0U);
+    context.gpr[GEM_I386_EAX] = UINT32_C(0x80000001);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    extended1_edx = context.gpr[GEM_I386_EDX];
+    assert(gem_i386_runtime_diagnostics(runtime, &diagnostics));
+    assert(diagnostics.cpuid_leaf1_ecx == leaf1_ecx);
+    assert(diagnostics.cpuid_leaf1_edx == leaf1_edx);
+    assert(diagnostics.cpuid_leaf7_ebx == leaf7_ebx);
+    assert(diagnostics.cpuid_leaf7_ecx == leaf7_ecx);
+    assert(diagnostics.cpuid_extended1_edx == extended1_edx);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
 }
 
 static void exercise_xsave(enum gem_i386_engine_mode mode) {
@@ -1838,9 +1871,20 @@ static void exercise_xsaveopt_gate(void) {
     struct gem_i386_runtime *runtime =
         make_runtime(memory, GEM_I386_ENGINE_INTERPRETER, sizeof(xsaveopt_esi));
     struct gem_i386_context context;
+    struct gem_i386_diagnostics diagnostics = {.abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION,
+                                               .size = sizeof(diagnostics)};
     assert(runtime != NULL);
     initialize(&context, DATA, 7U);
     assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_UNSUPPORTED_INSTRUCTION);
+    assert(gem_i386_runtime_diagnostics(runtime, &diagnostics));
+    assert(diagnostics.unsupported_instructions == 1U);
+    assert(diagnostics.last_unsupported_eip == CODE);
+    assert(diagnostics.last_unsupported_length == sizeof(xsaveopt_esi));
+    assert(diagnostics.last_unsupported_mopcode != 0U);
+    if (strcmp(diagnostics.last_unsupported_name, "Op1ae") != 0)
+        fprintf(stderr, "unexpected XSAVEOPT diagnostic name: %s\n",
+                diagnostics.last_unsupported_name);
+    assert(strcmp(diagnostics.last_unsupported_name, "Op1ae") == 0);
     gem_i386_runtime_destroy(runtime);
     gem_memory_destroy(memory);
 }
@@ -1850,6 +1894,8 @@ int main(void) {
     exercise_xgetbv(GEM_I386_ENGINE_JIT);
     exercise_avx_cpuid(GEM_I386_ENGINE_INTERPRETER);
     exercise_avx_cpuid(GEM_I386_ENGINE_JIT);
+    exercise_diagnostics_cpuid(GEM_I386_ENGINE_INTERPRETER);
+    exercise_diagnostics_cpuid(GEM_I386_ENGINE_JIT);
     exercise_xsave(GEM_I386_ENGINE_INTERPRETER);
     exercise_xsave(GEM_I386_ENGINE_JIT);
     exercise_xrstor(GEM_I386_ENGINE_INTERPRETER);

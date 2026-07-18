@@ -24,4 +24,5 @@ _gem_wine_thread_get_native_upper_simd
 _gem_wine_thread_request_async_stop
 _gem_wine_thread_run
 _gem_wine_i386_thread_run
+_gem_wine_i386_thread_diagnostics
 _pipe2

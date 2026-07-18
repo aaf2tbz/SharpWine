@@ -133,6 +133,10 @@
         {
           "path": "third_party/patches/wine/0020-xtajit-map-i386-avx-xstate.patch",
           "sha256": "3cdd44940fe0116ba21730b3b73a5597d84462353b4b42d794177b3eab32ea8a"
+        },
+        {
+          "path": "third_party/patches/wine/0021-xtajit-trace-i386-diagnostics.patch",
+          "sha256": "a1a437ed39079d20034f294cc14d3b5514205157be3281d873a37c7566308f10"
         }
       ]
     },

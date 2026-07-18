@@ -21,6 +21,11 @@ struct gem_i386_runtime {
     struct gem_i386_performance_info performance;
     uint64_t virtual_tsc;
     uint64_t code_invalidations;
+    uint64_t unsupported_instructions;
+    uint32_t last_unsupported_eip;
+    uint32_t last_unsupported_mopcode;
+    uint32_t last_unsupported_length;
+    char last_unsupported_name[GEM_I386_DIAGNOSTIC_TEXT_BYTES];
     uint32_t quantum_budget;
     uint32_t consecutive_conflicts;
     bool running;
