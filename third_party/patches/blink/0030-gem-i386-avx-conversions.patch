@@ -1,0 +1,124 @@
+From 0000000000000000000000000000000000000030 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: execute i386 avx conversions
+
+Implement the remaining packed widening, narrowing, and 256-bit conversion
+shapes plus scalar integer-to-float merge forms. Preserve reviewed scalar
+conversion semantics, correct the rounded/truncating E6 selection, zero upper
+lanes exactly, and reject reserved VEX source fields.
+
+---
+diff -ruN --exclude=*.orig a/blink/avx.c b/blink/avx.c
+--- a/blink/avx.c
++++ b/blink/avx.c
+@@ -34,13 +34,14 @@
+     case 0x57:
+     case 0x58:
+     case 0x59:
++    case 0x5b:
+     case 0x5c:
+     case 0x5d:
+     case 0x5e:
+     case 0x5f:
+     case 0xc2:
+     case 0xc6:
+-      return pp <= 1;
++      return op == 0x5b ? pp <= 2 : pp <= 1;
+     case 0x52:
+     case 0x53:
+       return pp == 0;
+@@ -217,11 +218,23 @@
+   map = Opmap(rde);
+   op = Opcode(rde);
+   pp = Prefix(rde);
++  if (map == XED_ILD_MAP1 &&
++      ((op == 0x5a && pp <= 1) || (op == 0x5b && pp <= 2) ||
++       (op == 0xe6 && pp >= 1)) &&
++      Vreg(rde) != 0) {
++    return false;
++  }
+   if (map == XED_ILD_MAP1 && op == 0x77) return pp == 0;
+   if (SupportsStore(rde)) return true;
+   if (SupportsMaskMove(rde)) return true;
+   if (SupportsSpecial(rde)) return true;
+   if (SupportsMisc(rde)) return true;
++  if (map == XED_ILD_MAP1 && op == 0x2a && !Ymm(rde) && !Rexw(rde)) {
++    return pp == 2 || pp == 3;
++  }
++  if (Ymm(rde) && map == XED_ILD_MAP1 && (op == 0x5a || op == 0xe6)) {
++    return (op == 0x5a && pp <= 1) || (op == 0xe6 && pp >= 1);
++  }
+   if (Ymm(rde)) return map == XED_ILD_MAP1 && Supports256(op, pp);
+   if (SupportsPromoted128(map, op, pp)) {
+     return GetOp(Mopcode(rde)) != OpUd;
+@@ -469,6 +482,32 @@
+     memcpy(m->ymm_upper[reg], in + 16, 16);
+   else
+     memset(m->ymm_upper[reg], 0, 16);
++}
++
++static void RunAvxWideConversion(P) {
++  u8 initial[16] = {0}, lane[2][16], result[2][16], source[32];
++  unsigned op = Opcode(rde);
++  unsigned pp = Prefix(rde);
++  bool expands = (op == 0x5a && pp == 0) || (op == 0xe6 && pp == 2);
++  ReadOperandVector(A, expands ? 16 : 32, source);
++  if (op == 0xe6 && !expands) {
++    rde &= ~UINT64_C(00000300000000000000040);
++    if (pp == 1)
++      rde |= UINT64_C(2) << 51;
++    else
++      rde |= UINT64_C(040);
++  }
++  if (expands) {
++    RunLane(A, initial, source, result[0]);
++    RunLane(A, initial, source + 8, result[1]);
++    WriteRegisterVector(m, RexrReg(rde), 32, result[0]);
++  } else {
++    RunLane(A, initial, source, lane[0]);
++    RunLane(A, initial, source + 16, lane[1]);
++    memcpy(result[0], lane[0], 8);
++    memcpy(result[0] + 8, lane[1], 8);
++    WriteRegisterVector(m, RexrReg(rde), 16, result[0]);
++  }
+ }
+ 
+ static void PreflightMaskedStore(struct Machine *m, i64 address,
+@@ -756,6 +795,20 @@
+   return Get64(source);
+ }
+ 
++static void RunAvxIntegerToScalar(P) {
++  u8 saved_ax[8], source[16];
++  u64 value = ReadScalarOperand(A, 4);
++  unsigned destination = RexrReg(rde);
++  memcpy(saved_ax, m->ax, sizeof(saved_ax));
++  ReadRegisterVector(m, Vreg(rde), 16, source);
++  Put32(m->ax, value);
++  memcpy(m->xmm[destination], source, 16);
++  rde = RedirectRegisterSource(rde, 0);
++  GetOp(Mopcode(rde))(A);
++  memcpy(m->ax, saved_ax, sizeof(saved_ax));
++  memset(m->ymm_upper[destination], 0, 16);
++}
++
+ static void WriteScalarDestination(P, size_t size, u64 value) {
+   u8 *destination;
+   if (IsModrmRegister(rde)) {
+@@ -888,6 +941,15 @@
+     RunAvxMisc(A);
+     return;
+   }
++  if (Opmap(rde) == XED_ILD_MAP1 && Opcode(rde) == 0x2a) {
++    RunAvxIntegerToScalar(A);
++    return;
++  }
++  if (Ymm(rde) && Opmap(rde) == XED_ILD_MAP1 &&
++      (Opcode(rde) == 0x5a || Opcode(rde) == 0xe6)) {
++    RunAvxWideConversion(A);
++    return;
++  }
+ 
+   if (Opcode(rde) == 0x77) {
+     unsigned i;

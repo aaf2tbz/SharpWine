@@ -218,3 +218,10 @@ suppression, zero-filled masked loads, and preflighted restartable stores.
 Selected lanes are coalesced into one GEM transaction span so every write is
 retained, while inactive trailing pages remain untouched; the overlap stash
 is also widened to the 32-byte maximum used by native AVX moves.
+
+`0030-gem-i386-avx-conversions.patch` (SHA-256
+`e0d6cf89d9d494edeb2459a91a68992cdcf473dd2db4283067e449395a0c185b`)
+implements 256-bit packed float/integer conversions, asymmetric widening and
+narrowing forms, and scalar VCVTSI2SS/SD merge semantics. It preserves exact
+source widths, destination/upper-lane contracts, and MXCSR rounding versus
+truncation behavior while rejecting reserved VEX source fields.

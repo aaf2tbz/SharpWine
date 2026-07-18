@@ -53,6 +53,16 @@ static const uint8_t vstmxcsr_esi[] = {0xc5U, 0xf8U, 0xaeU, 0x1eU};
 static const uint8_t vmaskmovps_ymm_load[] = {0xc4U, 0xe2U, 0x75U, 0x2cU, 0x06U};
 static const uint8_t vmaskmovps_ymm_store[] = {0xc4U, 0xe2U, 0x75U, 0x2eU, 0x16U};
 static const uint8_t vmaskmovdqu[] = {0xc5U, 0xf9U, 0xf7U, 0xd1U};
+static const uint8_t vcvtps2pd_ymm[] = {0xc5U, 0xfcU, 0x5aU, 0xc1U};
+static const uint8_t vcvtpd2ps_ymm[] = {0xc5U, 0xfdU, 0x5aU, 0xc1U};
+static const uint8_t vcvtdq2pd_ymm[] = {0xc5U, 0xfeU, 0xe6U, 0xc1U};
+static const uint8_t vcvtpd2dq_ymm[] = {0xc5U, 0xffU, 0xe6U, 0xc1U};
+static const uint8_t vcvttpd2dq_ymm[] = {0xc5U, 0xfdU, 0xe6U, 0xc1U};
+static const uint8_t vcvtdq2ps_ymm[] = {0xc5U, 0xfcU, 0x5bU, 0xc1U};
+static const uint8_t vcvtps2dq_ymm[] = {0xc5U, 0xfdU, 0x5bU, 0xc1U};
+static const uint8_t vcvttps2dq_ymm[] = {0xc5U, 0xfeU, 0x5bU, 0xc1U};
+static const uint8_t vcvtsi2ss_eax[] = {0xc5U, 0xf2U, 0x2aU, 0xc0U};
+static const uint8_t vcvtsi2sd_eax[] = {0xc5U, 0xf3U, 0x2aU, 0xc0U};
 
 static void put32(uint8_t *p, uint32_t value) {
     p[0] = (uint8_t)value;
@@ -756,6 +766,110 @@ static void exercise_avx_mask_moves(enum gem_i386_engine_mode mode) {
     gem_memory_destroy(memory);
 }
 
+static void run_avx_conversion(enum gem_i386_engine_mode mode, const uint8_t *code,
+                               size_t code_size, const void *lower, const void *upper,
+                               struct gem_i386_context *context) {
+    struct gem_memory *memory = make_memory(code, code_size, GEM_GUEST_PAGE_SIZE);
+    struct gem_i386_runtime *runtime = make_runtime(memory, mode, code_size);
+    assert(runtime != NULL);
+    initialize(context, DATA, 0U);
+    memcpy(&context->xmm[1], lower, 16U);
+    if (upper != NULL)
+        memcpy(&context->ymm_upper[1], upper, 16U);
+    assert(gem_i386_runtime_run(runtime, context, 1U) == GEM_STOP_HOST_RETURN);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void exercise_avx_conversions(enum gem_i386_engine_mode mode) {
+    const float floats[8] = {1.5f, -2.25f, 3.5f, 4.25f, 1.2f, -2.8f, 3.5f, -4.5f};
+    const double doubles[4] = {1.5, -2.25, 3.5, 4.25};
+    const double conversion_doubles[4] = {1.2, -2.8, 3.5, -4.5};
+    const int32_t integers[8] = {1, -2, 3, -4, 5, -6, 7, -8};
+    const int32_t rounded[4] = {1, -3, 4, -4};
+    const int32_t truncated[4] = {1, -2, 3, -4};
+    struct gem_i386_context context;
+    double expected_doubles[4];
+    float expected_floats[8];
+    uint8_t merged[16];
+    float scalar_float;
+    double scalar_double;
+    size_t i;
+
+    run_avx_conversion(mode, vcvtps2pd_ymm, sizeof(vcvtps2pd_ymm), floats, NULL, &context);
+    for (i = 0U; i < 4U; ++i)
+        expected_doubles[i] = floats[i];
+    assert(memcmp(&context.xmm[0], expected_doubles, 16U) == 0);
+    assert(memcmp(&context.ymm_upper[0], expected_doubles + 2, 16U) == 0);
+
+    run_avx_conversion(mode, vcvtpd2ps_ymm, sizeof(vcvtpd2ps_ymm), doubles, doubles + 2, &context);
+    for (i = 0U; i < 4U; ++i)
+        expected_floats[i] = (float)doubles[i];
+    assert(memcmp(&context.xmm[0], expected_floats, 16U) == 0);
+    assert(context.ymm_upper[0].lo == 0U && context.ymm_upper[0].hi == 0U);
+
+    run_avx_conversion(mode, vcvtdq2pd_ymm, sizeof(vcvtdq2pd_ymm), integers, NULL, &context);
+    for (i = 0U; i < 4U; ++i)
+        expected_doubles[i] = integers[i];
+    assert(memcmp(&context.xmm[0], expected_doubles, 16U) == 0);
+    assert(memcmp(&context.ymm_upper[0], expected_doubles + 2, 16U) == 0);
+
+    run_avx_conversion(mode, vcvtpd2dq_ymm, sizeof(vcvtpd2dq_ymm), conversion_doubles,
+                       conversion_doubles + 2, &context);
+    assert(memcmp(&context.xmm[0], rounded, sizeof(rounded)) == 0);
+    assert(context.ymm_upper[0].lo == 0U && context.ymm_upper[0].hi == 0U);
+
+    run_avx_conversion(mode, vcvttpd2dq_ymm, sizeof(vcvttpd2dq_ymm), conversion_doubles,
+                       conversion_doubles + 2, &context);
+    assert(memcmp(&context.xmm[0], truncated, sizeof(truncated)) == 0);
+
+    run_avx_conversion(mode, vcvtdq2ps_ymm, sizeof(vcvtdq2ps_ymm), integers, integers + 4,
+                       &context);
+    for (i = 0U; i < 8U; ++i)
+        expected_floats[i] = (float)integers[i];
+    assert(memcmp(&context.xmm[0], expected_floats, 16U) == 0);
+    assert(memcmp(&context.ymm_upper[0], expected_floats + 4, 16U) == 0);
+
+    run_avx_conversion(mode, vcvtps2dq_ymm, sizeof(vcvtps2dq_ymm), floats, floats + 4, &context);
+    assert(memcmp(&context.ymm_upper[0], rounded, sizeof(rounded)) == 0);
+    run_avx_conversion(mode, vcvttps2dq_ymm, sizeof(vcvttps2dq_ymm), floats, floats + 4, &context);
+    assert(memcmp(&context.ymm_upper[0], truncated, sizeof(truncated)) == 0);
+
+    memset(merged, 0xa5, sizeof(merged));
+    run_avx_conversion(mode, vcvtsi2ss_eax, sizeof(vcvtsi2ss_eax), merged, NULL, &context);
+    context.gpr[GEM_I386_EAX] = 42U;
+    context.eip = CODE;
+    {
+        struct gem_memory *memory =
+            make_memory(vcvtsi2ss_eax, sizeof(vcvtsi2ss_eax), GEM_GUEST_PAGE_SIZE);
+        struct gem_i386_runtime *runtime = make_runtime(memory, mode, sizeof(vcvtsi2ss_eax));
+        assert(runtime != NULL);
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+        gem_i386_runtime_destroy(runtime);
+        gem_memory_destroy(memory);
+    }
+    scalar_float = 42.0f;
+    memcpy(merged, &scalar_float, sizeof(scalar_float));
+    assert(memcmp(&context.xmm[0], merged, sizeof(merged)) == 0);
+
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], merged, sizeof(merged));
+    context.gpr[GEM_I386_EAX] = 42U;
+    {
+        struct gem_memory *memory =
+            make_memory(vcvtsi2sd_eax, sizeof(vcvtsi2sd_eax), GEM_GUEST_PAGE_SIZE);
+        struct gem_i386_runtime *runtime = make_runtime(memory, mode, sizeof(vcvtsi2sd_eax));
+        assert(runtime != NULL);
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+        gem_i386_runtime_destroy(runtime);
+        gem_memory_destroy(memory);
+    }
+    scalar_double = 42.0;
+    memcpy(merged, &scalar_double, sizeof(scalar_double));
+    assert(memcmp(&context.xmm[0], merged, sizeof(merged)) == 0);
+    assert(context.ymm_upper[0].lo == 0U && context.ymm_upper[0].hi == 0U);
+}
+
 static void exercise_promoted128(enum gem_i386_engine_mode mode, const uint8_t *code,
                                  size_t code_size, unsigned operation) {
     struct gem_memory *memory = make_memory(code, code_size, GEM_GUEST_PAGE_SIZE);
@@ -881,6 +995,8 @@ int main(void) {
     exercise_avx_misc_destinations(GEM_I386_ENGINE_JIT);
     exercise_avx_mask_moves(GEM_I386_ENGINE_INTERPRETER);
     exercise_avx_mask_moves(GEM_I386_ENGINE_JIT);
+    exercise_avx_conversions(GEM_I386_ENGINE_INTERPRETER);
+    exercise_avx_conversions(GEM_I386_ENGINE_JIT);
     exercise_promoted128(GEM_I386_ENGINE_INTERPRETER, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_promoted128(GEM_I386_ENGINE_JIT, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_vmovhlps(GEM_I386_ENGINE_INTERPRETER);
