@@ -184,6 +184,7 @@ if(MSWR_ENABLE_X64_ENGINE OR MSWR_ENABLE_I386_ENGINE)
         --avx-packed-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0023-gem-i386-avx-packed-lanes.patch"
         --avx-promoted-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0024-gem-i386-avx-promoted-128.patch"
         --avx-store-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0025-gem-i386-avx-stores.patch"
+        --avx-cross-lane-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0026-gem-i386-avx-cross-lane.patch"
         --capability-manifest "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/i386-phase3-capabilities.json"
         --phase3-corpus "${CMAKE_CURRENT_SOURCE_DIR}/tests/i386_phase3_conformance.c"
         --provenance "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/0008-blink-embedding.provenance.json"

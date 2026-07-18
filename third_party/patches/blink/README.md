@@ -187,3 +187,11 @@ AVX stores. Full source snapshots and explicit cross-page stash commits keep
 interpreter and JIT stores atomic and restartable; exact scalar widths avoid
 touching an adjacent uncommitted page, and aligned forms retain their fault
 contract.
+
+`0026-gem-i386-avx-cross-lane.patch` (SHA-256
+`7d996a9f1b2db4c7975340f82c9ec0a659478516e3d1e1f7cdd84cec2b4a9b9c`)
+implements broadcast, immediate and variable in-lane permutation,
+VPERM2F128, VINSERTF128/VEXTRACTF128, VTEST/VPTEST, and four-operand variable
+blend semantics. Sources are snapshotted before overlapping destinations,
+memory widths remain exact at page boundaries, and every form shares the
+portable interpreter/JIT transaction helper.

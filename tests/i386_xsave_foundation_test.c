@@ -32,6 +32,14 @@ static const uint8_t vmovhlps_xmm[] = {0xc5U, 0xf0U, 0x12U, 0xc2U};
 static const uint8_t vpshufb_xmm[] = {0xc4U, 0xe2U, 0x71U, 0x00U, 0xc2U};
 static const uint8_t vpmovsxbd_esi[] = {0xc4U, 0xe2U, 0x79U, 0x21U, 0x06U};
 static const uint8_t vroundps_xmm[] = {0xc4U, 0xe3U, 0x79U, 0x08U, 0xc2U, 0x00U};
+static const uint8_t vbroadcastss_ymm[] = {0xc4U, 0xe2U, 0x7dU, 0x18U, 0x06U};
+static const uint8_t vpermilps_ymm_imm[] = {0xc4U, 0xe3U, 0x7dU, 0x04U, 0xc1U, 0x1bU};
+static const uint8_t vpermilps_ymm_var[] = {0xc4U, 0xe2U, 0x75U, 0x0cU, 0xc2U};
+static const uint8_t vperm2f128_ymm[] = {0xc4U, 0xe3U, 0x75U, 0x06U, 0xc2U, 0x21U};
+static const uint8_t vinsertf128_ymm[] = {0xc4U, 0xe3U, 0x75U, 0x18U, 0xc2U, 0x01U};
+static const uint8_t vextractf128_xmm[] = {0xc4U, 0xe3U, 0x7dU, 0x19U, 0xc2U, 0x01U};
+static const uint8_t vtestps_ymm[] = {0xc4U, 0xe2U, 0x7dU, 0x0eU, 0xcaU};
+static const uint8_t vblendvps_ymm[] = {0xc4U, 0xe3U, 0x75U, 0x4aU, 0xc2U, 0x30U};
 
 static void put32(uint8_t *p, uint32_t value) {
     p[0] = (uint8_t)value;
@@ -361,6 +369,147 @@ static void exercise_vmov_store_shapes(enum gem_i386_engine_mode mode) {
     gem_memory_destroy(memory);
 }
 
+static void exercise_avx_cross_lane(enum gem_i386_engine_mode mode) {
+    const uint32_t broadcast = UINT32_C(0x3fa00000);
+    const uint64_t first[4] = {UINT64_C(0x1111111111111111), UINT64_C(0x1212121212121212),
+                               UINT64_C(0x1313131313131313), UINT64_C(0x1414141414141414)};
+    const uint64_t second[4] = {UINT64_C(0x2121212121212121), UINT64_C(0x2222222222222222),
+                                UINT64_C(0x2323232323232323), UINT64_C(0x2424242424242424)};
+    const uint64_t permuted[4] = {UINT64_C(0x1313131313131313), UINT64_C(0x1414141414141414),
+                                  UINT64_C(0x2121212121212121), UINT64_C(0x2222222222222222)};
+    const uint64_t inserted[4] = {UINT64_C(0x1111111111111111), UINT64_C(0x1212121212121212),
+                                  UINT64_C(0x2121212121212121), UINT64_C(0x2222222222222222)};
+    struct gem_memory *memory;
+    struct gem_i386_runtime *runtime;
+    struct gem_i386_context context;
+    uint32_t actual32[8];
+
+    memory = make_memory(vbroadcastss_ymm, sizeof(vbroadcastss_ymm), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vbroadcastss_ymm));
+    assert(runtime != NULL);
+    assert(gem_i386_memory_write(memory, DATA + GEM_GUEST_PAGE_SIZE - 4U, &broadcast,
+                                 sizeof(broadcast)) == GEM_MEMORY_OK);
+    initialize(&context, DATA + GEM_GUEST_PAGE_SIZE - 4U, 0U);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    memcpy(actual32, &context.xmm[0], 16U);
+    memcpy(actual32 + 4, &context.ymm_upper[0], 16U);
+    for (size_t i = 0U; i < 8U; ++i)
+        assert(actual32[i] == broadcast);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    {
+        const uint32_t values[8] = {0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U};
+        const uint32_t control[8] = {1U, 0U, 3U, 2U, 2U, 3U, 0U, 1U};
+        const uint32_t immediate_expected[8] = {3U, 2U, 1U, 0U, 7U, 6U, 5U, 4U};
+        const uint32_t variable_expected[8] = {1U, 0U, 3U, 2U, 6U, 7U, 4U, 5U};
+        memory = make_memory(vpermilps_ymm_imm, sizeof(vpermilps_ymm_imm), GEM_GUEST_PAGE_SIZE);
+        runtime = make_runtime(memory, mode, sizeof(vpermilps_ymm_imm));
+        assert(runtime != NULL);
+        initialize(&context, DATA, 0U);
+        memcpy(&context.xmm[1], values, 16U);
+        memcpy(&context.ymm_upper[1], values + 4, 16U);
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+        assert(memcmp(&context.xmm[0], immediate_expected, 16U) == 0);
+        assert(memcmp(&context.ymm_upper[0], immediate_expected + 4, 16U) == 0);
+        gem_i386_runtime_destroy(runtime);
+        gem_memory_destroy(memory);
+
+        memory = make_memory(vpermilps_ymm_var, sizeof(vpermilps_ymm_var), GEM_GUEST_PAGE_SIZE);
+        runtime = make_runtime(memory, mode, sizeof(vpermilps_ymm_var));
+        assert(runtime != NULL);
+        initialize(&context, DATA, 0U);
+        memcpy(&context.xmm[1], values, 16U);
+        memcpy(&context.ymm_upper[1], values + 4, 16U);
+        memcpy(&context.xmm[2], control, 16U);
+        memcpy(&context.ymm_upper[2], control + 4, 16U);
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+        assert(memcmp(&context.xmm[0], variable_expected, 16U) == 0);
+        assert(memcmp(&context.ymm_upper[0], variable_expected + 4, 16U) == 0);
+        gem_i386_runtime_destroy(runtime);
+        gem_memory_destroy(memory);
+    }
+
+    memory = make_memory(vperm2f128_ymm, sizeof(vperm2f128_ymm), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vperm2f128_ymm));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], first, 16U);
+    memcpy(&context.ymm_upper[1], first + 2, 16U);
+    memcpy(&context.xmm[2], second, 16U);
+    memcpy(&context.ymm_upper[2], second + 2, 16U);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(memcmp(&context.xmm[0], permuted, 16U) == 0);
+    assert(memcmp(&context.ymm_upper[0], permuted + 2, 16U) == 0);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    memory = make_memory(vinsertf128_ymm, sizeof(vinsertf128_ymm), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vinsertf128_ymm));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], first, 16U);
+    memcpy(&context.ymm_upper[1], first + 2, 16U);
+    memcpy(&context.xmm[2], second, 16U);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(memcmp(&context.xmm[0], inserted, 16U) == 0);
+    assert(memcmp(&context.ymm_upper[0], inserted + 2, 16U) == 0);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    memory = make_memory(vextractf128_xmm, sizeof(vextractf128_xmm), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vextractf128_xmm));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[0], first, 16U);
+    memcpy(&context.ymm_upper[0], first + 2, 16U);
+    context.ymm_upper[2].lo = UINT64_MAX;
+    context.ymm_upper[2].hi = UINT64_MAX;
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(memcmp(&context.xmm[2], first + 2, 16U) == 0);
+    assert(context.ymm_upper[2].lo == 0U && context.ymm_upper[2].hi == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void exercise_avx_special_flags_and_blend(enum gem_i386_engine_mode mode) {
+    const uint32_t first[8] = {UINT32_C(0x80000000), 1U, 1U, 1U, 1U, 1U, 1U, 1U};
+    const uint32_t second[8] = {UINT32_C(0x80000000), 2U, 2U, 2U, 2U, 2U, 2U, 2U};
+    const uint32_t mask[8] = {UINT32_C(0x80000000), 0U, UINT32_C(0x80000000), 0U,
+                              UINT32_C(0x80000000), 0U, UINT32_C(0x80000000), 0U};
+    const uint32_t expected[8] = {UINT32_C(0x80000000), 1U, 2U, 1U, 2U, 1U, 2U, 1U};
+    struct gem_memory *memory = make_memory(vtestps_ymm, sizeof(vtestps_ymm), GEM_GUEST_PAGE_SIZE);
+    struct gem_i386_runtime *runtime = make_runtime(memory, mode, sizeof(vtestps_ymm));
+    struct gem_i386_context context;
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], first, 16U);
+    memcpy(&context.ymm_upper[1], first + 4, 16U);
+    memcpy(&context.xmm[2], second, 16U);
+    memcpy(&context.ymm_upper[2], second + 4, 16U);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert((context.eflags & (1U << 6)) == 0U);
+    assert((context.eflags & 1U) != 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    memory = make_memory(vblendvps_ymm, sizeof(vblendvps_ymm), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vblendvps_ymm));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], first, 16U);
+    memcpy(&context.ymm_upper[1], first + 4, 16U);
+    memcpy(&context.xmm[2], second, 16U);
+    memcpy(&context.ymm_upper[2], second + 4, 16U);
+    memcpy(&context.xmm[3], mask, 16U);
+    memcpy(&context.ymm_upper[3], mask + 4, 16U);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(memcmp(&context.xmm[0], expected, 16U) == 0);
+    assert(memcmp(&context.ymm_upper[0], expected + 4, 16U) == 0);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
 static void exercise_promoted128(enum gem_i386_engine_mode mode, const uint8_t *code,
                                  size_t code_size, unsigned operation) {
     struct gem_memory *memory = make_memory(code, code_size, GEM_GUEST_PAGE_SIZE);
@@ -476,6 +625,10 @@ int main(void) {
     exercise_vmov256_store_cross_page(GEM_I386_ENGINE_JIT);
     exercise_vmov_store_shapes(GEM_I386_ENGINE_INTERPRETER);
     exercise_vmov_store_shapes(GEM_I386_ENGINE_JIT);
+    exercise_avx_cross_lane(GEM_I386_ENGINE_INTERPRETER);
+    exercise_avx_cross_lane(GEM_I386_ENGINE_JIT);
+    exercise_avx_special_flags_and_blend(GEM_I386_ENGINE_INTERPRETER);
+    exercise_avx_special_flags_and_blend(GEM_I386_ENGINE_JIT);
     exercise_promoted128(GEM_I386_ENGINE_INTERPRETER, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_promoted128(GEM_I386_ENGINE_JIT, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_vmovhlps(GEM_I386_ENGINE_INTERPRETER);
