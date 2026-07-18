@@ -225,3 +225,10 @@ implements 256-bit packed float/integer conversions, asymmetric widening and
 narrowing forms, and scalar VCVTSI2SS/SD merge semantics. It preserves exact
 source widths, destination/upper-lane contracts, and MXCSR rounding versus
 truncation behavior while rejecting reserved VEX source fields.
+
+`0031-gem-i386-avx-inventory-closures.patch` (SHA-256
+`82d31a2f6ce8a50b6389b1b044e9c570377ee785f90fc92c08e46ebb273ec0e5`)
+closes gaps found by the pinned Intel XED AVX inventory review: register
+destinations for store-direction moves, scalar merge-register moves, 256-bit
+duplicate/unaligned loads, and lane-local packed round, blend, and dot-product
+forms. All retain non-destructive sources and exact upper-lane clearing.

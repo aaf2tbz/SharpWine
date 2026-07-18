@@ -176,6 +176,17 @@ The selected guest is i386 legacy32 (Windows WoW64):
   whole/split quantum equality, interpreter/JIT parity, and both 65,536-case
   golden replays pass. RDTSCP is therefore advertised without importing host
   timing nondeterminism.
+- The AVX admission review is checked against Intel XED revision
+  `519c843c86547e2003f5a404a53358a7dcfb82f3`, covering all 255 AVX instruction
+  classes and 723 encoding-pattern records in `datafiles/avx/avx-isa.txt`.
+  The review found and closed valid legacy32 forms that the initial
+  operation-family implementation had missed: store-direction register
+  destinations (including scalar merge moves), 256-bit duplicate and
+  unaligned loads, and 256-bit lane-local round, blend, and dot-product forms.
+  Long-mode-only GPR64 scalar insert/extract variants remain inapplicable to
+  the selected legacy32 guest; every applicable AVX form is now routed through
+  a native portable handler or a reviewed legacy semantic handler behind exact
+  VEX admission.
 
 ## Acceptance authority
 
