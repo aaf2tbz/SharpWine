@@ -325,8 +325,8 @@ static size_t insert_stripe(size_t stripes[GEM_MEMORY_LOCK_STRIPES], size_t coun
     stripes[i] = stripe;
     return count + 1U;
 }
-static size_t page_stripes(uint64_t address, const struct backing *backing,
-                           size_t stripes[GEM_MEMORY_LOCK_STRIPES], size_t count) {
+static size_t page_stripes(uint64_t address, const struct backing *backing, size_t *stripes,
+                           size_t count) {
     count = insert_stripe(stripes, count, address_stripe_index(address));
     if (backing != NULL)
         count = insert_stripe(stripes, count, backing_stripe_index(backing));

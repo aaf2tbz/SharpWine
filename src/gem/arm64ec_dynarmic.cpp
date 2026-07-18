@@ -459,9 +459,9 @@ struct Backend {
         env.Attach(jit.get());
     }
 
-    void InvalidateCodeCache() {
-        jit->ClearCache();
-        external_cache_invalidation_pending = true;
+    void RecreateJit() {
+        jit = std::make_unique<Dynarmic::A64::Jit>(config);
+        env.Attach(jit.get());
     }
 
     Dynarmic::A64::UserConfig MakeConfig(const gem_arm64ec_runtime *runtime) {
@@ -493,7 +493,6 @@ struct Backend {
     Dynarmic::ExclusiveMonitor monitor;
     Dynarmic::A64::UserConfig config;
     std::unique_ptr<Dynarmic::A64::Jit> jit;
-    bool external_cache_invalidation_pending = false;
 };
 
 CpuSnapshot TakeSnapshot(const Dynarmic::A64::Jit &jit) {
@@ -621,10 +620,9 @@ bool HasForbiddenArm64ecRegister(std::uint32_t word) {
 #endif
 }
 
-void ClearTransientHalts(Dynarmic::A64::Jit &jit, bool preserve_cache_invalidation = false) {
+void ClearTransientHalts(Dynarmic::A64::Jit &jit) {
     jit.ClearHalt(Dynarmic::HaltReason::Step);
-    if (!preserve_cache_invalidation)
-        jit.ClearHalt(Dynarmic::HaltReason::CacheInvalidation);
+    jit.ClearHalt(Dynarmic::HaltReason::CacheInvalidation);
     jit.ClearHalt(Dynarmic::HaltReason::MemoryAbort);
     jit.ClearHalt(Dynarmic::HaltReason::UserDefined1);
     jit.ClearHalt(Dynarmic::HaltReason::UserDefined2);
@@ -674,8 +672,7 @@ extern "C" enum gem_stop_reason gem_arm64ec_dynarmic_run(struct gem_arm64ec_runt
         runtime->config.boundary_delivery != GEM_ARM64EC_BOUNDARY_SVC_TRAP)
         jit.ClearCache();
     ImportContext(jit, *runtime, *context);
-    ClearTransientHalts(jit, backend.external_cache_invalidation_pending);
-    backend.external_cache_invalidation_pending = false;
+    ClearTransientHalts(jit);
 
     if (runtime->config.boundary_delivery == GEM_ARM64EC_BOUNDARY_SVC_TRAP) {
         std::uint32_t zero_progress_resumes = 0U;
@@ -1193,13 +1190,7 @@ extern "C" void gem_arm64ec_dynarmic_invalidate_code(struct gem_arm64ec_runtime 
     if (runtime == nullptr || runtime->backend == nullptr || size == 0U)
         return;
     Backend &backend = *static_cast<Backend *>(runtime->backend);
-    /* Dynarmic does not expose a public range invalidation API.  ClearCache()
-     * drops all translated guest blocks while retaining the initialized JIT
-     * instance and its emitted dispatch prelude.  Reconstructing the JIT here
-     * made every Wine image-map/protection notification regenerate that large
-     * prelude, turning routine loader invalidations into seconds of startup
-     * work. */
-    backend.InvalidateCodeCache();
+    backend.RecreateJit();
     (void)address;
     (void)size;
 }

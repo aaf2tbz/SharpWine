@@ -204,7 +204,7 @@ if(NOT actual STREQUAL "0121ff0947c961097dbec42e506e307e5e88ccda61ec5f418e9e389a
  message(FATAL_ERROR "Blink patch hash mismatch: ${p48}")
 endif()
 file(SHA256 "${p49}" actual)
-if(NOT actual STREQUAL "c63cdb93ec1154c4af192f01de4817551f14fad6a918d466ac6a8bc3e1ff6a87")
+if(NOT actual STREQUAL "3e8ab6adb40d7c4174737330e5ab499c65093467e38af4f516503c7664f18cf0")
  message(FATAL_ERROR "Blink patch hash mismatch: ${p49}")
 endif()
 foreach(pair IN ITEMS "machine.h;337f3a3a56e560994b269e667be5e84597f5da989bcd94d1ef8519c4a8cc780f" "machine.c;73a32c95fbc191394c116bd2f41ebba464c963718b3785adaca22c5a93e8dc89" "throw.c;5df4b02be0d089b25c6318841cb072c5af9ca1b3e5aa9e11982bdc73ca7e2eed")

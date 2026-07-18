@@ -360,7 +360,7 @@ Dropping writable non-executable data no longer flushes Blink's instruction
 cache; executable pages retain the existing decode/JIT invalidation rules.
 
 `0049-gem-i386-tiered-resident-fastpath.patch` (SHA-256
-`c63cdb93ec1154c4af192f01de4817551f14fad6a918d466ac6a8bc3e1ff6a87`)
+`3e8ab6adb40d7c4174737330e5ab499c65093467e38af4f516503c7664f18cf0`)
 folds the W11 resident-state, page-lookup, tiered-JIT, precise dirty-page, and
 deferred mnemonic work into the reproducible patch stack. Safe hot PCs are
 promoted through Blink's checked compiler before the resident fast path uses

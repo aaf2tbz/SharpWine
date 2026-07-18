@@ -49,8 +49,9 @@ static enum gem_wine_status boundary(void *opaque,
     if (state->expected_engine_status != 0U)
         assert(request->stop.engine_status == state->expected_engine_status);
     if (state->expected_access != 0U && request->stop.access != state->expected_access)
-        fprintf(stderr, "i386 boundary access mismatch: expected=%u actual=%u event=%u eip=%08x "
-                        "fault=%08llx memory=%u\n",
+        fprintf(stderr,
+                "i386 boundary access mismatch: expected=%u actual=%u event=%u eip=%08x "
+                "fault=%08llx memory=%u\n",
                 state->expected_access, request->stop.access, request->event, request->context.eip,
                 (unsigned long long)request->stop.fault_address, request->stop.memory_error);
     if (state->expected_access != 0U)
@@ -169,8 +170,8 @@ int main(void) {
     i386_config.unix_call_boundary = UINT32_C(0x7ffe1010);
     i386_config.host_return_sentinel = HOST_RETURN;
 #if defined(GEM_WINE_I386_TEST_INTERPRETER)
-    i386_config.flags = GEM_WINE_I386_FLAG_INTERPRETER_ORACLE |
-                        GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY;
+    i386_config.flags =
+        GEM_WINE_I386_FLAG_INTERPRETER_ORACLE | GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY;
 #else
     i386_config.flags = GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY;
 #endif

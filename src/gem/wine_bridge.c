@@ -557,8 +557,8 @@ enum gem_wine_status gem_wine_process_prepare_i386(struct gem_wine_process *proc
     enum gem_wine_status status = GEM_WINE_OK;
     if (process == NULL || config == NULL || config->version != GEM_WINE_I386_CONFIG_VERSION ||
         config->struct_size != sizeof(*config) ||
-        (config->flags & ~(GEM_WINE_I386_FLAG_INTERPRETER_ORACLE |
-                           GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY)) != 0U ||
+        (config->flags &
+         ~(GEM_WINE_I386_FLAG_INTERPRETER_ORACLE | GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY)) != 0U ||
         !zero_dwords(config->reserved, sizeof(config->reserved) / sizeof(config->reserved[0])) ||
         !validate_i386_ntdll(process, config))
         return GEM_WINE_INVALID_ARGUMENT;
@@ -743,8 +743,8 @@ enum gem_wine_status gem_wine_process_protect(struct gem_wine_process *process, 
     enum gem_wine_status status;
     if (process == NULL || !process_guest_range_valid(process, address, size))
         return GEM_WINE_INVALID_ARGUMENT;
-    status = memory_status(gem_memory_protect(process->memory, address, size, protection,
-                                              old_protection));
+    status = memory_status(
+        gem_memory_protect(process->memory, address, size, protection, old_protection));
     return status == GEM_WINE_OK ? invalidate_precise_i386_pages(process, address, size) : status;
 }
 
