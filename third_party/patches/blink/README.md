@@ -171,3 +171,11 @@ operations. It executes both architectural 128-bit lanes in one checked GEM
 transaction, snapshots the complete memory source before changing destination
 state, preserves precise cross-page faults, and commits both YMM halves
 together through the same interpreter/JIT semantic helper.
+
+`0024-gem-i386-avx-promoted-128.patch` (SHA-256
+`859f5cd44ae2a4224c353589c13b2eaaf83a0b525bccd36c6a0a2c7a1bb2c9c9`)
+executes the native VEX.128 forms promoted from Blink's portable SSE handlers,
+including integer, shuffle, conversion, rounding, AES, and carry-less multiply
+families. It supplies the non-destructive VEX source, preserves exact narrow
+memory access widths, zeros the architectural YMM upper half, and rejects
+256-bit integer forms that belong to AVX2.

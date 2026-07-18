@@ -1,0 +1,186 @@
+From 0000000000000000000000000000000000000024 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: execute promoted i386 avx instructions
+
+Admit the native VEX.128 forms whose architectural semantics are promoted
+from Blink's portable SSE handlers. Prepare the non-destructive VEX source,
+retain exact narrow memory widths, zero the destination YMM upper half, and
+route JIT execution through the same transactional semantic helper. Keep
+256-bit integer AVX2 encodings outside this AVX-only admission slice.
+
+---
+diff -ruN --exclude=*.orig a/blink/avx.c b/blink/avx.c
+--- a/blink/avx.c	2026-07-18 01:10:50
++++ b/blink/avx.c	2026-07-18 01:17:27
+@@ -51,13 +51,56 @@
+   }
+ }
+ 
++static bool SupportsPromoted128(unsigned map, unsigned op, unsigned pp) {
++  if (map == XED_ILD_MAP1) {
++    if (pp == 0) {
++      return op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 ||
++             op == 0x28 || (op >= 0x51 && op <= 0x5f) || op == 0xc2 ||
++             op == 0xc6;
++    }
++    if (pp == 1) {
++      return op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 ||
++             op == 0x28 || (op >= 0x51 && op <= 0x6d) || op == 0x6f ||
++             op == 0x70 || (op >= 0x74 && op <= 0x76) || op == 0x7c ||
++             op == 0x7d || op == 0xc2 || op == 0xc6 ||
++             (op >= 0xd0 && op <= 0xd5) || (op >= 0xd8 && op <= 0xef) ||
++             (op >= 0xf4 && op <= 0xf6) || (op >= 0xf8 && op <= 0xfe);
++    }
++    if (pp == 2) {
++      return op == 0x10 || op == 0x12 || op == 0x16 ||
++             (op >= 0x51 && op <= 0x5f) || op == 0x6f || op == 0x70 ||
++             op == 0xc2 || op == 0xe6 || op == 0xf0;
++    }
++    return op == 0x10 || op == 0x12 || (op >= 0x51 && op <= 0x5f) ||
++           op == 0x70 || op == 0x7c || op == 0x7d || op == 0xc2 || op == 0xd0 ||
++           op == 0xe6 || op == 0xf0;
++  }
++  if (pp != 1) return false;
++  if (map == XED_ILD_MAP2) {
++    return op <= 0x0b || (op >= 0x1c && op <= 0x1e) ||
++           (op >= 0x20 && op <= 0x25) || (op >= 0x28 && op <= 0x2b) ||
++           (op >= 0x30 && op <= 0x35) || (op >= 0x37 && op <= 0x41) ||
++           (op >= 0xdb && op <= 0xdf);
++  }
++  if (map == XED_ILD_MAP3) {
++    return (op >= 0x08 && op <= 0x0f) || op == 0x21 ||
++           (op >= 0x40 && op <= 0x42) || op == 0x44 || op == 0xdf;
++  }
++  return false;
++}
++
+ bool IsAvxFoundationOp(struct Machine *m, u64 rde) {
+-  unsigned op, pp;
+-  if (!IsVex(m) || Opmap(rde) != XED_ILD_MAP1) return false;
++  unsigned map, op, pp;
++  if (!IsVex(m)) return false;
++  map = Opmap(rde);
+   op = Opcode(rde);
+   pp = Prefix(rde);
+-  if (op == 0x77) return pp == 0;
+-  if (Ymm(rde)) return Supports256(op, pp);
++  if (map == XED_ILD_MAP1 && op == 0x77) return pp == 0;
++  if (Ymm(rde)) return map == XED_ILD_MAP1 && Supports256(op, pp);
++  if (SupportsPromoted128(map, op, pp)) {
++    return GetOp(Mopcode(rde)) != OpUd;
++  }
++  if (map != XED_ILD_MAP1) return false;
+   switch (op) {
+     case 0x10:
+       return pp >= 2;
+@@ -91,9 +134,21 @@
+ }
+ 
+ static bool UsesVreg(u64 rde) {
++  unsigned map = Opmap(rde);
++  unsigned op = Opcode(rde);
++  if (map == XED_ILD_MAP2) {
++    return op <= 0x0b || op == 0x28 || op == 0x29 || op == 0x2b ||
++           (op >= 0x37 && op <= 0x40) || (op >= 0xdc && op <= 0xdf);
++  }
++  if (map == XED_ILD_MAP3) {
++    return (op >= 0x0a && op <= 0x0f) || op == 0x21 ||
++           (op >= 0x40 && op <= 0x44);
++  }
+   switch (Opcode(rde)) {
+     case 0x10:
+       return true;
++    case 0x12:
++      return Rep(rde) == 0;
+     case 0x14:
+     case 0x15:
+     case 0x54:
+@@ -112,6 +167,60 @@
+     case 0xc6:
+     case 0xd0:
+       return true;
++    case 0x5a:
++      return Rep(rde) != 0;
++    case 0x60:
++    case 0x61:
++    case 0x62:
++    case 0x63:
++    case 0x64:
++    case 0x65:
++    case 0x66:
++    case 0x67:
++    case 0x68:
++    case 0x69:
++    case 0x6a:
++    case 0x6b:
++    case 0x6c:
++    case 0x6d:
++    case 0x74:
++    case 0x75:
++    case 0x76:
++    case 0xd4:
++    case 0xd5:
++    case 0xd8:
++    case 0xd9:
++    case 0xda:
++    case 0xdb:
++    case 0xdc:
++    case 0xdd:
++    case 0xde:
++    case 0xdf:
++    case 0xe0:
++    case 0xe1:
++    case 0xe2:
++    case 0xe3:
++    case 0xe4:
++    case 0xe5:
++    case 0xe8:
++    case 0xe9:
++    case 0xea:
++    case 0xeb:
++    case 0xec:
++    case 0xed:
++    case 0xee:
++    case 0xef:
++    case 0xf4:
++    case 0xf5:
++    case 0xf6:
++    case 0xf8:
++    case 0xf9:
++    case 0xfa:
++    case 0xfb:
++    case 0xfc:
++    case 0xfd:
++    case 0xfe:
++      return true;
+     case 0x51:
+     case 0x52:
+     case 0x53:
+@@ -129,9 +238,23 @@
+ }
+ 
+ static size_t SourceSize(u64 rde) {
++  unsigned map = Opmap(rde);
+   unsigned op = Opcode(rde);
+-  if ((op == 0x10 || (op >= 0x51 && op <= 0x53) ||
+-       (op >= 0x58 && op <= 0x5f) || op == 0xc2) &&
++  if (map == XED_ILD_MAP2 && (op >= 0x20 && op <= 0x25)) {
++    static const u8 sizes[] = {8, 4, 2, 8, 4, 8};
++    return sizes[op - 0x20];
++  }
++  if (map == XED_ILD_MAP2 && (op >= 0x30 && op <= 0x35)) {
++    static const u8 sizes[] = {8, 4, 2, 8, 4, 8};
++    return sizes[op - 0x30];
++  }
++  if (map == XED_ILD_MAP3 && op == 0x21) return 4;
++  if (map == XED_ILD_MAP3 && op == 0x0a) return 4;
++  if (map == XED_ILD_MAP3 && op == 0x0b) return 8;
++  if (map == XED_ILD_MAP1 && op == 0x12 && Prefix(rde) != 2) return 8;
++  if (map == XED_ILD_MAP1 && op == 0xe6 && Prefix(rde) == 2) return 8;
++  if ((op == 0x10 || (op >= 0x51 && op <= 0x53) || (op >= 0x58 && op <= 0x5f) ||
++       op == 0xc2) &&
+       Rep(rde)) {
+     return Rep(rde) == 3 ? 4 : 8;
+   }
+

@@ -24,6 +24,11 @@ static const uint8_t vaddps[] = {0xc5U, 0xf0U, 0x58U, 0xc2U};
 static const uint8_t vaddss[] = {0xc5U, 0xf2U, 0x58U, 0xc2U};
 static const uint8_t vaddps_ymm[] = {0xc5U, 0xf4U, 0x58U, 0xc2U};
 static const uint8_t vaddps_ymm_esi[] = {0xc5U, 0xf4U, 0x58U, 0x06U};
+static const uint8_t vpaddd_xmm[] = {0xc5U, 0xf1U, 0xfeU, 0xc2U};
+static const uint8_t vmovhlps_xmm[] = {0xc5U, 0xf0U, 0x12U, 0xc2U};
+static const uint8_t vpshufb_xmm[] = {0xc4U, 0xe2U, 0x71U, 0x00U, 0xc2U};
+static const uint8_t vpmovsxbd_esi[] = {0xc4U, 0xe2U, 0x79U, 0x21U, 0x06U};
+static const uint8_t vroundps_xmm[] = {0xc4U, 0xe3U, 0x79U, 0x08U, 0xc2U, 0x00U};
 
 static void put32(uint8_t *p, uint32_t value) {
     p[0] = (uint8_t)value;
@@ -290,6 +295,84 @@ static void exercise_vadd256_cross_page(enum gem_i386_engine_mode mode) {
     gem_memory_destroy(memory);
 }
 
+static void exercise_promoted128(enum gem_i386_engine_mode mode, const uint8_t *code,
+                                 size_t code_size, unsigned operation) {
+    struct gem_memory *memory = make_memory(code, code_size, GEM_GUEST_PAGE_SIZE);
+    struct gem_i386_runtime *runtime = make_runtime(memory, mode, code_size);
+    struct gem_i386_context context;
+    uint32_t i;
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    context.ymm_upper[0].lo = UINT64_MAX;
+    context.ymm_upper[0].hi = UINT64_MAX;
+    if (operation == 0U) {
+        const uint32_t lhs[4] = {1U, 2U, 3U, 4U};
+        const uint32_t rhs[4] = {10U, 20U, 30U, 40U};
+        const uint32_t expected[4] = {11U, 22U, 33U, 44U};
+        memcpy(&context.xmm[1], lhs, sizeof(lhs));
+        memcpy(&context.xmm[2], rhs, sizeof(rhs));
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+        assert(memcmp(&context.xmm[0], expected, sizeof(expected)) == 0);
+    } else if (operation == 1U) {
+        uint8_t source[16], control[16], expected[16];
+        for (i = 0U; i < 16U; ++i) {
+            source[i] = (uint8_t)i;
+            control[i] = (uint8_t)(15U - i);
+            expected[i] = (uint8_t)(15U - i);
+        }
+        memcpy(&context.xmm[1], source, sizeof(source));
+        memcpy(&context.xmm[2], control, sizeof(control));
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+        assert(memcmp(&context.xmm[0], expected, sizeof(expected)) == 0);
+    } else {
+        const float source[4] = {1.4f, 1.5f, 2.5f, -1.5f};
+        const float expected[4] = {1.0f, 2.0f, 2.0f, -2.0f};
+        memcpy(&context.xmm[2], source, sizeof(source));
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+        assert(memcmp(&context.xmm[0], expected, sizeof(expected)) == 0);
+    }
+    assert(context.ymm_upper[0].lo == 0U && context.ymm_upper[0].hi == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void exercise_vmovhlps(enum gem_i386_engine_mode mode) {
+    const uint64_t lhs[2] = {UINT64_C(0x1111111111111111), UINT64_C(0x2222222222222222)};
+    const uint64_t rhs[2] = {UINT64_C(0x3333333333333333), UINT64_C(0x4444444444444444)};
+    const uint64_t expected[2] = {UINT64_C(0x4444444444444444), UINT64_C(0x2222222222222222)};
+    struct gem_memory *memory =
+        make_memory(vmovhlps_xmm, sizeof(vmovhlps_xmm), GEM_GUEST_PAGE_SIZE);
+    struct gem_i386_runtime *runtime = make_runtime(memory, mode, sizeof(vmovhlps_xmm));
+    struct gem_i386_context context;
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], lhs, sizeof(lhs));
+    memcpy(&context.xmm[2], rhs, sizeof(rhs));
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(memcmp(&context.xmm[0], expected, sizeof(expected)) == 0);
+    assert(context.ymm_upper[0].lo == 0U && context.ymm_upper[0].hi == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void exercise_vpmovsxbd_boundary(enum gem_i386_engine_mode mode) {
+    const uint32_t operand = DATA + GEM_GUEST_PAGE_SIZE - 4U;
+    const int8_t source[4] = {-1, 2, -3, 4};
+    const int32_t expected[4] = {-1, 2, -3, 4};
+    struct gem_memory *memory =
+        make_memory(vpmovsxbd_esi, sizeof(vpmovsxbd_esi), GEM_GUEST_PAGE_SIZE);
+    struct gem_i386_runtime *runtime = make_runtime(memory, mode, sizeof(vpmovsxbd_esi));
+    struct gem_i386_context context;
+    assert(runtime != NULL);
+    assert(gem_i386_memory_write(memory, operand, source, sizeof(source)) == GEM_MEMORY_OK);
+    initialize(&context, operand, 0U);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(memcmp(&context.xmm[0], expected, sizeof(expected)) == 0);
+    assert(context.ymm_upper[0].lo == 0U && context.ymm_upper[0].hi == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
 static void exercise_xsaveopt_gate(void) {
     struct gem_memory *memory =
         make_memory(xsaveopt_esi, sizeof(xsaveopt_esi), GEM_GUEST_PAGE_SIZE);
@@ -323,6 +406,16 @@ int main(void) {
     exercise_vadd256(GEM_I386_ENGINE_JIT);
     exercise_vadd256_cross_page(GEM_I386_ENGINE_INTERPRETER);
     exercise_vadd256_cross_page(GEM_I386_ENGINE_JIT);
+    exercise_promoted128(GEM_I386_ENGINE_INTERPRETER, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
+    exercise_promoted128(GEM_I386_ENGINE_JIT, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
+    exercise_vmovhlps(GEM_I386_ENGINE_INTERPRETER);
+    exercise_vmovhlps(GEM_I386_ENGINE_JIT);
+    exercise_promoted128(GEM_I386_ENGINE_INTERPRETER, vpshufb_xmm, sizeof(vpshufb_xmm), 1U);
+    exercise_promoted128(GEM_I386_ENGINE_JIT, vpshufb_xmm, sizeof(vpshufb_xmm), 1U);
+    exercise_vpmovsxbd_boundary(GEM_I386_ENGINE_INTERPRETER);
+    exercise_vpmovsxbd_boundary(GEM_I386_ENGINE_JIT);
+    exercise_promoted128(GEM_I386_ENGINE_INTERPRETER, vroundps_xmm, sizeof(vroundps_xmm), 2U);
+    exercise_promoted128(GEM_I386_ENGINE_JIT, vroundps_xmm, sizeof(vroundps_xmm), 2U);
     exercise_xsaveopt_gate();
     expect_protection(xsave_esi, sizeof(xsave_esi), DATA + 1U, 0U);
     expect_protection(xgetbv, sizeof(xgetbv), DATA, 1U);
