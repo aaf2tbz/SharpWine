@@ -18,6 +18,7 @@ struct gem_i386_runtime {
     void *backend;
     struct gem_memory_transaction *transaction;
     struct gem_i386_performance_info performance;
+    uint64_t virtual_tsc;
     uint32_t quantum_budget;
     uint32_t consecutive_conflicts;
     bool running;

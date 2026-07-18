@@ -142,6 +142,8 @@ enum gem_stop_reason gem_i386_runtime_run(struct gem_i386_runtime *runtime,
                 *context = output;
         }
         retired += quantum_retired;
+        if (transaction_error == GEM_MEMORY_OK)
+            runtime->virtual_tsc += quantum_retired;
         runtime->performance.retired_instructions += quantum_retired;
         runtime->performance.lock_wait_nanoseconds +=
             gem_memory_transaction_lock_wait_nanoseconds(runtime->transaction);

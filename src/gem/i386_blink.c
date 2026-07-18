@@ -264,6 +264,26 @@ static void export_state(const struct blink_gem_state *source, const struct gem_
     }
 }
 
+static bool is_virtual_rdtsc(const struct blink_gem_decode_attempt *attempt) {
+    return attempt->valid != 0U && attempt->mopcode == UINT32_C(0x131) &&
+           attempt->instruction_length >= 2U && attempt->instruction_length <= 15U &&
+           strcmp(attempt->name, "OpRdtsc") == 0;
+}
+
+static bool complete_virtual_rdtsc(struct gem_i386_runtime *runtime,
+                                   struct gem_i386_context *context, uint32_t instruction_length,
+                                   uint32_t budget, uint32_t *retired) {
+    uint64_t timestamp;
+    if (*retired >= budget)
+        return false;
+    timestamp = runtime->virtual_tsc + *retired;
+    context->gpr[GEM_I386_EAX] = (uint32_t)timestamp;
+    context->gpr[GEM_I386_EDX] = (uint32_t)(timestamp >> 32);
+    context->eip += instruction_length;
+    ++*retired;
+    return true;
+}
+
 bool gem_i386_blink_create(struct gem_i386_runtime *runtime) {
     const struct blink_gem_callbacks callbacks = {BLINK_GEM_ABI_VERSION, sizeof(callbacks),
                                                   snapshot, validate, commit};
@@ -342,21 +362,29 @@ enum gem_stop_reason gem_i386_blink_step(struct gem_i386_runtime *runtime,
         memset(&attempt, 0, sizeof(attempt));
         attempt.abi_version = BLINK_GEM_DECODE_ATTEMPT_ABI_VERSION;
         attempt.size = sizeof(attempt);
-        if (blink_gem_machine_decode_attempt_info(runtime->backend, &attempt) && attempt.valid &&
-            strcmp(attempt.name, "OpInterrupt3") == 0) {
+        if (!blink_gem_machine_decode_attempt_info(runtime->backend, &attempt) || !attempt.valid)
+            return GEM_STOP_UNSUPPORTED_INSTRUCTION;
+        if (is_virtual_rdtsc(&attempt)) {
+            *out = *in;
+            ++runtime->performance.state_exports;
+            return complete_virtual_rdtsc(runtime, out, attempt.instruction_length, 1U, retired)
+                       ? GEM_STOP_NONE
+                       : GEM_STOP_INVARIANT_VIOLATION;
+        }
+        if (strcmp(attempt.name, "OpInterrupt3") == 0) {
             runtime->last_stop.engine_status = GEM_I386_EXCEPTION_BREAKPOINT;
             return GEM_STOP_WINDOWS_EXCEPTION;
         }
-        if (attempt.valid && strcmp(attempt.name, "OpInto") == 0) {
+        if (strcmp(attempt.name, "OpInto") == 0) {
             runtime->last_stop.engine_status = GEM_I386_EXCEPTION_INTEGER_OVERFLOW;
             return GEM_STOP_WINDOWS_EXCEPTION;
         }
-        if (attempt.valid && strcmp(attempt.name, "OpUd") == 0) {
+        if (strcmp(attempt.name, "OpUd") == 0) {
             runtime->last_stop.engine_status = GEM_I386_EXCEPTION_ILLEGAL_INSTRUCTION;
             return GEM_STOP_WINDOWS_EXCEPTION;
         }
-        if (attempt.valid && (strcmp(attempt.name, "OpInterruptImm") == 0 ||
-                              strcmp(attempt.name, "OpSysenter") == 0)) {
+        if (strcmp(attempt.name, "OpInterruptImm") == 0 ||
+            strcmp(attempt.name, "OpSysenter") == 0) {
             runtime->last_stop.engine_status = GEM_I386_BOUNDARY_WINDOWS_SYSCALL;
             return GEM_STOP_SYSCALL;
         }
@@ -458,6 +486,25 @@ enum gem_stop_reason gem_i386_blink_run(struct gem_i386_runtime *runtime,
         attempt.size = sizeof(attempt);
         if (!blink_gem_machine_decode_attempt_info(runtime->backend, &attempt) || !attempt.valid)
             return GEM_STOP_UNSUPPORTED_INSTRUCTION;
+        if (is_virtual_rdtsc(&attempt)) {
+            if (result.retired == 0U) {
+                *out = *in;
+                ++runtime->performance.state_exports;
+            }
+            if (!complete_virtual_rdtsc(runtime, out, attempt.instruction_length, budget, retired))
+                return GEM_STOP_INVARIANT_VIOLATION;
+            if (out->eip == runtime->config.host_return_sentinel)
+                return GEM_STOP_HOST_RETURN;
+            if (out->eip == runtime->config.windows_syscall_boundary ||
+                out->eip == runtime->config.unix_call_boundary) {
+                runtime->last_stop.engine_status =
+                    out->eip == runtime->config.windows_syscall_boundary
+                        ? GEM_I386_BOUNDARY_WINDOWS_SYSCALL
+                        : GEM_I386_BOUNDARY_UNIX_CALL;
+                return GEM_STOP_SYSCALL;
+            }
+            return GEM_STOP_NONE;
+        }
         if (strcmp(attempt.name, "OpInterrupt3") == 0) {
             runtime->last_stop.engine_status = GEM_I386_EXCEPTION_BREAKPOINT;
             return GEM_STOP_WINDOWS_EXCEPTION;

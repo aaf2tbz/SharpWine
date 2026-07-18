@@ -367,13 +367,14 @@ def main():
     parser.add_argument("--cmpxchg-patch", type=Path, required=True)
     parser.add_argument("--state-abi-patch", type=Path, required=True)
     parser.add_argument("--xsave-foundation-patch", type=Path, required=True)
+    parser.add_argument("--virtual-tsc-patch", type=Path, required=True)
     parser.add_argument("--capability-manifest", type=Path, required=True)
     parser.add_argument("--phase3-corpus", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 14, "provenance schema")
+    need(provenance["schemaVersion"] == 15, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -414,12 +415,21 @@ def main():
         digest(args.xsave_foundation_patch) == provenance["xsaveFoundationPatchSha256"],
         "VEX/XSAVE foundation patch hash",
     )
+    need(
+        digest(args.virtual_tsc_patch) == provenance["virtualTscPatchSha256"],
+        "virtual TSC admission patch hash",
+    )
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
 
     embedding = (args.source / "blink/gem_embed.c").read_text()
     embedding_header = (args.source / "blink/gem_embed.h").read_text()
     machine = (args.source / "blink/machine.c").read_text()
+    need("Mopcode(rde) == 0x131" in machine, "legacy32 RDTSC host-handler exclusion missing")
+    need(
+        "last_decode.instruction_length = (uint8_t)Oplength" in embedding,
+        "decode-attempt instruction length missing",
+    )
     fusion = (args.source / "blink/fusion.c").read_text()
     jit = (args.source / "blink/jit.c").read_text()
     jit_header = (args.source / "blink/jit.h").read_text()

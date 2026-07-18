@@ -120,3 +120,12 @@ implements standard-format XSAVE/XRSTOR and XGETBV over the ABI-v3 YMM/XCR0
 state, maps protection faults into a stable embedding exception, and rejects
 XSAVEOPT instead of inheriting Blink's incorrect fence dispatch. CPUID remains
 masked until the corresponding Phase 6 family gates pass.
+
+`0018-gem-i386-virtual-tsc-admission.patch` (SHA-256
+`a780c433970b9fb7b2b07f1a3f58fb8055117bc39a527c53e4ccd6d2977eb5b9`)
+keeps legacy-32 RDTSC out of Blink's host-backed handler. The GEM adapter
+supplies an epoch-zero, one-tick-per-retired-instruction virtual counter only
+after a transaction commits, so interpreter and JIT execution are identical
+and memory-conflict retries reproduce the same timestamp. Blink's decoded
+instruction length crosses in the reserved decode-attempt sidecar byte so
+prefixed encodings advance EIP without a second decoder.

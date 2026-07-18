@@ -282,11 +282,13 @@ nondeterministic across runs and diverges between interpreter, JIT, and any
 future optimized path. GEM instead owns a virtual TSC: a per-guest monotonic
 counter derived from retired-instruction accounting at quantum boundaries,
 advanced identically in every execution mode, with no raw host counter
-crossing the boundary. RDTSC and RDTSCP are admitted at the gem adapter
-boundary (not via blink's host-backed handlers), RDTSCP additionally
-returning a fixed guest TSC_AUX (0). The counter's epoch and step policy are
-fixed at runtime creation so two runs of the same guest program observe the
-same timestamps, which the deterministic corpus can then assert.
+crossing the boundary. RDTSC is admitted at the GEM adapter boundary (not via
+blink's host-backed handler); RDTSCP uses the same boundary after its W5 gate
+and additionally returns a fixed guest TSC_AUX (0). The counter's epoch is 0
+and its step is one tick per committed retired guest instruction. Transaction
+conflicts do not advance it, so a retry observes the same value. The
+deterministic corpus asserts this policy across interpreter/JIT modes and
+different quantum partitions.
 
 ### g. Backward compatibility
 
