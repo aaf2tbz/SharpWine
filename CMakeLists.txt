@@ -69,6 +69,7 @@ add_library(metalsharp_gem STATIC
     src/gem/context_conversion.c
     src/gem/context_serialization.c
     src/gem/i386_context.c
+    src/gem/i386_context_serialization.c
     src/gem/i386_memory.c
     src/gem/memory.c
     src/gem/pe_arm64x.c
@@ -291,7 +292,7 @@ if(BUILD_TESTING)
         add_test(NAME gem.${test_name} COMMAND ${test_name})
     endforeach()
 
-    foreach(test_name i386_context_test i386_memory_test)
+    foreach(test_name i386_context_test i386_memory_test i386_context_serialization_test)
         add_executable(${test_name} tests/${test_name}.c)
         target_link_libraries(${test_name} PRIVATE metalsharp_gem)
         mswr_enable_warnings(${test_name})
@@ -561,7 +562,8 @@ if(BUILD_TESTING)
     set(mswr_assert_test_targets
         context_test context_layout_test gem_headers_cxx_test
         context_conversion_test context_serialization_test memory_test
-        i386_context_test i386_memory_test i386_engine_conformance i386_engine_ops_conformance
+        i386_context_test i386_memory_test i386_context_serialization_test
+        i386_engine_conformance i386_engine_ops_conformance
         i386_handler_trace_conformance i386_phase2_conformance
         i386_phase3_conformance i386_phase4_conformance i386_phase5_ci
         memory_page_isolation_test macos_tso_api_probe
