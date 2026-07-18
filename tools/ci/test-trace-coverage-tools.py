@@ -31,9 +31,9 @@ class TraceCoverageToolTests(unittest.TestCase):
     def test_phase4_template_parser(self):
         templates = mapcov.parse_phase4_templates(
             ROOT / "tests/fixtures/i386_phase4_generator.c")
-        self.assertEqual(len(templates), 79)
+        self.assertEqual(len(templates), 87)
         by_id = {template["templateId"]: template for template in templates}
-        self.assertEqual(sorted(by_id), list(range(100, 138)) + list(range(200, 210)) +
+        self.assertEqual(sorted(by_id), list(range(100, 146)) + list(range(200, 210)) +
                          [300, 301, 302, 303, 304, 305] +
                          list(range(400, 415)) +
                          [500, 501, 502, 503, 504, 505] + [600, 601, 602, 603])

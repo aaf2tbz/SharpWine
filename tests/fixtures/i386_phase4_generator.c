@@ -68,6 +68,17 @@ static const struct template_entry scalar_templates[] = {
     {{0xc4, 0xe2, 0x60, 0xf3, 0xd2}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0x8c1},
     {{0xc4, 0xe2, 0x70, 0xf3, 0xd8}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0x8c1},
     {{0xf3, 0x0f, 0xbc, 0xc3}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0x041},
+    /* Phase 6 W5 BMI2 qualification templates. SharpWine's native semantic
+     * expectations and exact interpreter/JIT parity are authoritative when a
+     * comparison runtime does not expose this family. */
+    {{0xc4, 0xe2, 0x70, 0xf5, 0xd8}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0x8c1},
+    {{0xc4, 0xe2, 0x7b, 0xf5, 0xd9}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xc4, 0xe2, 0x7a, 0xf5, 0xd9}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xc4, 0xe2, 0x7b, 0xf6, 0xd9}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xc4, 0xe2, 0x71, 0xf7, 0xd8}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xc4, 0xe2, 0x73, 0xf7, 0xd8}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xc4, 0xe2, 0x72, 0xf7, 0xd8}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0xc4, 0xe3, 0x7b, 0xf0, 0xd8, 0x07}, 6, 0, I386_PHASE4_COMPARE_EXACT, 0},
 };
 static const struct template_entry memory_templates[] = {
     {{0x8b, 0x06}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0},
@@ -170,6 +181,8 @@ static enum i386_phase4_category category_for_ordinal(uint32_t ordinal) {
 #define I386_PHASE4_SCALAR_RANDOM_COUNT 32U
 #define I386_PHASE4_BMI1_FIRST_ORDINAL 1018U
 #define I386_PHASE4_BMI1_TEMPLATE_FIRST 32U
+#define I386_PHASE4_BMI2_FIRST_ORDINAL 1010U
+#define I386_PHASE4_BMI2_TEMPLATE_FIRST 38U
 
 static const struct template_entry *select_template(uint32_t shard, uint32_t ordinal,
                                                     enum i386_phase4_category category,
@@ -181,6 +194,9 @@ static const struct template_entry *select_template(uint32_t shard, uint32_t ord
         if (shard == I386_PHASE4_SHARDS - 1U && ordinal >= I386_PHASE4_BMI1_FIRST_ORDINAL)
             return &scalar_templates[I386_PHASE4_BMI1_TEMPLATE_FIRST + ordinal -
                                      I386_PHASE4_BMI1_FIRST_ORDINAL];
+        if (shard == I386_PHASE4_SHARDS - 1U && ordinal >= I386_PHASE4_BMI2_FIRST_ORDINAL)
+            return &scalar_templates[I386_PHASE4_BMI2_TEMPLATE_FIRST + ordinal -
+                                     I386_PHASE4_BMI2_FIRST_ORDINAL];
         return shard < I386_PHASE4_LEGACY_GOLDEN_SHARDS
                    ? &scalar_templates[random % I386_PHASE4_LEGACY_SCALAR_COUNT]
                    : &scalar_templates[random % I386_PHASE4_SCALAR_RANDOM_COUNT];

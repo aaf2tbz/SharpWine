@@ -158,6 +158,15 @@ The selected guest is i386 legacy32 (Windows WoW64):
   BMI1 is therefore advertised by SharpWine even though Prism cannot serve as
   its result oracle; the compatibility target is the x86 architecture and the
   programs that use it, not Prism's smaller instruction subset.
+- The same VM terminates all eight directly attempted BMI2 fixtures with exit
+  255. SharpWine deliberately admits Blink's portable BZHI, PDEP, PEXT, MULX,
+  SHLX, SHRX, SARX, and RORX implementations through the exact legacy-32 GEM
+  boundary while retaining ADX and invalid VEX forms as unsupported. All eight
+  pass independent architectural assertions, exact interpreter/JIT parity,
+  precise state and cross-page fault tests, a mapped multi-instruction guest
+  program in both engines, and the complete 65,536-case corpus replay. BMI2 is
+  therefore advertised from SharpWine's native macOS ARM64 profile; Prism's
+  missing family is retained only as comparison evidence.
 
 ## Acceptance authority
 

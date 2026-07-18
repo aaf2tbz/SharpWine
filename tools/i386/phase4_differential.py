@@ -21,12 +21,19 @@ SCHEMA = 1
 SHARDS = 16
 CASES_PER_SHARD = 4096
 # Prism's x87 state is not SDM-exact for 300/301.  The qualification VM also
-# exposes no BMI1 to its i386 process: it rejects the VEX forms in 132-136 and
-# decodes TZCNT (137) as legacy BSF.  Those cases retain the attempted Windows
-# result as evidence, but acceptance is the explicit SDM expectation plus
-# exact interpreter/JIT parity.
-NON_AUTHORITATIVE_BASELINE_TEMPLATES = frozenset({132, 133, 134, 135, 136, 137, 300, 301})
-BASELINE_UNAVAILABLE_TEMPLATES = frozenset({132, 133, 134, 135, 136})
+# exposes no BMI1 or BMI2 to its i386 process: it rejects the VEX forms in
+# 132-136 and 138-145 and decodes TZCNT (137) as legacy BSF. Those cases retain
+# the attempted Windows result as evidence, but acceptance is SharpWine's
+# explicit SDM expectation plus exact native interpreter/JIT parity.
+NON_AUTHORITATIVE_BASELINE_TEMPLATES = frozenset(
+    {132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 300, 301})
+BASELINE_UNAVAILABLE_TEMPLATES = frozenset(
+    {132, 133, 134, 135, 136, 138, 139, 140, 141, 142, 143, 144, 145})
+# Reserved shard-15 identities let a later family replace formerly random
+# scalar cases without replaying the full native-Windows baseline. A saved
+# baseline may therefore carry the directly attempted nonzero result by stable
+# identity even when its older engine record predates the new template.
+BASELINE_UNAVAILABLE_IDENTITIES = frozenset((15, case) for case in range(1010, 1018))
 CLASSIFICATIONS = {
     "pass",
     "semantic-mismatch",
@@ -219,7 +226,8 @@ def load_saved_baselines(path: Path, shards: list[int], cases: int) -> dict[tupl
                 (row.get("baselineAuthoritative") is False and
                  row.get("comparisonPolicy") == "interpreter-jit-sdm" and
                  baseline.get("classification") == "nonzero-exit" and
-                 template_id in BASELINE_UNAVAILABLE_TEMPLATES))
+                 (template_id in BASELINE_UNAVAILABLE_TEMPLATES or
+                  identity in BASELINE_UNAVAILABLE_IDENTITIES)))
             if identity in baselines or not reusable:
                 raise ValueError(f"invalid saved baseline at line {line_number}")
             baselines[identity] = baseline

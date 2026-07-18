@@ -1,0 +1,97 @@
+From 0000000000000000000000000000000000000020 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: admit native i386 bmi2
+
+Admit Blink's portable scalar BMI2 handlers in the legacy GEM profile, keep
+ADX and every invalid VEX form fail-closed, and advertise BMI2 only after the
+native interpreter and JIT share the same exact admission boundary.
+
+---
+ blink/cpuid.c     |  2 +-
+ blink/gem_embed.c | 25 +++++++++++++++++++++----
+ blink/machine.c   | 10 ++++++----
+ blink/name.c      |  3 +++
+ 4 files changed, 31 insertions(+), 9 deletions(-)
+
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -133,10 +133,27 @@
+   if (!first || !second) return 0;
+   lead = first->host[address & 4095];
+   payload = second->host[(address + 1) & 4095];
+-  if ((lead != 0xc4 && lead != 0xc5) || (payload & 0xc0) != 0xc0) return 0;
+-  return !((Mopcode(rde) == 0x2f2 || Mopcode(rde) == 0x2f3 ||
+-            Mopcode(rde) == 0x2f7) &&
+-           !Ymm(rde) && !Osz(rde) && !Rep(rde));
++  if ((lead == 0xc4 || lead == 0xc5) && (payload & 0xc0) == 0xc0) {
++    if (Ymm(rde)) return 1;
++    switch (Mopcode(rde)) {
++      case 0x2f2:
++      case 0x2f3:
++        return Osz(rde) || Rep(rde);
++      case 0x2f5:
++        return Osz(rde);
++      case 0x2f6:
++        return Rep(rde) != 2;
++      case 0x2f7:
++        return 0;
++      case 0x3f0:
++        return Rep(rde) != 2;
++      default:
++        return 1;
++    }
++  }
++  return Mopcode(rde) == 0x2f2 || Mopcode(rde) == 0x2f3 ||
++         Mopcode(rde) == 0x2f5 || Mopcode(rde) == 0x2f6 ||
++         Mopcode(rde) == 0x2f7 || Mopcode(rde) == 0x3f0;
+ }
+ static int refresh_page(struct blink_gem_machine* g, struct shadow_page* p,
+                         uint32_t* error) {
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2304,9 +2304,11 @@
+        (Mopcode(rde) == 0x1ae && !Rep(rde) && !IsModrmRegister(rde) &&
+         ModrmReg(rde) == 6) ||
+        (Mopcode(rde) == 0x101 && Modrm(rde) == 0xf9) ||
+-       (Mopcode(rde) >= 0x2f4 && Mopcode(rde) <= 0x2f6) ||
+-       (Mopcode(rde) == 0x2f7 && (Osz(rde) || Rep(rde))) ||
+-       Mopcode(rde) == 0x3f0))
++       Mopcode(rde) == 0x2f4 ||
++       (Mopcode(rde) == 0x2f5 && (Ymm(rde) || Osz(rde))) ||
++       (Mopcode(rde) == 0x2f6 && (Ymm(rde) || Rep(rde) != 2)) ||
++       (Mopcode(rde) == 0x2f7 && Ymm(rde)) ||
++       (Mopcode(rde) == 0x3f0 && (Ymm(rde) || Rep(rde) != 2))))
+     return 0;
+   if (handler == OpNop) return 1;
+   if (handler == OpMovZvqpIvqp) return 2;
+--- a/blink/name.c
++++ b/blink/name.c
+@@ -582,6 +582,8 @@
+     XLAT(0x241, "OpSse4");
+     XLAT(0x2f2, "OpAndn");
+     XLAT(0x2f3, "OpBls");
++    XLAT(0x2f5, "Op2f5");
++    XLAT(0x2f6, "Op2f6");
+     XLAT(0x2f7, "Op2f7");
+     XLAT(0x2db, "OpAesimc");
+     XLAT(0x2dc, "OpAesenc");
+@@ -612,6 +614,7 @@
+     XLAT(0x362, "OpSse4");
+     XLAT(0x363, "OpSse4");
+     XLAT(0x3df, "OpAeskeygenassist");
++    XLAT(0x3f0, "OpRorx");
+     default:
+       return "UNKNOWN";
+   }
+--- a/blink/cpuid.c
++++ b/blink/cpuid.c
+@@ -171,7 +171,7 @@
+       switch (Get32(m->cx)) {
+         case 0:
+           if (legacy) {
+-            bx = (1u << 3) | (1u << 9);  // bmi1, erms
++            bx = (1u << 3) | (1u << 8) | (1u << 9);  // bmi1, bmi2, erms
+             break;
+           }
+           bx |= 1 << 0;   // fsgsbase

@@ -8,8 +8,8 @@
     "finalShard": 15,
     "finalOrdinal": 4095,
     "caseCount": 65536,
-    "baselineRecords": 65531,
-    "nativeToBaselineComparisons": 125650,
+    "baselineRecords": 65523,
+    "nativeToBaselineComparisons": 125634,
     "interpreterJitParityChecks": 65536,
     "classifications": {
       "pass": 65536,
@@ -30,7 +30,7 @@
       "system": 12288,
       "negative": 4096
     },
-    "resultsSha256": "03dc1eb154e25e66e03a5521c4187d474807f8a5bac61254f063a7fe3bce64e8"
+    "resultsSha256": "ea8598184fdca93c47ed75b8f2d44f7612f473faf95fd2897e68075734096ba7"
   },
   "smokeShard": {
     "caseCount": 4096,
@@ -42,18 +42,18 @@
     "resultsSha256": "e04e154bd288f745379efcf959b90f28d024b1e8646e528973ac0f450f8b1fdb"
   },
   "retainedDeterministicComparisons": 5184,
-  "totalNativeCompatibilityComparisons": 130834,
+  "totalNativeCompatibilityComparisons": 130818,
   "phase5CiCorpus": {
     "path": "tests/fixtures/i386_phase5_golden.bin",
     "schemaVersion": 1,
     "caseCount": 65536,
     "finalShard": 15,
     "finalOrdinal": 4095,
-    "goldenSha256": "3bc1d9d3eba6dfc08702a55ad0fc83518f24d3ce5bb9def35713539f1c226e50",
+    "goldenSha256": "63d5efd18c1b2d0f28878767fc4b01a1691f40c9273f959d85c515df1c4491bb",
     "replayModes": ["interpreter", "jit"],
     "externalRuntimeRequired": false,
     "coverage": {
-      "templateCount": 79,
+      "templateCount": 87,
       "operandForms": ["register", "memory", "implicit-string", "invalid-encoding"],
       "addressingForms": ["register", "esi-indirect", "edi-indirect", "implicit-esi-edi"],
       "widths": [8, 32, 64, 80, 128],
@@ -62,20 +62,21 @@
     "prioritizationInputs": ["32-bit Wine startup", "interactive Notepad", "Steam bootstrap"]
   },
   "sourceSha256": {
-    "generatorAndTemplates": "b08ba92cd4f93f168d78423544400682999076aef932d2d92f335d610a198ba4",
+    "generatorAndTemplates": "e8c5b9d5da8ec4086028388c07d16f04515db0b8caa3ef47cc843a47e30c1e73",
     "recordSchema": "e3bb1fe0148811b8bae8685994849ad953d8f137498421c6b7d9b13fc2e80bde",
     "baselineWorker": "53190c30d366ce45ad9577d4954835207c109b62a0f892cb1977e1e242919eb7",
     "baselineAssembly": "750e5cb3962ba9223fc5aa29e877bd2009b64d9a19432692c934f55735838ae2",
-    "baselineFixture": "596b1ecf9b742a9112f5fa28f2074b5cef80dd85f3ded570bdb4c72f9398219c",
-    "blinkCorrectionsPatch": "2258dcb91a84b534a4cf2d9efd9845b892e323bc5dfba692a0d33dc82e1ba88f"
+    "baselineFixture": "d8093c61fecc60cadbaf976686d11886f7106200c0593302c627e75045db966f",
+    "blinkCorrectionsPatch": "18910ef86f5031d8f244061d5e713c211d7a3b655a2df10f5d7b57712d2fa465"
   },
   "precisionPolicy": {
     "integerAndRawState": "exact",
     "x87Arithmetic": "binary64 normalized with exact signed-zero, infinity, and NaN class",
     "simdFloatingPoint": "one ULP only for templates declaring rounding sensitivity",
     "undefinedState": "explicitly masked",
-    "windowsBaselineAuthority": "exact except templates 300 and 301 (Prism x87 deviations) and templates 132 through 137 (the VM exposes no i386 BMI1); non-authoritative cases require exact interpreter/JIT parity plus the SDM expectation",
-    "bmi1Qualification": "Windows rejected templates 132 through 136 and decoded template 137 as legacy BSF; all six attempted results are retained, independent SDM checks and exact interpreter/JIT parity pass, and SharpWine advertises BMI1 for macOS ARM64 compatibility"
+    "windowsBaselineAuthority": "exact except templates 300 and 301 (Prism x87 deviations), templates 132 through 137 (the VM exposes no i386 BMI1), and templates 138 through 145 (the VM exposes no i386 BMI2); non-authoritative cases require exact interpreter/JIT parity plus the SDM expectation",
+    "bmi1Qualification": "Windows rejected templates 132 through 136 and decoded template 137 as legacy BSF; all six attempted results are retained, independent SDM checks and exact interpreter/JIT parity pass, and SharpWine advertises BMI1 for macOS ARM64 compatibility",
+    "bmi2Qualification": "Windows exited 255 for all eight directly attempted BMI2 templates 138 through 145; SharpWine's BZHI, PDEP, PEXT, MULX, SHLX, SHRX, SARX, and RORX pass independent semantic checks, exact interpreter/JIT parity, precise state and cross-page fault tests, a loaded multi-instruction guest-program witness, and the complete 65536-case replay, so BMI2 is advertised for macOS ARM64 compatibility"
   },
   "promotedRegressions": [
     {

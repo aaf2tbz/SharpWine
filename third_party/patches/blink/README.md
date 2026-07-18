@@ -138,3 +138,12 @@ masked, and adds BMI1 to the deterministic legacy CPUID profile. The native
 Windows ARM64 qualification VM does not expose BMI1 to its i386 process, so
 semantic authority comes from the SDM checks and exact interpreter/JIT parity.
 TZCNT reuses Blink's existing reviewed scalar handler.
+
+`0020-gem-i386-bmi2.patch` (SHA-256
+`18910ef86f5031d8f244061d5e713c211d7a3b655a2df10f5d7b57712d2fa465`)
+admits the portable BZHI, PDEP, PEXT, MULX, SHLX, SHRX, SARX, and RORX
+implementations in the legacy-32 interpreter and JIT. Exact VEX map/prefix
+checks keep ADX, 256-bit encodings, and legacy aliases fail-closed. BMI2 is
+advertised from SharpWine's deterministic CPUID profile after native semantic,
+state, fault, corpus, and program-loading qualification; an external runtime
+that lacks BMI2 is retained only as non-authoritative comparison evidence.

@@ -319,13 +319,14 @@ def audit_phase3_capabilities(source_root, manifest_path, corpus_path):
         ("POPCNT", "0x00000001", "ecx", 23), ("AES", "0x00000001", "ecx", 25),
         ("ERMS", "0x00000007", "ebx", 9),
         ("BMI1", "0x00000007", "ebx", 3),
+        ("BMI2", "0x00000007", "ebx", 8),
     }
     actual = {(item["name"], item["leaf"], item["register"], item["bit"])
               for item in manifest["advertised"]}
     need(actual == expected, "advertised CPUID capability drift")
     need(
         set(manifest["masked"])
-        == {"AVX", "AVX2", "FMA", "OSXSAVE", "BMI2", "ADX",
+        == {"AVX", "AVX2", "FMA", "OSXSAVE", "ADX",
             "FSGSBASE", "RDRAND", "RDSEED", "RDPID", "CX16", "LONG_MODE",
             "SYSCALL", "RDTSCP"},
         "masked CPUID capability drift",
@@ -370,13 +371,14 @@ def main():
     parser.add_argument("--xsave-foundation-patch", type=Path, required=True)
     parser.add_argument("--virtual-tsc-patch", type=Path, required=True)
     parser.add_argument("--bmi1-patch", type=Path, required=True)
+    parser.add_argument("--bmi2-patch", type=Path, required=True)
     parser.add_argument("--capability-manifest", type=Path, required=True)
     parser.add_argument("--phase3-corpus", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 16, "provenance schema")
+    need(provenance["schemaVersion"] == 17, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -422,6 +424,7 @@ def main():
         "virtual TSC admission patch hash",
     )
     need(digest(args.bmi1_patch) == provenance["bmi1PatchSha256"], "BMI1 patch hash")
+    need(digest(args.bmi2_patch) == provenance["bmi2PatchSha256"], "BMI2 patch hash")
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
 
