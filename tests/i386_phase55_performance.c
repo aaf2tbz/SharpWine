@@ -27,6 +27,16 @@ struct fixture {
     uint32_t stack;
 };
 
+struct equality_lane {
+    struct gem_memory *memory;
+    struct gem_i386_runtime *runtime;
+    uint32_t code;
+    uint32_t stack;
+    uint32_t data;
+};
+
+#define EQUALITY_DATA_SIZE 64U
+
 static uint64_t monotonic_ns(void) {
     struct timespec now;
     assert(clock_gettime(CLOCK_MONOTONIC, &now) == 0);
@@ -67,6 +77,152 @@ static struct fixture fixture_create(void) {
     fixture.run_runtime = gem_i386_runtime_create(fixture.memory, &config);
     assert(fixture.step_runtime != NULL && fixture.run_runtime != NULL);
     return fixture;
+}
+
+static struct equality_lane equality_lane_create(enum gem_i386_engine_mode mode) {
+    static const uint8_t program[] = {
+        0x83U, 0xc0U, 0x03U, /* add eax,3 */
+        0xffU, 0x07U,        /* inc dword ptr [edi] */
+        0x31U, 0xd2U,        /* xor edx,edx */
+        0x75U, 0x02U,        /* jne next */
+        0x90U,               /* skipped nop */
+        0x90U,               /* next: nop */
+        0xebU, 0xf3U         /* jmp program */
+    };
+    struct equality_lane lane;
+    struct gem_i386_runtime_config config;
+    memset(&lane, 0, sizeof(lane));
+    lane.code = UINT32_C(0x00500000);
+    lane.stack = UINT32_C(0x00200000);
+    lane.data = UINT32_C(0x00300000);
+    lane.memory = gem_memory_create();
+    assert(lane.memory != NULL);
+    assert(gem_i386_memory_reserve(lane.memory, &lane.code, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(lane.memory, lane.code, GEM_GUEST_PAGE_SIZE,
+                                  GEM_PAGE_EXECUTE_READWRITE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(lane.memory, lane.code, program, sizeof(program)) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_reserve(lane.memory, &lane.stack, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(lane.memory, lane.stack, GEM_GUEST_PAGE_SIZE,
+                                  GEM_PAGE_READWRITE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_reserve(lane.memory, &lane.data, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(lane.memory, lane.data, GEM_GUEST_PAGE_SIZE,
+                                  GEM_PAGE_READWRITE) == GEM_MEMORY_OK);
+    memset(&config, 0, sizeof(config));
+    config.engine_mode = mode;
+    config.max_budget = 256U;
+    lane.runtime = gem_i386_runtime_create(lane.memory, &config);
+    assert(lane.runtime != NULL);
+    return lane;
+}
+
+static void equality_lane_destroy(struct equality_lane *lane) {
+    gem_i386_runtime_destroy(lane->runtime);
+    gem_memory_destroy(lane->memory);
+}
+
+static struct gem_i386_context equality_initial_context(const struct equality_lane *lane) {
+    struct gem_i386_context context;
+    gem_i386_context_initialize(&context, UINT32_C(0x7ffdd000));
+    context.eip = lane->code;
+    context.gpr[GEM_I386_EAX] = UINT32_C(0x12345678);
+    context.gpr[GEM_I386_EDX] = UINT32_C(0x87654321);
+    context.gpr[GEM_I386_EDI] = lane->data;
+    context.gpr[GEM_I386_ESP] = lane->stack + (uint32_t)GEM_GUEST_PAGE_SIZE - 16U;
+    context.eflags |= UINT32_C(0x8d5);
+    return context;
+}
+
+static void reset_equality_data(struct equality_lane *lane) {
+    uint8_t data[EQUALITY_DATA_SIZE];
+    size_t i;
+    for (i = 0U; i < sizeof(data); ++i)
+        data[i] = (uint8_t)(i * 17U + 3U);
+    assert(gem_i386_memory_write(lane->memory, lane->data, data, sizeof(data)) == GEM_MEMORY_OK);
+}
+
+static void read_equality_data(const struct equality_lane *lane, uint8_t data[EQUALITY_DATA_SIZE]) {
+    assert(gem_i386_memory_read(lane->memory, lane->data, data, EQUALITY_DATA_SIZE) ==
+           GEM_MEMORY_OK);
+}
+
+static void execute_lane_steps(struct equality_lane *lane, struct gem_i386_context *context,
+                               uint32_t budget) {
+    uint32_t i;
+    lane->runtime->transaction = gem_memory_transaction_begin(lane->memory);
+    assert(lane->runtime->transaction != NULL);
+    gem_i386_blink_sync(lane->runtime);
+    for (i = 0U; i < budget; ++i) {
+        struct gem_i386_context output;
+        uint32_t retired = 0U;
+        assert(gem_i386_blink_step(lane->runtime, context, &output, &retired) == GEM_STOP_NONE);
+        assert(retired == 1U);
+        *context = output;
+    }
+    gem_memory_transaction_end(lane->runtime->transaction);
+    lane->runtime->transaction = NULL;
+    context->stop_reason = GEM_STOP_BUDGET_EXPIRED;
+}
+
+static void verify_three_way_boundaries(void) {
+    struct equality_lane stepped_lane = equality_lane_create(GEM_I386_ENGINE_INTERPRETER);
+    struct equality_lane bounded_lane = equality_lane_create(GEM_I386_ENGINE_INTERPRETER);
+    struct equality_lane jit_lane = equality_lane_create(GEM_I386_ENGINE_JIT);
+    struct gem_i386_engine_info bounded_info = {0};
+    struct gem_i386_engine_info jit_info = {0};
+    uint32_t budget;
+    for (budget = 1U; budget <= 256U; ++budget) {
+        struct gem_i386_context stepped = equality_initial_context(&stepped_lane);
+        struct gem_i386_context bounded = equality_initial_context(&bounded_lane);
+        struct gem_i386_context jit = equality_initial_context(&jit_lane);
+        struct gem_i386_stop_info bounded_stop = {0};
+        struct gem_i386_stop_info jit_stop = {0};
+        uint8_t stepped_data[EQUALITY_DATA_SIZE];
+        uint8_t bounded_data[EQUALITY_DATA_SIZE];
+        uint8_t jit_data[EQUALITY_DATA_SIZE];
+        reset_equality_data(&stepped_lane);
+        reset_equality_data(&bounded_lane);
+        reset_equality_data(&jit_lane);
+        execute_lane_steps(&stepped_lane, &stepped, budget);
+        assert(gem_i386_runtime_run(bounded_lane.runtime, &bounded, budget) ==
+               GEM_STOP_BUDGET_EXPIRED);
+        assert(gem_i386_runtime_run(jit_lane.runtime, &jit, budget) == GEM_STOP_BUDGET_EXPIRED);
+        assert(gem_i386_runtime_last_stop_info(bounded_lane.runtime, &bounded_stop));
+        assert(gem_i386_runtime_last_stop_info(jit_lane.runtime, &jit_stop));
+        read_equality_data(&stepped_lane, stepped_data);
+        read_equality_data(&bounded_lane, bounded_data);
+        read_equality_data(&jit_lane, jit_data);
+        if (memcmp(&stepped, &bounded, sizeof(stepped)) != 0 ||
+            memcmp(&stepped, &jit, sizeof(stepped)) != 0 ||
+            memcmp(stepped_data, bounded_data, sizeof(stepped_data)) != 0 ||
+            memcmp(stepped_data, jit_data, sizeof(stepped_data)) != 0 ||
+            bounded_stop.reason != GEM_STOP_BUDGET_EXPIRED ||
+            jit_stop.reason != GEM_STOP_BUDGET_EXPIRED ||
+            bounded_stop.instructions_retired != budget ||
+            jit_stop.instructions_retired != budget) {
+            fprintf(stderr,
+                    "three-way boundary %u mismatch: step eip=%08x eax=%08x flags=%08x; "
+                    "bounded eip=%08x eax=%08x flags=%08x retired=%u; "
+                    "jit eip=%08x eax=%08x flags=%08x retired=%u\n",
+                    budget, stepped.eip, stepped.gpr[GEM_I386_EAX], stepped.eflags, bounded.eip,
+                    bounded.gpr[GEM_I386_EAX], bounded.eflags, bounded_stop.instructions_retired,
+                    jit.eip, jit.gpr[GEM_I386_EAX], jit.eflags, jit_stop.instructions_retired);
+            assert(0);
+        }
+    }
+    bounded_info.abi_version = 1U;
+    bounded_info.size = sizeof(bounded_info);
+    jit_info.abi_version = 1U;
+    jit_info.size = sizeof(jit_info);
+    assert(gem_i386_runtime_engine_info(bounded_lane.runtime, &bounded_info));
+    assert(gem_i386_runtime_engine_info(jit_lane.runtime, &jit_info));
+    assert(bounded_info.jit_compilations == 0U && bounded_info.jit_executions == 0U &&
+           bounded_info.jit_failures == 0U);
+    assert(jit_info.jit_compilations != 0U && jit_info.jit_executions != 0U &&
+           jit_info.jit_failures == 0U);
+    equality_lane_destroy(&jit_lane);
+    equality_lane_destroy(&bounded_lane);
+    equality_lane_destroy(&stepped_lane);
 }
 
 static void fixture_destroy(struct fixture *fixture) {
@@ -146,6 +302,7 @@ int main(void) {
     size_t sample;
     double speedup;
     verify_boundaries(&fixture);
+    verify_three_way_boundaries();
     for (sample = 0U; sample < GEM_PHASE55_PERFORMANCE_SAMPLES; ++sample) {
         uint64_t begin;
         stepped = initial_context(&fixture);
