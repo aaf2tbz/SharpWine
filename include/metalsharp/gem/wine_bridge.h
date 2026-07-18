@@ -290,9 +290,13 @@ GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_boundary_response) == 736U,
                        "gem_wine_boundary_response ABI changed");
 GEM_WINE_STATIC_ASSERT(offsetof(struct gem_wine_boundary_response, context) == 16U,
                        "gem_wine_boundary_response context offset changed");
-GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_request) == 504U,
+/* The i386 boundary structs embed gem_i386_context by value, so the ABI v3
+ * growth (ADR 0013, context 448 -> 592) grows them to 648 and 608.  The
+ * boundary wire-version bump that publishes this to the packaged bridge is a
+ * deliberate later slice; until then both sides are built together. */
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_request) == 648U,
                        "gem_wine_i386_boundary_request ABI changed");
-GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_response) == 464U,
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_response) == 608U,
                        "gem_wine_i386_boundary_response ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_thread_config) == 64U,
                        "gem_wine_thread_config ABI changed");

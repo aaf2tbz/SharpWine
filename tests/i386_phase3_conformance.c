@@ -71,12 +71,30 @@ static void seed_context(struct gem_i386_context *context, uint32_t seed) {
     }
 }
 
+/* Project the current ABI v3 context into the pinned 448-byte Phase 3 record
+ * layout.  The extension must be inert (zeroed) at this boundary, matching
+ * ADR 0013's zeroed-v3 == v2-projection rule; anything else is a bug in the
+ * state import/export path, not something to reinterpret. */
+static void legacy_context_from_gem(struct i386_phase3_legacy_context *legacy,
+                                    const struct gem_i386_context *context) {
+    size_t i;
+    assert(context->xcr0 == 0U && context->reserved1 == 0U);
+    for (i = 0U; i < 8U; ++i)
+        assert(context->ymm_upper[i].lo == 0U && context->ymm_upper[i].hi == 0U);
+    memset(legacy, 0, sizeof(*legacy));
+    memcpy(legacy, context, sizeof(*legacy));
+    legacy->layout_version = GEM_I386_CONTEXT_LAYOUT_VERSION_V2;
+    legacy->context_size = GEM_I386_CONTEXT_SIZE_V2;
+}
+
 static struct execution execute_case(enum gem_i386_engine_mode mode, uint32_t case_id,
                                      enum i386_phase3_category category, const uint8_t *code,
                                      size_t code_size) {
     struct execution result;
     struct gem_i386_runtime_config config = {0};
     struct gem_i386_stop_info stop = {0};
+    struct gem_i386_context initial;
+    struct gem_i386_context final;
     struct gem_i386_runtime *runtime;
     struct gem_memory *memory = gem_memory_create();
     uint8_t bytes[512];
@@ -104,36 +122,38 @@ static struct execution execute_case(enum gem_i386_engine_mode mode, uint32_t ca
     result.record.category = category;
     memcpy(result.record.instruction, code, code_size);
     result.record.instruction_size = (uint8_t)code_size;
-    seed_context(&result.record.initial, case_id);
-    result.record.initial.gpr[GEM_I386_ESI] = DATA + 64U + (case_id & 31U);
-    result.record.initial.gpr[GEM_I386_EDI] = DATA + 320U + (case_id & 31U);
+    seed_context(&initial, case_id);
+    initial.gpr[GEM_I386_ESI] = DATA + 64U + (case_id & 31U);
+    initial.gpr[GEM_I386_EDI] = DATA + 320U + (case_id & 31U);
     if (category == I386_PHASE3_REP_SEGMENT) {
-        result.record.initial.gpr[GEM_I386_ECX] = case_id & 15U;
+        initial.gpr[GEM_I386_ECX] = case_id & 15U;
         if ((case_id & 1U) != 0U)
-            result.record.initial.eflags |= UINT32_C(0x400);
+            initial.eflags |= UINT32_C(0x400);
     }
     if (category == I386_PHASE3_CPUID_CONTEXT) {
         switch (case_id % 3U) {
         case 0U:
-            result.record.initial.gpr[GEM_I386_EAX] = 1U;
+            initial.gpr[GEM_I386_EAX] = 1U;
             break;
         case 1U:
-            result.record.initial.gpr[GEM_I386_EAX] = 7U;
-            result.record.initial.gpr[GEM_I386_ECX] = 0U;
+            initial.gpr[GEM_I386_EAX] = 7U;
+            initial.gpr[GEM_I386_ECX] = 0U;
             break;
         default:
-            result.record.initial.gpr[GEM_I386_EAX] = UINT32_C(0x80000001);
+            initial.gpr[GEM_I386_EAX] = UINT32_C(0x80000001);
             break;
         }
     }
+    legacy_context_from_gem(&result.record.initial, &initial);
     result.record.memory_hash_before = hash_bytes(bytes, sizeof(bytes));
     config.engine_mode = mode;
     config.host_return_sentinel = CODE + (uint32_t)code_size;
     config.max_budget = 1U;
     runtime = gem_i386_runtime_create(memory, &config);
     assert(runtime != NULL);
-    result.record.final = result.record.initial;
-    result.record.stop_reason = (uint32_t)gem_i386_runtime_run(runtime, &result.record.final, 1U);
+    final = initial;
+    result.record.stop_reason = (uint32_t)gem_i386_runtime_run(runtime, &final, 1U);
+    legacy_context_from_gem(&result.record.final, &final);
     assert(gem_i386_runtime_last_stop_info(runtime, &stop));
     result.record.exception_status = stop.engine_status;
     result.record.fault_address = stop.fault_address;

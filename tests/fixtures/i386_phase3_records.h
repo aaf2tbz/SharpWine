@@ -34,7 +34,40 @@ enum i386_phase3_category {
 /* A replay record contains every Phase 3 architectural output. The defined
  * mask makes compatibility-tolerance decisions explicit instead of comparing
  * host padding or undefined flags. Memory hashes cover both source and
- * destination regions before and after execution. */
+ * destination regions before and after execution.
+ *
+ * The record's contexts use the pinned 448-byte v1/v2 layout: the Phase 3
+ * reference binary (tests/fixtures/i386_phase3_reference.bin) is hash-bound
+ * against this exact shape, so the ABI v3 growth of gem_i386_context
+ * (ADR 0013) must not change it.  Execution converts to and from the
+ * current gem_i386_context at the boundary. */
+struct i386_phase3_legacy_context {
+    uint32_t layout_version;
+    uint32_t context_size;
+    uint32_t gpr[8];
+    uint32_t eip;
+    uint32_t eflags;
+    uint16_t segment[6];
+    uint32_t segment_base[6];
+    uint32_t segment_limit[6];
+    uint32_t segment_attributes[6];
+    struct gem_u128 xmm[8];
+    struct gem_u128 x87[8];
+    uint32_t mxcsr;
+    uint16_t fcw;
+    uint16_t fsw;
+    uint16_t ftw;
+    uint16_t fop;
+    uint32_t teb;
+    uint32_t reserved0;
+    uint64_t transition_cookie;
+    uint32_t stop_reason;
+    union {
+        uint32_t reserved[5];
+        struct gem_i386_x87_environment x87_environment;
+    };
+};
+
 struct i386_phase3_record {
     uint32_t schema_version;
     uint32_t case_id;
@@ -42,8 +75,8 @@ struct i386_phase3_record {
     uint8_t instruction[16];
     uint8_t instruction_size;
     uint8_t reserved[3];
-    struct gem_i386_context initial;
-    struct gem_i386_context final;
+    struct i386_phase3_legacy_context initial;
+    struct i386_phase3_legacy_context final;
     uint64_t defined_context_mask;
     uint64_t memory_hash_before;
     uint64_t memory_hash_after;
@@ -58,9 +91,11 @@ struct i386_phase3_record {
 
 #if defined(__cplusplus)
 static_assert(sizeof(struct i386_phase3_file_header) == 16U, "Phase 3 file header drift");
+static_assert(sizeof(struct i386_phase3_legacy_context) == 448U, "Phase 3 legacy context drift");
 static_assert(sizeof(struct i386_phase3_record) == 984U, "Phase 3 record layout drift");
 #else
 _Static_assert(sizeof(struct i386_phase3_file_header) == 16U, "Phase 3 file header drift");
+_Static_assert(sizeof(struct i386_phase3_legacy_context) == 448U, "Phase 3 legacy context drift");
 _Static_assert(sizeof(struct i386_phase3_record) == 984U, "Phase 3 record layout drift");
 #endif
 

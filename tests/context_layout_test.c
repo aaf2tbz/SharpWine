@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "metalsharp/gem/context.h"
+#include "metalsharp/gem/i386_context.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -39,6 +40,22 @@ int main(void) {
     assert(context.layout_version == GEM_CONTEXT_LAYOUT_VERSION);
     assert(context.context_size == GEM_THREAD_CONTEXT_EXPECTED_SIZE);
     assert(gem_context_is_valid(&context));
+
+    {
+        struct gem_i386_context i386;
+        assert(GEM_I386_CONTEXT_LAYOUT_VERSION == GEM_I386_CONTEXT_LAYOUT_VERSION_V3);
+        assert(GEM_I386_CONTEXT_SIZE_V1 == 448U);
+        assert(GEM_I386_CONTEXT_SIZE_V2 == 448U);
+        assert(GEM_I386_CONTEXT_SIZE_V3 == 592U);
+        assert(sizeof(struct gem_i386_context) == GEM_I386_CONTEXT_SIZE_V3);
+        assert(offsetof(struct gem_i386_context, ymm_upper) == 448U);
+        assert(offsetof(struct gem_i386_context, xcr0) == 576U);
+        assert(offsetof(struct gem_i386_context, reserved1) == 584U);
+        gem_i386_context_initialize(&i386, UINT32_C(0x7ffde000));
+        assert(i386.layout_version == GEM_I386_CONTEXT_LAYOUT_VERSION_V3);
+        assert(i386.context_size == GEM_I386_CONTEXT_SIZE_V3);
+        assert(gem_i386_context_is_valid(&i386));
+    }
 
     return 0;
 }
