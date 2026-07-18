@@ -9,7 +9,7 @@
    "notepad": "437e17a90482bc51ccd2dfc90db0efb5e1a2b50b5d9dc31a2166995de3a7a7c0",
    "steamsetup": "3a264217dd0e2dd27ea935a13e07883646c0e6848ede6220f0b2ad03acf9704e"
   },
-  "phase4Generator": "feb4c009015e4cfe23c0c55536ef386780561d4d480aafb93613ebb005297791",
+  "phase4Generator": "6e82f9d5e4eba2b5f5c4e7b913b01127d01c13bca75b3545530e4705d910d2fc",
   "phase3Records": "0a565a3fb078071847f9d06bd51336e2084199603611a6e11cc83748f95e5fb1",
   "phase3Reference": "fb8a1f249d08b81d93e5acbf715fc63801a77f185135e24c70cea81c535ddd06",
   "rosettaMatrix": "31cf28b1f6a61261296bba11fa90c9b0e9d9f1577f68d30d27ebc70499984964"
@@ -39,22 +39,12 @@
  },
  "totals": {
   "tracedHandlers": 96,
-  "corpusCoveredHandlers": 206,
-  "tracedUncoveredHandlers": 49,
+  "corpusCoveredHandlers": 241,
+  "tracedUncoveredHandlers": 14,
   "corpusOnlyHandlers": 159
  },
  "prioritized": {
   "uncoveredByTraceFrequency": [
-   {
-    "handlerId": 4535,
-    "name": "OpMovzwGvqpEw",
-    "tracedCount": 63527
-   },
-   {
-    "handlerId": 10,
-    "name": "OpLeaGvqpM",
-    "tracedCount": 22441
-   },
    {
     "handlerId": 4181,
     "name": "OpPushZvq",
@@ -66,11 +56,6 @@
     "tracedCount": 5537
    },
    {
-    "handlerId": 4295,
-    "name": "OpMovEvqpIvds",
-    "tracedCount": 4675
-   },
-   {
     "handlerId": 4297,
     "name": "OpLeave",
     "tracedCount": 4376
@@ -79,16 +64,6 @@
     "handlerId": 4290,
     "name": "OpRetIw",
     "tracedCount": 2162
-   },
-   {
-    "handlerId": 4155,
-    "name": "OpAluwFlipCmp",
-    "tracedCount": 1879
-   },
-   {
-    "handlerId": 4232,
-    "name": "OpMovEbGb",
-    "tracedCount": 1716
    },
    {
     "handlerId": 4183,
@@ -111,29 +86,9 @@
     "tracedCount": 1545
    },
    {
-    "handlerId": 4418,
-    "name": "OpCmovb",
-    "tracedCount": 1301
-   },
-   {
-    "handlerId": 4393,
-    "name": "OpMovWpsVps",
-    "tracedCount": 584
-   },
-   {
-    "handlerId": 4421,
-    "name": "OpCmovne",
-    "tracedCount": 492
-   },
-   {
     "handlerId": 4257,
     "name": "OpMovRaxOvqp",
     "tracedCount": 471
-   },
-   {
-    "handlerId": 4294,
-    "name": "OpMovEbIb",
-    "tracedCount": 460
    },
    {
     "handlerId": 14,
@@ -146,99 +101,9 @@
     "tracedCount": 302
    },
    {
-    "handlerId": 4423,
-    "name": "OpCmova",
-    "tracedCount": 290
-   },
-   {
-    "handlerId": 4264,
-    "name": "OpTestAlIb",
-    "tracedCount": 268
-   },
-   {
-    "handlerId": 4422,
-    "name": "OpCmovbe",
-    "tracedCount": 257
-   },
-   {
-    "handlerId": 4139,
-    "name": "OpAluwFlip",
-    "tracedCount": 226
-   },
-   {
-    "handlerId": 4500,
-    "name": "OpSete",
-    "tracedCount": 197
-   },
-   {
-    "handlerId": 4424,
-    "name": "OpCmovs",
-    "tracedCount": 177
-   },
-   {
-    "handlerId": 4419,
-    "name": "OpCmovae",
-    "tracedCount": 175
-   },
-   {
-    "handlerId": 4499,
-    "name": "OpSetae",
-    "tracedCount": 160
-   },
-   {
-    "handlerId": 4430,
-    "name": "OpCmovle",
-    "tracedCount": 120
-   },
-   {
-    "handlerId": 4351,
-    "name": "Op0ff",
-    "tracedCount": 117
-   },
-   {
-    "handlerId": 4369,
-    "name": "OpMovWpsVps",
-    "tracedCount": 116
-   },
-   {
-    "handlerId": 4478,
-    "name": "OpMov0f7e",
-    "tracedCount": 102
-   },
-   {
     "handlerId": 4259,
     "name": "OpMovOvqpRax",
     "tracedCount": 93
-   },
-   {
-    "handlerId": 4566,
-    "name": "OpMov0fD6",
-    "tracedCount": 67
-   },
-   {
-    "handlerId": 4462,
-    "name": "OpMov0f6e",
-    "tracedCount": 58
-   },
-   {
-    "handlerId": 4429,
-    "name": "OpCmovge",
-    "tracedCount": 48
-   },
-   {
-    "handlerId": 4431,
-    "name": "OpCmovg",
-    "tracedCount": 42
-   },
-   {
-    "handlerId": 4147,
-    "name": "OpAluwFlip",
-    "tracedCount": 36
-   },
-   {
-    "handlerId": 4549,
-    "name": "OpPextrwGdqpUdqIb",
-    "tracedCount": 36
    },
    {
     "handlerId": 4177,
@@ -249,46 +114,6 @@
     "handlerId": 4185,
     "name": "OpPopZvq",
     "tracedCount": 29
-   },
-   {
-    "handlerId": 4460,
-    "name": "OpSsePunpcklqdq",
-    "tracedCount": 24
-   },
-   {
-    "handlerId": 4450,
-    "name": "OpSsePunpckldq",
-    "tracedCount": 22
-   },
-   {
-    "handlerId": 4463,
-    "name": "OpMov0f6f",
-    "tracedCount": 20
-   },
-   {
-    "handlerId": 4501,
-    "name": "OpSetne",
-    "tracedCount": 13
-   },
-   {
-    "handlerId": 4107,
-    "name": "OpAluwFlip",
-    "tracedCount": 11
-   },
-   {
-    "handlerId": 4131,
-    "name": "OpAluwFlip",
-    "tracedCount": 6
-   },
-   {
-    "handlerId": 4425,
-    "name": "OpCmovns",
-    "tracedCount": 6
-   },
-   {
-    "handlerId": 4554,
-    "name": "OpBswapZvqp",
-    "tracedCount": 6
    }
   ],
   "coveredByTraceFrequency": [
@@ -318,6 +143,11 @@
     "tracedCount": 104325
    },
    {
+    "handlerId": 4535,
+    "name": "OpMovzwGvqpEw",
+    "tracedCount": 63527
+   },
+   {
     "handlerId": 4097,
     "name": "OpAluw",
     "tracedCount": 55619
@@ -341,6 +171,11 @@
     "handlerId": 4534,
     "name": "OpMovzbGvqpEb",
     "tracedCount": 26144
+   },
+   {
+    "handlerId": 10,
+    "name": "OpLeaGvqpM",
+    "tracedCount": 22441
    },
    {
     "handlerId": 4152,
@@ -388,6 +223,11 @@
     "tracedCount": 4807
    },
    {
+    "handlerId": 4295,
+    "name": "OpMovEvqpIvds",
+    "tracedCount": 4675
+   },
+   {
     "handlerId": 4179,
     "name": "OpPushZvq",
     "tracedCount": 3819
@@ -413,6 +253,16 @@
     "tracedCount": 2132
    },
    {
+    "handlerId": 4155,
+    "name": "OpAluwFlipCmp",
+    "tracedCount": 1879
+   },
+   {
+    "handlerId": 4232,
+    "name": "OpMovEbGb",
+    "tracedCount": 1716
+   },
+   {
     "handlerId": 4420,
     "name": "OpCmove",
     "tracedCount": 1694
@@ -433,6 +283,11 @@
     "tracedCount": 1317
    },
    {
+    "handlerId": 4418,
+    "name": "OpCmovb",
+    "tracedCount": 1301
+   },
+   {
     "handlerId": 4343,
     "name": "Op0f7",
     "tracedCount": 644
@@ -443,9 +298,24 @@
     "tracedCount": 636
    },
    {
+    "handlerId": 4393,
+    "name": "OpMovWpsVps",
+    "tracedCount": 584
+   },
+   {
     "handlerId": 4201,
     "name": "OpImulGvqpEvqpImm",
     "tracedCount": 563
+   },
+   {
+    "handlerId": 4421,
+    "name": "OpCmovne",
+    "tracedCount": 492
+   },
+   {
+    "handlerId": 4294,
+    "name": "OpMovEbIb",
+    "tracedCount": 460
    },
    {
     "handlerId": 4105,
@@ -453,9 +323,29 @@
     "tracedCount": 323
    },
    {
+    "handlerId": 4423,
+    "name": "OpCmova",
+    "tracedCount": 290
+   },
+   {
+    "handlerId": 4264,
+    "name": "OpTestAlIb",
+    "tracedCount": 268
+   },
+   {
+    "handlerId": 4422,
+    "name": "OpCmovbe",
+    "tracedCount": 257
+   },
+   {
     "handlerId": 4133,
     "name": "OpAluRaxIvds",
     "tracedCount": 252
+   },
+   {
+    "handlerId": 4139,
+    "name": "OpAluwFlip",
+    "tracedCount": 226
    },
    {
     "handlerId": 4307,
@@ -463,9 +353,29 @@
     "tracedCount": 209
    },
    {
+    "handlerId": 4500,
+    "name": "OpSete",
+    "tracedCount": 197
+   },
+   {
     "handlerId": 4541,
     "name": "OpBsr",
     "tracedCount": 197
+   },
+   {
+    "handlerId": 4424,
+    "name": "OpCmovs",
+    "tracedCount": 177
+   },
+   {
+    "handlerId": 4419,
+    "name": "OpCmovae",
+    "tracedCount": 175
+   },
+   {
+    "handlerId": 4499,
+    "name": "OpSetae",
+    "tracedCount": 160
    },
    {
     "handlerId": 4109,
@@ -478,13 +388,53 @@
     "tracedCount": 138
    },
    {
+    "handlerId": 4430,
+    "name": "OpCmovle",
+    "tracedCount": 120
+   },
+   {
+    "handlerId": 4351,
+    "name": "Op0ff",
+    "tracedCount": 117
+   },
+   {
+    "handlerId": 4369,
+    "name": "OpMovWpsVps",
+    "tracedCount": 116
+   },
+   {
+    "handlerId": 4478,
+    "name": "OpMov0f7e",
+    "tracedCount": 102
+   },
+   {
+    "handlerId": 4566,
+    "name": "OpMov0fD6",
+    "tracedCount": 67
+   },
+   {
+    "handlerId": 4462,
+    "name": "OpMov0f6e",
+    "tracedCount": 58
+   },
+   {
     "handlerId": 4591,
     "name": "OpSsePxor",
     "tracedCount": 58
    },
    {
+    "handlerId": 4429,
+    "name": "OpCmovge",
+    "tracedCount": 48
+   },
+   {
     "handlerId": 4149,
     "name": "OpAluRaxIvds",
+    "tracedCount": 42
+   },
+   {
+    "handlerId": 4431,
+    "name": "OpCmovg",
     "tracedCount": 42
    },
    {
@@ -498,6 +448,16 @@
     "tracedCount": 39
    },
    {
+    "handlerId": 4147,
+    "name": "OpAluwFlip",
+    "tracedCount": 36
+   },
+   {
+    "handlerId": 4549,
+    "name": "OpPextrwGdqpUdqIb",
+    "tracedCount": 36
+   },
+   {
     "handlerId": 4515,
     "name": "OpBit",
     "tracedCount": 35
@@ -508,14 +468,54 @@
     "tracedCount": 31
    },
    {
+    "handlerId": 4460,
+    "name": "OpSsePunpcklqdq",
+    "tracedCount": 24
+   },
+   {
+    "handlerId": 4450,
+    "name": "OpSsePunpckldq",
+    "tracedCount": 22
+   },
+   {
+    "handlerId": 4463,
+    "name": "OpMov0f6f",
+    "tracedCount": 20
+   },
+   {
     "handlerId": 4141,
     "name": "OpAluRaxIvds",
     "tracedCount": 14
    },
    {
+    "handlerId": 4501,
+    "name": "OpSetne",
+    "tracedCount": 13
+   },
+   {
+    "handlerId": 4107,
+    "name": "OpAluwFlip",
+    "tracedCount": 11
+   },
+   {
     "handlerId": 4101,
     "name": "OpAluRaxIvds",
     "tracedCount": 9
+   },
+   {
+    "handlerId": 4131,
+    "name": "OpAluwFlip",
+    "tracedCount": 6
+   },
+   {
+    "handlerId": 4425,
+    "name": "OpCmovns",
+    "tracedCount": 6
+   },
+   {
+    "handlerId": 4554,
+    "name": "OpBswapZvqp",
+    "tracedCount": 6
    },
    {
     "handlerId": 4108,
@@ -1780,7 +1780,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "109"
+    ]
+   }
   },
   {
    "handlerId": 11,
@@ -2075,7 +2079,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "111"
+    ]
+   }
   },
   {
    "handlerId": 4108,
@@ -2316,7 +2324,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "113"
+    ]
+   }
   },
   {
    "handlerId": 4132,
@@ -2456,7 +2468,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "112"
+    ]
+   }
   },
   {
    "handlerId": 4140,
@@ -2601,7 +2617,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "209"
+    ]
+   }
   },
   {
    "handlerId": 4148,
@@ -2781,7 +2801,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "110"
+    ]
+   }
   },
   {
    "handlerId": 4156,
@@ -3177,7 +3201,12 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "116",
+     "206"
+    ]
+   }
   },
   {
    "handlerId": 4234,
@@ -3367,7 +3396,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "114"
+    ]
+   }
   },
   {
    "handlerId": 4266,
@@ -3754,7 +3787,12 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "117",
+     "207"
+    ]
+   }
   },
   {
    "handlerId": 4295,
@@ -3765,7 +3803,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "208"
+    ]
+   }
   },
   {
    "handlerId": 4297,
@@ -4726,7 +4768,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "131"
+    ]
+   }
   },
   {
    "handlerId": 4369,
@@ -4737,7 +4783,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "407"
+    ]
+   }
   },
   {
    "handlerId": 4393,
@@ -4748,7 +4798,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "406"
+    ]
+   }
   },
   {
    "handlerId": 4418,
@@ -4759,7 +4813,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "118"
+    ]
+   }
   },
   {
    "handlerId": 4419,
@@ -4770,7 +4828,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "119"
+    ]
+   }
   },
   {
    "handlerId": 4420,
@@ -4814,7 +4876,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "120"
+    ]
+   }
   },
   {
    "handlerId": 4422,
@@ -4825,7 +4891,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "121"
+    ]
+   }
   },
   {
    "handlerId": 4423,
@@ -4836,7 +4906,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "122"
+    ]
+   }
   },
   {
    "handlerId": 4424,
@@ -4847,7 +4921,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "123"
+    ]
+   }
   },
   {
    "handlerId": 4425,
@@ -4858,7 +4936,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "124"
+    ]
+   }
   },
   {
    "handlerId": 4429,
@@ -4869,7 +4951,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "125"
+    ]
+   }
   },
   {
    "handlerId": 4430,
@@ -4880,7 +4966,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "126"
+    ]
+   }
   },
   {
    "handlerId": 4431,
@@ -4891,7 +4981,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "127"
+    ]
+   }
   },
   {
    "handlerId": 4439,
@@ -4959,7 +5053,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "408"
+    ]
+   }
   },
   {
    "handlerId": 4452,
@@ -5003,7 +5101,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "410"
+    ]
+   }
   },
   {
    "handlerId": 4462,
@@ -5014,7 +5116,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "411"
+    ]
+   }
   },
   {
    "handlerId": 4463,
@@ -5025,7 +5131,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "409"
+    ]
+   }
   },
   {
    "handlerId": 4464,
@@ -5129,7 +5239,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "412"
+    ]
+   }
   },
   {
    "handlerId": 4499,
@@ -5140,7 +5254,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "128"
+    ]
+   }
   },
   {
    "handlerId": 4500,
@@ -5151,7 +5269,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "129"
+    ]
+   }
   },
   {
    "handlerId": 4501,
@@ -5162,7 +5284,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "130"
+    ]
+   }
   },
   {
    "handlerId": 4508,
@@ -5469,7 +5595,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "108"
+    ]
+   }
   },
   {
    "handlerId": 4536,
@@ -5732,7 +5862,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "414"
+    ]
+   }
   },
   {
    "handlerId": 4551,
@@ -5784,7 +5918,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "115"
+    ]
+   }
   },
   {
    "handlerId": 4565,
@@ -5826,7 +5964,11 @@
     "notepad",
     "steamsetup"
    ],
-   "corpusCoverage": {}
+   "corpusCoverage": {
+    "phase3": [
+     "413"
+    ]
+   }
   },
   {
    "handlerId": 4568,
@@ -7239,5 +7381,5 @@
    }
   }
  ],
- "resultsSha256": "5e75fe25a96857c0516edf54c22d9d632b24f452f881f637f59f3422f430ef51"
+ "resultsSha256": "56911cde9319aaa3ec31cfec20c871943dcd48f6e9f86d0f6affbe508a272595"
 }
