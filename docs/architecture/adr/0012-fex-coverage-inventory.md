@@ -201,6 +201,16 @@ The selected guest is i386 legacy32 (Windows WoW64):
   and atomically advertises AVX2 in CPUID leaf 7 and manifest profile v6. The
   pinned AVX2 inventory is complete and enabled based on SharpWine's native
   macOS ARM64 proof, not on an external oracle ceiling.
+- The FMA review covers all 60 FMA3 classes and 192 register/memory patterns in
+  pinned XED `avx-fma-isa.xed.txt`. Patch 0037 implements every 132/213/231
+  operand order, packed/scalar float/double shape, alternating add/sub form,
+  and negated-product form with a single fused host operation. Interpreter/JIT
+  tests exercise every class plus an exact fused-rounding discriminator and a
+  scalar page-boundary no-overread witness. Patch 0038 adds a five-instruction
+  mapped guest-program witness and atomically advertises FMA in CPUID leaf 1
+  and manifest profile v7. FMA is kept because SharpWine proves the complete
+  native family on macOS ARM64; an external oracle is comparison evidence, not
+  a reason to discard working program-loading capability.
 
 ## Acceptance authority
 

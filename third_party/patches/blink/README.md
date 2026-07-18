@@ -268,3 +268,15 @@ exports architecturally restartable partial destination/mask state on faults.
 advertises AVX2 only after the 138-class/302-pattern XED inventory, precise
 interpreter/JIT semantics, fault-state tests, both golden corpora, and a loaded
 four-instruction AVX2 guest program pass on macOS ARM64.
+
+`0037-gem-i386-fma.patch` (SHA-256
+`fd27ea34047a97825d7bd19b1a6fe0420f8711c1140bb07421bb2ef7bfe58178`)
+implements all 60 FMA3 instruction classes and 192 register/memory patterns
+from pinned Intel XED: 132/213/231 operand orders, packed/scalar float/double,
+add/sub/addsub/subadd, and negated-product forms using one fused host operation.
+
+`0038-gem-i386-fma-cpuid.patch` (SHA-256
+`265327a3311cff46133a2ff0179c7a62c411cfb5aec8ea847acca495cc9bd5aa`)
+advertises FMA only after the complete pinned inventory, exact fused-rounding
+and fault-width semantics, interpreter/JIT parity, both golden corpora, and a
+loaded five-instruction FMA guest program pass natively on macOS ARM64.

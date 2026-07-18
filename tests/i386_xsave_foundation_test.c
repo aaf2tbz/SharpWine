@@ -1539,6 +1539,148 @@ static void exercise_avx2_gather(enum gem_i386_engine_mode mode) {
     gem_memory_destroy(memory);
 }
 
+static double expected_fma_value(unsigned order, unsigned low, unsigned lane) {
+    double product;
+    double addend;
+    if (order == 9U) {
+        product = 2.0 * 5.0;
+        addend = 3.0;
+    } else if (order == 10U) {
+        product = 2.0 * 3.0;
+        addend = 5.0;
+    } else {
+        product = 3.0 * 5.0;
+        addend = 2.0;
+    }
+    if (low == 0x0cU || low == 0x0dU || low == 0x0eU || low == 0x0fU)
+        product = -product;
+    if (low == 0x0aU || low == 0x0bU || low == 0x0eU || low == 0x0fU ||
+        (low == 6U && (lane & 1U) == 0U) || (low == 7U && (lane & 1U) != 0U))
+        addend = -addend;
+    return product + addend;
+}
+
+static void run_fma_case(enum gem_i386_engine_mode mode, unsigned opcode, bool qword) {
+    uint8_t code[5] = {0xc4U, 0xe2U, 0x75U, (uint8_t)opcode, 0xc2U};
+    const bool scalar = (opcode & 0x0fU) >= 8U && (opcode & 1U) != 0U;
+    const size_t width = qword ? 8U : 4U;
+    const size_t elements = scalar ? 1U : 32U / width;
+    const unsigned order = opcode >> 4U;
+    const unsigned low = opcode & 0x0fU;
+    struct gem_memory *memory;
+    struct gem_i386_runtime *runtime;
+    struct gem_i386_context context;
+    size_t i;
+
+    if (qword)
+        code[2] |= 0x80U;
+    else
+        code[2] &= 0x7fU;
+    if (scalar)
+        code[2] &= (uint8_t)~4U;
+    memory = make_memory(code, sizeof(code), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(code));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    if (qword) {
+        double destination[4] = {2.0, 2.0, 2.0, 2.0};
+        double vsource[4] = {3.0, 3.0, 3.0, 3.0};
+        double operand[4] = {5.0, 5.0, 5.0, 5.0};
+        memcpy(&context.xmm[0], destination, 16U);
+        memcpy(&context.ymm_upper[0], destination + 2, 16U);
+        memcpy(&context.xmm[1], vsource, 16U);
+        memcpy(&context.ymm_upper[1], vsource + 2, 16U);
+        memcpy(&context.xmm[2], operand, 16U);
+        memcpy(&context.ymm_upper[2], operand + 2, 16U);
+    } else {
+        float destination[8] = {2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F};
+        float vsource[8] = {3.0F, 3.0F, 3.0F, 3.0F, 3.0F, 3.0F, 3.0F, 3.0F};
+        float operand[8] = {5.0F, 5.0F, 5.0F, 5.0F, 5.0F, 5.0F, 5.0F, 5.0F};
+        memcpy(&context.xmm[0], destination, 16U);
+        memcpy(&context.ymm_upper[0], destination + 4, 16U);
+        memcpy(&context.xmm[1], vsource, 16U);
+        memcpy(&context.ymm_upper[1], vsource + 4, 16U);
+        memcpy(&context.xmm[2], operand, 16U);
+        memcpy(&context.ymm_upper[2], operand + 4, 16U);
+    }
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    for (i = 0; i < elements; ++i) {
+        const double expected = expected_fma_value(order, low, (unsigned)i);
+        if (qword) {
+            double actual;
+            memcpy(&actual,
+                   i < 2U ? (const uint8_t *)&context.xmm[0] + 8U * i
+                          : (const uint8_t *)&context.ymm_upper[0] + 8U * (i - 2U),
+                   8U);
+            assert(actual == expected);
+        } else {
+            float actual;
+            memcpy(&actual,
+                   i < 4U ? (const uint8_t *)&context.xmm[0] + 4U * i
+                          : (const uint8_t *)&context.ymm_upper[0] + 4U * (i - 4U),
+                   4U);
+            assert(actual == (float)expected);
+        }
+    }
+    if (scalar) {
+        const uint8_t *upper = (const uint8_t *)&context.xmm[0] + width;
+        uint8_t expected_upper[12];
+        memset(expected_upper, 0, sizeof(expected_upper));
+        if (qword) {
+            double value = 2.0;
+            memcpy(expected_upper, &value, 8U);
+        } else {
+            float value = 2.0F;
+            memcpy(expected_upper, &value, 4U);
+            memcpy(expected_upper + 4U, &value, 4U);
+            memcpy(expected_upper + 8U, &value, 4U);
+        }
+        assert(memcmp(upper, expected_upper, 16U - width) == 0);
+        assert(context.ymm_upper[0].lo == 0U && context.ymm_upper[0].hi == 0U);
+    }
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void exercise_fma_inventory(enum gem_i386_engine_mode mode) {
+    static const unsigned packed_low[] = {6U, 7U, 8U, 10U, 12U, 14U};
+    static const unsigned scalar_low[] = {9U, 11U, 13U, 15U};
+    const uint8_t memory_code[5] = {0xc4U, 0xe2U, 0x71U, 0x99U, 0x06U};
+    const uint32_t operand = DATA + GEM_GUEST_PAGE_SIZE - 4U;
+    const float destination = 0x1.000002p+0F;
+    const float vsource = -1.0F;
+    const float memory_source = 0x1.fffffcp-1F;
+    const float expected = -0x1p-46F;
+    struct gem_memory *memory;
+    struct gem_i386_runtime *runtime;
+    struct gem_i386_context context;
+    unsigned order, i;
+
+    for (order = 9U; order <= 11U; ++order) {
+        for (i = 0U; i < sizeof(packed_low) / sizeof(packed_low[0]); ++i) {
+            run_fma_case(mode, order << 4U | packed_low[i], false);
+            run_fma_case(mode, order << 4U | packed_low[i], true);
+        }
+        for (i = 0U; i < sizeof(scalar_low) / sizeof(scalar_low[0]); ++i) {
+            run_fma_case(mode, order << 4U | scalar_low[i], false);
+            run_fma_case(mode, order << 4U | scalar_low[i], true);
+        }
+    }
+
+    memory = make_memory(memory_code, sizeof(memory_code), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(memory_code));
+    assert(runtime != NULL);
+    assert(gem_i386_memory_write(memory, operand, &memory_source, sizeof(memory_source)) ==
+           GEM_MEMORY_OK);
+    initialize(&context, operand, 0U);
+    memcpy(&context.xmm[0], &destination, sizeof(destination));
+    memcpy(&context.xmm[1], &vsource, sizeof(vsource));
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(memcmp(&context.xmm[0], &expected, sizeof(expected)) == 0);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
 static void exercise_promoted128(enum gem_i386_engine_mode mode, const uint8_t *code,
                                  size_t code_size, unsigned operation) {
     struct gem_memory *memory = make_memory(code, code_size, GEM_GUEST_PAGE_SIZE);
@@ -1682,6 +1824,8 @@ int main(void) {
     exercise_avx2_shifts_and_memory(GEM_I386_ENGINE_JIT);
     exercise_avx2_gather(GEM_I386_ENGINE_INTERPRETER);
     exercise_avx2_gather(GEM_I386_ENGINE_JIT);
+    exercise_fma_inventory(GEM_I386_ENGINE_INTERPRETER);
+    exercise_fma_inventory(GEM_I386_ENGINE_JIT);
     exercise_promoted128(GEM_I386_ENGINE_INTERPRETER, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_promoted128(GEM_I386_ENGINE_JIT, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_vmovhlps(GEM_I386_ENGINE_INTERPRETER);

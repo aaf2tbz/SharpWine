@@ -319,6 +319,7 @@ def audit_phase3_capabilities(source_root, manifest_path, corpus_path):
         ("POPCNT", "0x00000001", "ecx", 23), ("AES", "0x00000001", "ecx", 25),
         ("XSAVE", "0x00000001", "ecx", 26), ("OSXSAVE", "0x00000001", "ecx", 27),
         ("AVX", "0x00000001", "ecx", 28),
+        ("FMA", "0x00000001", "ecx", 12),
         ("AVX2", "0x00000007", "ebx", 5),
         ("ERMS", "0x00000007", "ebx", 9),
         ("BMI1", "0x00000007", "ebx", 3),
@@ -330,7 +331,7 @@ def audit_phase3_capabilities(source_root, manifest_path, corpus_path):
     need(actual == expected, "advertised CPUID capability drift")
     need(
         set(manifest["masked"])
-        == {"FMA", "ADX", "FSGSBASE", "RDRAND", "RDSEED", "RDPID", "CX16",
+        == {"ADX", "FSGSBASE", "RDRAND", "RDSEED", "RDPID", "CX16",
             "LONG_MODE", "SYSCALL"},
         "masked CPUID capability drift",
     )
@@ -402,13 +403,15 @@ def main():
     parser.add_argument("--avx2-data-patch", type=Path, required=True)
     parser.add_argument("--avx2-memory-patch", type=Path, required=True)
     parser.add_argument("--avx2-cpuid-patch", type=Path, required=True)
+    parser.add_argument("--fma-patch", type=Path, required=True)
+    parser.add_argument("--fma-cpuid-patch", type=Path, required=True)
     parser.add_argument("--capability-manifest", type=Path, required=True)
     parser.add_argument("--phase3-corpus", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 33, "provenance schema")
+    need(provenance["schemaVersion"] == 35, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -515,6 +518,11 @@ def main():
     need(
         digest(args.avx2_cpuid_patch) == provenance["avx2CpuidPatchSha256"],
         "AVX2 CPUID patch hash",
+    )
+    need(digest(args.fma_patch) == provenance["fmaPatchSha256"], "FMA patch hash")
+    need(
+        digest(args.fma_cpuid_patch) == provenance["fmaCpuidPatchSha256"],
+        "FMA CPUID patch hash",
     )
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")

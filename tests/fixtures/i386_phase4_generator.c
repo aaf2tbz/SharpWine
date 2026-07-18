@@ -130,7 +130,7 @@ static const struct template_entry system_templates[] = {
 static const struct template_entry negative_templates[] = {
     {{0x0f, 0x0b}, 2, 1, I386_PHASE4_COMPARE_EXACT, 0},
     {{0x66, 0x0f, 0x38, 0xf6, 0xc1}, 5, 1, I386_PHASE4_COMPARE_EXACT, 0},
-    {{0xc4, 0xe2, 0x71, 0x98, 0xc1}, 5, 1, I386_PHASE4_COMPARE_EXACT, 0},
+    {{0x0f, 0xc7, 0xf0}, 3, 1, I386_PHASE4_COMPARE_EXACT, 0},
     {{0x0f, 0xff}, 2, 1, I386_PHASE4_COMPARE_EXACT, 0},
 };
 

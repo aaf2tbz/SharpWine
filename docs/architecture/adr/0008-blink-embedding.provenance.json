@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 33,
+  "schemaVersion": 35,
   "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
   "archiveSha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
   "patchSha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
@@ -34,6 +34,8 @@
   "avx2DataPatchSha256": "bec443bd36816f37bba0bec99a7205f1adbbc4bacef307cf39c093658fbca676",
   "avx2MemoryPatchSha256": "884021d0fdfc422ce6883ce1f2251324f9c24af055e789de8c639cc1768670c0",
   "avx2CpuidPatchSha256": "ff69c66c0c4124b17cd4548232e05da11ee623e66782a61e3bb91f8e0046d84d",
+  "fmaPatchSha256": "fd27ea34047a97825d7bd19b1a6fe0420f8711c1140bb07421bb2ef7bfe58178",
+  "fmaCpuidPatchSha256": "265327a3311cff46133a2ff0179c7a62c411cfb5aec8ea847acca495cc9bd5aa",
   "license": "ISC",
   "prePatch": {
     "blink/machine.c": "73a32c95fbc191394c116bd2f41ebba464c963718b3785adaca22c5a93e8dc89",
@@ -42,7 +44,7 @@
   },
   "postPatch": {
     "blink/fusion.c": "492f2bf80ba626b63e37de749dcc679b439e44e135d01db718d84f9cb13dd7c7",
-    "blink/avx.c": "83263dc45d5983ebd6aa2b29052297df7c65f906b11ff4a29ec4c1858aaafcb0",
+    "blink/avx.c": "c5bdb2c6f810cd884edc402b74268606a83af52ce3819658947e213f272890c4",
     "blink/avx.h": "2aba83f058c7097e31c1a1c67ea23757c57f37dd64cf894b374dc258cecdf8bd",
     "blink/gem_embed.c": "9edaf78658199e19b93a4c4e7d9f724b4fe68f93121b3ee053bbc21d21c94634",
     "blink/gem_embed.h": "5e65493ca299069673102caf3c655e670cf2bb81adc2bc121b9720ddb8740944",
@@ -51,7 +53,7 @@
     "blink/legacy.c": "0dd21523bed5b9fa731a69e3b376d1c28800ada3a7c36668aace4832c0bb8cfe",
     "blink/machine.h": "63ff86e494d82fd6bcfde5c7bde4007f3e8142581c1c6bb555366a2396bb10a7",
     "blink/path.c": "6c44e5ae22e741e4a8fa7901a8140d7947c5d76e5e01a7865ecbc8e919731baa",
-    "blink/cpuid.c": "8a3df3b61747432b091aed4718759cb653f6d012a6c183727469083baf842056",
+    "blink/cpuid.c": "4f6ca330cc3db9f0bb8ac4ee62df933ce533580fcc081491d3408ba3d783528f",
     "blink/bmi2.c": "b42bf00d008ac5f1af2ec71eabdb5158123223787d8c8d7787775887d807b668",
     "blink/alu.c": "79d740ce4a1519d06f672d639f6bbcd85d9f7b232224e7521e9eed98f29c30be",
     "blink/cmpxchg.c": "ef2522645c555fce5f9e0a7919886bd9ad8ebaf8a425aada3f40ddcaeae200d7",

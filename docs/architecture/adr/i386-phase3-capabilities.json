@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "profile": "gem-i386-sse42-aes-pclmul-bmi1-bmi2-rdtscp-avx-avx2-v6",
+  "profile": "gem-i386-sse42-aes-pclmul-bmi1-bmi2-rdtscp-avx-avx2-fma-v7",
   "hostIndependent": true,
   "corpus": {
     "path": "tests/i386_phase3_conformance.c",
@@ -34,6 +34,7 @@
     {"name": "XSAVE", "leaf": "0x00000001", "register": "ecx", "bit": 26, "handlers": ["OpXsave", "OpXrstor"], "witness": "exercise_xsave", "cpuidWitness": "exercise_avx_cpuid", "witnessSource": "tests/i386_xsave_foundation_test.c"},
     {"name": "OSXSAVE", "leaf": "0x00000001", "register": "ecx", "bit": 27, "handlers": ["Op101"], "witness": "exercise_xgetbv", "cpuidWitness": "exercise_avx_cpuid", "witnessSource": "tests/i386_xsave_foundation_test.c"},
     {"name": "AVX", "leaf": "0x00000001", "register": "ecx", "bit": 28, "handlers": ["OpAvxFoundation"], "witness": "exercise_avx_inventory_closures", "cpuidWitness": "exercise_avx_cpuid", "witnessSource": "tests/i386_xsave_foundation_test.c", "programWitness": "verify_avx_guest_program", "inventory": {"source": "Intel XED", "revision": "519c843c86547e2003f5a404a53358a7dcfb82f3", "instructionClasses": 255, "encodingPatterns": 723, "patches": "0022-0032"}},
+    {"name": "FMA", "leaf": "0x00000001", "register": "ecx", "bit": 12, "handlers": ["OpAvxFoundation"], "witness": "exercise_fma_inventory", "witnessSource": "tests/i386_xsave_foundation_test.c", "programWitness": "verify_fma_guest_program", "inventory": {"source": "Intel XED", "revision": "519c843c86547e2003f5a404a53358a7dcfb82f3", "instructionClasses": 60, "encodingPatterns": 192, "patches": "0037-0038"}},
     {"name": "AVX2", "leaf": "0x00000007", "register": "ebx", "bit": 5, "handlers": ["OpAvxFoundation"], "witness": "exercise_avx2_gather", "witnessSource": "tests/i386_xsave_foundation_test.c", "programWitness": "verify_avx2_guest_program", "inventory": {"source": "Intel XED", "revision": "519c843c86547e2003f5a404a53358a7dcfb82f3", "instructionClasses": 138, "encodingPatterns": 302, "patches": "0033-0036"}},
     {"name": "ERMS", "leaf": "0x00000007", "register": "ebx", "bit": 9, "handlers": ["OpMovsb"], "witness": "I386_PHASE3_REP_SEGMENT_CASES"},
     {"name": "BMI1", "leaf": "0x00000007", "register": "ebx", "bit": 3, "handlers": ["OpAndn", "OpBls", "Op2f7", "AluTzcnt"], "witness": "verify_bmi1_instructions", "opcodeWitnesses": ["bmi1_andn[]", "bmi1_bextr[]", "bmi1_blsr[]", "bmi1_blsmsk[]", "bmi1_blsi[]", "bmi1_tzcnt[]"], "opcodes": ["0x1bc", "0x2f2", "0x2f3", "0x2f7"]},
@@ -41,7 +42,7 @@
     {"name": "RDTSCP", "leaf": "0x80000001", "register": "edx", "bit": 27, "handlers": ["OpRdtscp"], "witness": "verify_rdtscp_instruction", "opcodeWitnesses": ["rdtscp[]"], "opcodes": ["0x101/f9"], "timestampPolicy": "adapter-owned epoch-zero committed-retired counter; TSC_AUX=0"}
   ],
   "masked": [
-    "FMA", "ADX", "FSGSBASE",
+    "ADX", "FSGSBASE",
     "RDRAND", "RDSEED", "RDPID", "CX16", "LONG_MODE", "SYSCALL"
   ],
   "precisionBoundary": "Raw 80-bit values and environment state round-trip exactly; common x87 arithmetic uses reviewed host-double compatibility tolerances."
