@@ -219,6 +219,10 @@ static void import_state(const struct gem_i386_context *source, struct blink_gem
     target->fs_base =
         source->segment_base[GEM_I386_FS] != 0U ? source->segment_base[GEM_I386_FS] : source->teb;
     target->gs_base = source->segment_base[GEM_I386_GS];
+    if (source->layout_version >= GEM_I386_CONTEXT_LAYOUT_VERSION_V3) {
+        memcpy(target->ymm_upper, source->ymm_upper, sizeof(target->ymm_upper));
+        target->xcr0 = source->xcr0;
+    }
 }
 
 static void export_state(const struct blink_gem_state *source, const struct gem_i386_context *input,
@@ -248,6 +252,15 @@ static void export_state(const struct blink_gem_state *source, const struct gem_
         target->segment_base[i] = source->segments[i].base;
         target->segment_limit[i] = source->segments[i].limit;
         target->segment_attributes[i] = source->segments[i].attributes;
+    }
+    if (target->layout_version >= GEM_I386_CONTEXT_LAYOUT_VERSION_V3) {
+        memcpy(target->ymm_upper, source->ymm_upper, sizeof(target->ymm_upper));
+        target->xcr0 = source->xcr0;
+    } else {
+        /* ADR 0013 section g: a v1/v2 layout carries no extension; the bytes
+         * past the pinned 448-byte body are always exported zeroed. */
+        memset(target->ymm_upper, 0, sizeof(target->ymm_upper));
+        target->xcr0 = 0U;
     }
 }
 

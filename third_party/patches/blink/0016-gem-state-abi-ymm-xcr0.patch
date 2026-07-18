@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Fri, 17 Jul 2026 23:05:00 -0600
+Subject: [PATCH] gem: extend state abi with ymm uppers and xcr0
+
+SharpWine ADR 0013 section e: BLINK_GEM_STATE_ABI_VERSION becomes 3 and
+struct blink_gem_state gains ymm_upper[8][16] and xcr0 after segments[6].
+Upstream Blink has no YMM register file, so the gem machine wrapper carries
+the new storage (zero-initialized by calloc on create) and round-trips it
+on every step/run boundary until AVX handlers arrive.  blink_gem_machine_run
+now validates the incoming state abi_version and size, matching the step
+boundary's fail-closed behavior.
+---
+ blink/gem_embed.c | 10 ++++++++++
+ blink/gem_embed.h |  7 ++++++-
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -21,7 +21,7 @@
+ #include <stddef.h>
+ #include <stdint.h>
+ #define BLINK_GEM_ABI_VERSION       2u
+-#define BLINK_GEM_STATE_ABI_VERSION 2u
++#define BLINK_GEM_STATE_ABI_VERSION 3u
+ #define BLINK_GEM_MAX_SHADOW_PAGES 64u
+ #define BLINK_GEM_TRACE_ABI_VERSION 1u
+ #define BLINK_GEM_MAX_TRACE_ENTRIES 256u
+@@ -159,6 +159,11 @@
+   uint32_t fip, fdp;
+   uint16_t fcs, fds, fop, state_reserved;
+   struct blink_gem_segment segments[6];
++  /* ABI v3 (SharpWine ADR 0013): YMM upper halves and XCR0.  Upstream Blink
++   * has no YMM storage; these fields round-trip through the gem machine
++   * wrapper until AVX handlers arrive. */
++  uint8_t ymm_upper[8][16];
++  uint64_t xcr0;
+ };
+ struct blink_gem_result {
+   enum blink_gem_outcome outcome;
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -66,6 +66,10 @@
+   uint64_t jit_failures;
+   bool batched_run;
+   bool batched_continuation;
++  /* ABI v3 state storage (SharpWine ADR 0013).  calloc() in
++   * blink_gem_machine_create_with_config zero-initializes it. */
++  uint8_t ymm_upper[8][16];
++  uint64_t xcr0;
+ };
+ 
+ static pthread_once_t_ g_blink_gem_init_once = PTHREAD_ONCE_INIT_;
+@@ -535,6 +539,8 @@
+       import_state(m, in);
+     else
+       ImportFlags(m, ExportFlags(m->flags));
++    memcpy(g->ymm_upper, in->ymm_upper, sizeof(g->ymm_upper));
++    g->xcr0 = in->xcr0;
+     m->gem_access_segment = 0;
+     m->gem_access_offset = 0;
+     m->readaddr = m->writeaddr = 0;
+@@ -875,6 +881,8 @@
+       export_integer_state(m, in, out);
+     else
+       export_state(m, in, out);
++    memcpy(out->ymm_upper, g->ymm_upper, sizeof(out->ymm_upper));
++    out->xcr0 = g->xcr0;
+     if (g->trace_count < BLINK_GEM_MAX_TRACE_ENTRIES) {
+       g->trace[g->trace_count].rip = fetch_address;
+       g->trace[g->trace_count].handler_id = (uint32_t)handler_id;
+@@ -901,6 +909,8 @@
+   int halt;
+   size_t i;
+   if (!g || !request || !in || !out ||
++      in->abi_version != BLINK_GEM_STATE_ABI_VERSION ||
++      in->size != sizeof(*in) ||
+       request->abi_version != BLINK_GEM_RUN_REQUEST_ABI_VERSION ||
+       request->size != sizeof(*request) || !request->instruction_budget ||
+       request->stop_pc_count > 8 ||
+
+-- 
+2.54.0 (Apple Git-157)

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 12,
+  "schemaVersion": 13,
   "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
   "archiveSha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
   "patchSha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
@@ -24,8 +24,8 @@
   },
   "postPatch": {
     "blink/fusion.c": "492f2bf80ba626b63e37de749dcc679b439e44e135d01db718d84f9cb13dd7c7",
-    "blink/gem_embed.c": "05fd067275f321a2eaa92efb0c4eda6a5dc6eceafff17a42b1ce2bbfdaac9194",
-    "blink/gem_embed.h": "c1671c046ece8cec69d3535fa0967c0995821fb499b59c9ca4adefe1a8e955fa",
+    "blink/gem_embed.c": "b6d495930d035e04e8af607ce253b8673b3519732cf5ce2f64394a58cb319fae",
+    "blink/gem_embed.h": "d8663f1dbd2f94f96b5614029fb1dccc26b4dc68b08de780c32bbcd189c7d602",
     "blink/instruction.c": "643b63a9af36ab8732df8643552bd8b2ccf7c8e692ca58c6a4a209348e60e380",
     "blink/machine.c": "6d6560b6ed8425bfaa33f9b9ce125b6dd23aedb8e92cd06e46f9ea5054734b3c",
     "blink/legacy.c": "0dd21523bed5b9fa731a69e3b376d1c28800ada3a7c36668aace4832c0bb8cfe",
@@ -416,5 +416,6 @@
       "reason": "pins kAlu and Add64 flag/result semantics used by the admitted mopcode 0x003 ADD variant"
     }
   ],
-  "cmpxchgPatchSha256": "a0fc845f45edfced3c503b3fc08e63228cc9e37461f0f9230057b14fdd8f25c2"
+  "cmpxchgPatchSha256": "a0fc845f45edfced3c503b3fc08e63228cc9e37461f0f9230057b14fdd8f25c2",
+  "stateAbiPatchSha256": "c9c76e686547f8508aeef6270ec881a2633ebeb68a633d4b8a2ee9e6123e897b"
 }

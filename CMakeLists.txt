@@ -174,6 +174,7 @@ if(MSWR_ENABLE_X64_ENGINE OR MSWR_ENABLE_I386_ENGINE)
         --phase55-optimization-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0013-gem-concurrent-quantum-optimization.patch"
         --phase55-concurrency-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0014-gem-concurrent-host-page-registry.patch"
         --cmpxchg-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0015-gem-cmpxchg-flag-order.patch"
+        --state-abi-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0016-gem-state-abi-ymm-xcr0.patch"
         --capability-manifest "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/i386-phase3-capabilities.json"
         --phase3-corpus "${CMAKE_CURRENT_SOURCE_DIR}/tests/i386_phase3_conformance.c"
         --provenance "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/0008-blink-embedding.provenance.json"
@@ -415,6 +416,14 @@ if(BUILD_TESTING)
         add_test(NAME gem.i386_cmpxchg_flags COMMAND i386_cmpxchg_flags_test)
         set_tests_properties(gem.i386_cmpxchg_flags PROPERTIES LABELS "i386;zero-rosetta")
 
+        add_executable(i386_state_transfer_test tests/i386_state_transfer_test.c)
+        target_link_libraries(i386_state_transfer_test PRIVATE metalsharp_gem)
+        target_include_directories(i386_state_transfer_test PRIVATE
+            "${blink_gem_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+        mswr_enable_warnings(i386_state_transfer_test)
+        add_test(NAME gem.i386_state_transfer COMMAND i386_state_transfer_test)
+        set_tests_properties(gem.i386_state_transfer PROPERTIES LABELS "i386;zero-rosetta")
+
         add_executable(i386_phase55_performance tests/i386_phase55_performance.c)
         target_link_libraries(i386_phase55_performance PRIVATE metalsharp_gem)
         target_include_directories(i386_phase55_performance PRIVATE
@@ -571,7 +580,8 @@ if(BUILD_TESTING)
         context_conversion_test context_serialization_test memory_test
         i386_context_test i386_memory_test i386_context_serialization_test
         i386_engine_conformance i386_engine_ops_conformance
-        i386_handler_trace_conformance i386_cmpxchg_flags_test i386_phase2_conformance
+        i386_handler_trace_conformance i386_cmpxchg_flags_test i386_state_transfer_test
+        i386_phase2_conformance
         i386_phase3_conformance i386_phase4_conformance i386_phase5_ci
         memory_page_isolation_test macos_tso_api_probe
         arm64ec_engine_conformance wine_bridge_conformance wine_i386_bridge_conformance
