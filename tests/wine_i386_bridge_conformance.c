@@ -344,8 +344,8 @@ int main(void) {
             0x83U, 0xc0U, 0x01U                /* add eax,1 */
         };
         const uint32_t external_data = UINT32_C(0x00600000);
-        uint32_t *host = mmap(NULL, host_page, PROT_READ | PROT_WRITE,
-                              MAP_PRIVATE | MAP_ANON, -1, 0);
+        uint32_t *host =
+            mmap(NULL, host_page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
         assert(host != MAP_FAILED);
         *host = UINT32_C(1);
         assert(gem_wine_process_reserve(process, external_data, GEM_WINE_GUEST_PAGE_SIZE) ==
