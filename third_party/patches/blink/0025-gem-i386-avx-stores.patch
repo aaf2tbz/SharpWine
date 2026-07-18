@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000025 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: execute native i386 avx stores
+
+Implement the AVX scalar, packed, aligned, unaligned, low/high-lane, and
+non-temporal store shapes directly in the portable GEM semantic helper.
+Snapshot the full register source before reserving memory, enforce the AVX
+alignment contract, and explicitly commit Blink's cross-page stash from JIT
+helpers so faulting stores remain atomic and restartable.
+
+---
+diff -ruN --exclude=*.orig a/blink/avx.c b/blink/avx.c
+--- a/blink/avx.c	2026-07-18 01:24:15
++++ b/blink/avx.c	2026-07-18 01:27:12
+@@ -89,6 +89,33 @@
+   return false;
+ }
+ 
++static bool SupportsStore(u64 rde) {
++  unsigned op, pp;
++  if (Opmap(rde) != XED_ILD_MAP1 || IsModrmRegister(rde) || Vreg(rde)) {
++    return false;
++  }
++  op = Opcode(rde);
++  pp = Prefix(rde);
++  switch (op) {
++    case 0x11:
++      return pp <= 1 || (!Ymm(rde) && pp >= 2);
++    case 0x13:
++    case 0x17:
++      return !Ymm(rde) && pp <= 1;
++    case 0x29:
++    case 0x2b:
++      return pp <= 1;
++    case 0x7f:
++      return pp == 1 || pp == 2;
++    case 0xd6:
++      return !Ymm(rde) && pp == 1;
++    case 0xe7:
++      return pp == 1;
++    default:
++      return false;
++  }
++}
++
+ bool IsAvxFoundationOp(struct Machine *m, u64 rde) {
+   unsigned map, op, pp;
+   if (!IsVex(m)) return false;
+@@ -96,6 +123,7 @@
+   op = Opcode(rde);
+   pp = Prefix(rde);
+   if (map == XED_ILD_MAP1 && op == 0x77) return pp == 0;
++  if (SupportsStore(rde)) return true;
+   if (Ymm(rde)) return map == XED_ILD_MAP1 && Supports256(op, pp);
+   if (SupportsPromoted128(map, op, pp)) {
+     return GetOp(Mopcode(rde)) != OpUd;
+@@ -278,14 +306,56 @@
+   memcpy(result, m->xmm[dst], 16);
+   memcpy(m->xmm[dst], saved_dst, 16);
+   memcpy(m->xmm[tmp], saved_tmp, 16);
++}
++
++static bool IsAlignedStore(u64 rde) {
++  unsigned op = Opcode(rde);
++  return op == 0x29 || op == 0x2b || op == 0xe7 ||
++         (op == 0x7f && Prefix(rde) == 1);
++}
++
++static size_t StoreSize(u64 rde) {
++  unsigned op = Opcode(rde);
++  unsigned pp = Prefix(rde);
++  if (op == 0x11 && pp >= 2) return pp == 2 ? 4 : 8;
++  if (op == 0x13 || op == 0x17 || op == 0xd6) return 8;
++  return Ymm(rde) ? 32 : 16;
+ }
+ 
++static void RunAvxStore(P) {
++  u8 source[32], *destination;
++  i64 address;
++  size_t size;
++  unsigned reg;
++  reg = RexrReg(rde);
++  size = StoreSize(rde);
++  memcpy(source, m->xmm[reg], 16);
++  memcpy(source + 16, m->ymm_upper[reg], 16);
++  address = ComputeAddress(A);
++  if (IsAlignedStore(rde) && (address & (size - 1))) {
++    SetWriteAddr(m, address, size);
++    ThrowSegmentationFault(m, address);
++  }
++  destination = ReserveAddress(m, address, size, true);
++  if (Opcode(rde) == 0x17) {
++    memcpy(destination, source + 8, 8);
++  } else {
++    memcpy(destination, source, size);
++  }
++  if (m->stashaddr) CommitStash(m);
++}
++
+ static void RunAvxFoundation(P) {
+   u8 initial[2][16], source[2][16], result[2][16];
+   const u8 *memory_source;
+   size_t source_size;
+   unsigned dst, lanes;
+ 
++  if (SupportsStore(rde)) {
++    RunAvxStore(A);
++    return;
++  }
++
+   if (Opcode(rde) == 0x77) {
+     unsigned i;
+     for (i = 0; i < 8; ++i) {
+

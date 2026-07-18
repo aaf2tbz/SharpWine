@@ -24,6 +24,9 @@ static const uint8_t vaddps[] = {0xc5U, 0xf0U, 0x58U, 0xc2U};
 static const uint8_t vaddss[] = {0xc5U, 0xf2U, 0x58U, 0xc2U};
 static const uint8_t vaddps_ymm[] = {0xc5U, 0xf4U, 0x58U, 0xc2U};
 static const uint8_t vaddps_ymm_esi[] = {0xc5U, 0xf4U, 0x58U, 0x06U};
+static const uint8_t vmovups_ymm_store[] = {0xc5U, 0xfcU, 0x11U, 0x06U};
+static const uint8_t vmovaps_ymm_store[] = {0xc5U, 0xfcU, 0x29U, 0x06U};
+static const uint8_t vmovss_store[] = {0xc5U, 0xfaU, 0x11U, 0x06U};
 static const uint8_t vpaddd_xmm[] = {0xc5U, 0xf1U, 0xfeU, 0xc2U};
 static const uint8_t vmovhlps_xmm[] = {0xc5U, 0xf0U, 0x12U, 0xc2U};
 static const uint8_t vpshufb_xmm[] = {0xc4U, 0xe2U, 0x71U, 0x00U, 0xc2U};
@@ -295,6 +298,69 @@ static void exercise_vadd256_cross_page(enum gem_i386_engine_mode mode) {
     gem_memory_destroy(memory);
 }
 
+static void exercise_vmov256_store_cross_page(enum gem_i386_engine_mode mode) {
+    const uint32_t operand = DATA + GEM_GUEST_PAGE_SIZE - 16U;
+    const uint64_t source[4] = {UINT64_C(0x1111111111111111), UINT64_C(0x2222222222222222),
+                                UINT64_C(0x3333333333333333), UINT64_C(0x4444444444444444)};
+    uint8_t actual[32], first_page[16];
+    struct gem_memory *memory =
+        make_memory(vmovups_ymm_store, sizeof(vmovups_ymm_store), GEM_GUEST_PAGE_SIZE);
+    struct gem_i386_runtime *runtime = make_runtime(memory, mode, sizeof(vmovups_ymm_store));
+    struct gem_i386_context context, before;
+    struct gem_i386_stop_info stop;
+    assert(runtime != NULL);
+    memset(first_page, 0xa5, sizeof(first_page));
+    assert(gem_i386_memory_write(memory, operand, first_page, sizeof(first_page)) == GEM_MEMORY_OK);
+    initialize(&context, operand, 0U);
+    memcpy(&context.xmm[0], source, 16U);
+    memcpy(&context.ymm_upper[0], source + 2, 16U);
+    before = context;
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_MEMORY_FAULT);
+    assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+    assert(stop.fault_address == DATA + GEM_GUEST_PAGE_SIZE);
+    assert(context.eip == before.eip);
+    assert(memcmp(&context.xmm[0], &before.xmm[0], sizeof(context.xmm[0])) == 0);
+    assert(memcmp(&context.ymm_upper[0], &before.ymm_upper[0], sizeof(context.ymm_upper[0])) == 0);
+    memset(first_page, 0, sizeof(first_page));
+    assert(gem_i386_memory_read(memory, operand, first_page, sizeof(first_page)) == GEM_MEMORY_OK);
+    for (size_t i = 0U; i < sizeof(first_page); ++i)
+        assert(first_page[i] == 0xa5U);
+    assert(gem_i386_memory_commit(memory, DATA + GEM_GUEST_PAGE_SIZE, GEM_GUEST_PAGE_SIZE,
+                                  GEM_PAGE_READWRITE) == GEM_MEMORY_OK);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(gem_i386_memory_read(memory, operand, actual, sizeof(actual)) == GEM_MEMORY_OK);
+    assert(memcmp(actual, source, sizeof(source)) == 0);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void exercise_vmov_store_shapes(enum gem_i386_engine_mode mode) {
+    const uint32_t scalar_operand = DATA + GEM_GUEST_PAGE_SIZE - 4U;
+    const uint32_t scalar = UINT32_C(0x7fc01234);
+    struct gem_memory *memory =
+        make_memory(vmovss_store, sizeof(vmovss_store), GEM_GUEST_PAGE_SIZE);
+    struct gem_i386_runtime *runtime = make_runtime(memory, mode, sizeof(vmovss_store));
+    struct gem_i386_context context;
+    uint32_t actual;
+    assert(runtime != NULL);
+    initialize(&context, scalar_operand, 0U);
+    memcpy(&context.xmm[0], &scalar, sizeof(scalar));
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(gem_i386_memory_read(memory, scalar_operand, &actual, sizeof(actual)) == GEM_MEMORY_OK);
+    assert(actual == scalar);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    memory = make_memory(vmovaps_ymm_store, sizeof(vmovaps_ymm_store), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vmovaps_ymm_store));
+    assert(runtime != NULL);
+    initialize(&context, DATA + 1U, 0U);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_MEMORY_FAULT);
+    assert(context.eip == CODE);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
 static void exercise_promoted128(enum gem_i386_engine_mode mode, const uint8_t *code,
                                  size_t code_size, unsigned operation) {
     struct gem_memory *memory = make_memory(code, code_size, GEM_GUEST_PAGE_SIZE);
@@ -406,6 +472,10 @@ int main(void) {
     exercise_vadd256(GEM_I386_ENGINE_JIT);
     exercise_vadd256_cross_page(GEM_I386_ENGINE_INTERPRETER);
     exercise_vadd256_cross_page(GEM_I386_ENGINE_JIT);
+    exercise_vmov256_store_cross_page(GEM_I386_ENGINE_INTERPRETER);
+    exercise_vmov256_store_cross_page(GEM_I386_ENGINE_JIT);
+    exercise_vmov_store_shapes(GEM_I386_ENGINE_INTERPRETER);
+    exercise_vmov_store_shapes(GEM_I386_ENGINE_JIT);
     exercise_promoted128(GEM_I386_ENGINE_INTERPRETER, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_promoted128(GEM_I386_ENGINE_JIT, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_vmovhlps(GEM_I386_ENGINE_INTERPRETER);

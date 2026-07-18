@@ -179,3 +179,11 @@ including integer, shuffle, conversion, rounding, AES, and carry-less multiply
 families. It supplies the non-destructive VEX source, preserves exact narrow
 memory access widths, zeros the architectural YMM upper half, and rejects
 256-bit integer forms that belong to AVX2.
+
+`0025-gem-i386-avx-stores.patch` (SHA-256
+`071e91230f038175b30d81d3056de8fb91149bc45de8fc1f9bb1dca2cf3e83e6`)
+implements scalar, packed, aligned, unaligned, low/high-lane, and non-temporal
+AVX stores. Full source snapshots and explicit cross-page stash commits keep
+interpreter and JIT stores atomic and restartable; exact scalar widths avoid
+touching an adjacent uncommitted page, and aligned forms retain their fault
+contract.
