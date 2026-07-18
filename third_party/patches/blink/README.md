@@ -129,3 +129,12 @@ after a transaction commits, so interpreter and JIT execution are identical
 and memory-conflict retries reproduce the same timestamp. Blink's decoded
 instruction length crosses in the reserved decode-attempt sidecar byte so
 prefixed encodings advance EIP without a second decoder.
+
+`0019-gem-i386-bmi1.patch` (SHA-256
+`2258dcb91a84b534a4cf2d9efd9845b892e323bc5dfba692a0d33dc82e1ba88f`)
+implements portable legacy-32 ANDN, BEXTR, BLSI, BLSMSK, and BLSR handlers,
+admits only their exact VEX map/prefix forms while later VEX families remain
+masked, and adds BMI1 to the deterministic legacy CPUID profile. The native
+Windows ARM64 qualification VM does not expose BMI1 to its i386 process, so
+semantic authority comes from the SDM checks and exact interpreter/JIT parity.
+TZCNT reuses Blink's existing reviewed scalar handler.

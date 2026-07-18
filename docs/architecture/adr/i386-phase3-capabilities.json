@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "profile": "gem-i386-sse42-aes-pclmul-v1",
+  "profile": "gem-i386-sse42-aes-pclmul-bmi1-v2",
   "hostIndependent": true,
   "corpus": {
     "path": "tests/i386_phase3_conformance.c",
     "reference": "tests/fixtures/i386_phase3_reference.bin",
-    "referenceSha256": "fb8a1f249d08b81d93e5acbf715fc63801a77f185135e24c70cea81c535ddd06",
+    "referenceSha256": "a9fa17763ef9d37ee33e5cfdc1ee32989c1bc26443b4c9ffd5a908b3da3c05e8",
     "cases": 1024,
     "comparisons": 2048,
     "categories": {
@@ -31,10 +31,11 @@
     {"name": "SSE4.2", "leaf": "0x00000001", "register": "ecx", "bit": 20, "handlers": ["OpSse4", "OpCrc32"], "witness": "s4[]", "opcodeWitnesses": ["s4[]", "s31[]", "s50[]", "s51[]", "s52[]", "s53[]"], "opcodes": ["0x237", "0x360-0x363", "0x2f0-0x2f1"]},
     {"name": "POPCNT", "leaf": "0x00000001", "register": "ecx", "bit": 23, "handlers": ["AluPopcnt"], "witness": "c4[]"},
     {"name": "AES", "leaf": "0x00000001", "register": "ecx", "bit": 25, "handlers": ["OpAesenc", "OpAesenclast", "OpAesdec", "OpAesdeclast", "OpAesimc", "OpAeskeygenassist"], "witness": "s6[]", "opcodeWitnesses": ["s6[]", "s7[]", "s8[]", "s9[]", "s10[]", "s11[]"]},
-    {"name": "ERMS", "leaf": "0x00000007", "register": "ebx", "bit": 9, "handlers": ["OpMovsb"], "witness": "I386_PHASE3_REP_SEGMENT_CASES"}
+    {"name": "ERMS", "leaf": "0x00000007", "register": "ebx", "bit": 9, "handlers": ["OpMovsb"], "witness": "I386_PHASE3_REP_SEGMENT_CASES"},
+    {"name": "BMI1", "leaf": "0x00000007", "register": "ebx", "bit": 3, "handlers": ["OpAndn", "OpBls", "Op2f7", "AluTzcnt"], "witness": "verify_bmi1_instructions", "opcodeWitnesses": ["bmi1_andn[]", "bmi1_bextr[]", "bmi1_blsr[]", "bmi1_blsmsk[]", "bmi1_blsi[]", "bmi1_tzcnt[]"], "opcodes": ["0x1bc", "0x2f2", "0x2f3", "0x2f7"]}
   ],
   "masked": [
-    "AVX", "AVX2", "FMA", "OSXSAVE", "BMI1", "BMI2", "ADX", "FSGSBASE",
+    "AVX", "AVX2", "FMA", "OSXSAVE", "BMI2", "ADX", "FSGSBASE",
     "RDRAND", "RDSEED", "RDPID", "CX16", "LONG_MODE", "SYSCALL", "RDTSCP"
   ],
   "precisionBoundary": "Raw 80-bit values and environment state round-trip exactly; common x87 arithmetic uses reviewed host-double compatibility tolerances."

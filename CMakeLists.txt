@@ -177,6 +177,7 @@ if(MSWR_ENABLE_X64_ENGINE OR MSWR_ENABLE_I386_ENGINE)
         --state-abi-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0016-gem-state-abi-ymm-xcr0.patch"
         --xsave-foundation-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0017-gem-i386-vex-xsave-foundation.patch"
         --virtual-tsc-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0018-gem-i386-virtual-tsc-admission.patch"
+        --bmi1-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0019-gem-i386-bmi1.patch"
         --capability-manifest "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/i386-phase3-capabilities.json"
         --phase3-corpus "${CMAKE_CURRENT_SOURCE_DIR}/tests/i386_phase3_conformance.c"
         --provenance "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/0008-blink-embedding.provenance.json"

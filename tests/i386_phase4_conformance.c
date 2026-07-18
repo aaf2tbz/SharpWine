@@ -66,6 +66,25 @@ static void verify_scas_flag_regression(void) {
     assert((interpreter.final.eflags & test.defined.eflags_mask) == UINT32_C(0x94));
 }
 
+static void verify_bmi1_templates(void) {
+    struct i386_phase4_case test;
+    struct i386_phase4_record interpreter;
+    struct i386_phase4_record jit;
+    uint32_t i;
+    for (i = 0U; i < 6U; ++i) {
+        assert(i386_phase4_generate(I386_PHASE4_SHARDS - 1U, 1018U + i, &test));
+        assert(test.template_id == 132U + i);
+        assert(i386_phase4_execute(&test, GEM_I386_ENGINE_INTERPRETER, &interpreter));
+        assert(i386_phase4_execute(&test, GEM_I386_ENGINE_JIT, &jit));
+        assert(i386_phase4_records_match(&interpreter, &jit));
+        assert(interpreter.classification == I386_PHASE4_PASS);
+        assert(jit.classification == I386_PHASE4_PASS);
+        assert(interpreter.retired_count == 1U && jit.retired_count == 1U);
+        assert(interpreter.jit_executions == 0U);
+        assert(jit.jit_executions == 1U && jit.jit_failures == 0U);
+    }
+}
+
 int main(void) {
     const char *full = getenv("MSWR_PHASE4_FULL");
     uint32_t shard_count = full && full[0] == '1' ? I386_PHASE4_SHARDS : 1U;
@@ -76,6 +95,7 @@ int main(void) {
     verify_x87_stack_overflow_regression(1792U, 300U);
     verify_x87_stack_overflow_regression(1806U, 301U);
     verify_scas_flag_regression();
+    verify_bmi1_templates();
     for (shard = 0; shard < shard_count; ++shard) {
         for (ordinal = 0; ordinal < I386_PHASE4_CASES_PER_SHARD; ++ordinal) {
             struct i386_phase4_case test;

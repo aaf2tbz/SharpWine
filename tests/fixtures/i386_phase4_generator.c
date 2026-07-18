@@ -57,6 +57,17 @@ static const struct template_entry scalar_templates[] = {
     {{0x0f, 0x94, 0xc0}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
     {{0x0f, 0x95, 0xc0}, 3, 0, I386_PHASE4_COMPARE_EXACT, 0},
     {{0xff, 0xc0}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0x8d4},
+    /* Phase 6 W5 BMI1 qualification templates.  Six reserved cases in shard
+     * 15 select these entries explicitly so prior native-Windows records stay
+     * stable.  The qualification VM has no i386 BMI1 capability, so its
+     * attempted results are retained while SDM expectations and exact
+     * interpreter/JIT parity provide the acceptance authority. */
+    {{0xc4, 0xe2, 0x60, 0xf2, 0xc2}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0x8c1},
+    {{0xc4, 0xe2, 0x60, 0xf7, 0xd0}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0x8d5},
+    {{0xc4, 0xe2, 0x40, 0xf3, 0xce}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0x8c1},
+    {{0xc4, 0xe2, 0x60, 0xf3, 0xd2}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0x8c1},
+    {{0xc4, 0xe2, 0x70, 0xf3, 0xd8}, 5, 0, I386_PHASE4_COMPARE_EXACT, 0x8c1},
+    {{0xf3, 0x0f, 0xbc, 0xc3}, 4, 0, I386_PHASE4_COMPARE_EXACT, 0x041},
 };
 static const struct template_entry memory_templates[] = {
     {{0x8b, 0x06}, 2, 0, I386_PHASE4_COMPARE_EXACT, 0},
@@ -156,17 +167,23 @@ static enum i386_phase4_category category_for_ordinal(uint32_t ordinal) {
 #define I386_PHASE4_LEGACY_SIMD_COUNT 6U
 #define I386_PHASE4_LEGACY_SYSTEM_COUNT 6U
 #define I386_PHASE4_LEGACY_NEGATIVE_COUNT 4U
+#define I386_PHASE4_SCALAR_RANDOM_COUNT 32U
+#define I386_PHASE4_BMI1_FIRST_ORDINAL 1018U
+#define I386_PHASE4_BMI1_TEMPLATE_FIRST 32U
 
-static const struct template_entry *
-select_template(uint32_t shard, enum i386_phase4_category category, uint64_t random) {
+static const struct template_entry *select_template(uint32_t shard, uint32_t ordinal,
+                                                    enum i386_phase4_category category,
+                                                    uint64_t random) {
     /* Divisors must stay compile-time constants: the freestanding baseline
      * fixture has no compiler runtime for a dynamic 64-bit modulo. */
     switch (category) {
     case I386_PHASE4_SCALAR:
+        if (shard == I386_PHASE4_SHARDS - 1U && ordinal >= I386_PHASE4_BMI1_FIRST_ORDINAL)
+            return &scalar_templates[I386_PHASE4_BMI1_TEMPLATE_FIRST + ordinal -
+                                     I386_PHASE4_BMI1_FIRST_ORDINAL];
         return shard < I386_PHASE4_LEGACY_GOLDEN_SHARDS
                    ? &scalar_templates[random % I386_PHASE4_LEGACY_SCALAR_COUNT]
-                   : &scalar_templates[random %
-                                       (sizeof(scalar_templates) / sizeof(scalar_templates[0]))];
+                   : &scalar_templates[random % I386_PHASE4_SCALAR_RANDOM_COUNT];
     case I386_PHASE4_MEMORY:
         return shard < I386_PHASE4_LEGACY_GOLDEN_SHARDS
                    ? &memory_templates[random % I386_PHASE4_LEGACY_MEMORY_COUNT]
@@ -211,7 +228,7 @@ int i386_phase4_generate(uint32_t shard, uint32_t ordinal, struct i386_phase4_ca
     out->seed = i386_phase4_case_seed(shard, ordinal);
     state = out->seed;
     category = category_for_ordinal(ordinal);
-    entry = select_template(shard, category, next_random(&state));
+    entry = select_template(shard, ordinal, category, next_random(&state));
     if (!entry)
         return 0;
     out->category = category;

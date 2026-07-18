@@ -137,19 +137,33 @@ The selected guest is i386 legacy32 (Windows WoW64):
   patch (with its new SHA-256 in `cmake/patch-blink-gem.cmake`),
   `i386-phase3-capabilities.json`, and the expected sets in
   `tools/audit_blink_embedding.py` — and happens only after the family's
-  corpus, interpreter/JIT parity, and native-Windows comparison gates pass.
+  corpus, interpreter/JIT parity, architecture-semantics checks, and
+  native-Windows comparison attempt are reviewed. An exact Windows match is
+  required when the qualification VM exposes the instruction family; when it
+  does not, the unavailable capability is recorded and independent SDM tests
+  are the semantic authority.
   Incomplete families stay masked, including AVX/AVX2/FMA, BMI, ADX,
   FSGSBASE, RDRAND/RDSEED, RDPID, and RDTSCP.
+- The native Windows ARM64 qualification VM does not expose BMI1 to its i386
+  process: ANDN, BEXTR, BLSR, BLSMSK, and BLSI terminate as illegal
+  instructions, while the TZCNT encoding executes with legacy BSF semantics.
+  SharpWine's BMI1 handlers have deterministic SDM checks, exact
+  interpreter/JIT coverage, precise fault tests, and a full-corpus replay.
+  BMI1 is therefore advertised by SharpWine even though Prism cannot serve as
+  its result oracle; the compatibility target is the x86 architecture and the
+  programs that use it, not Prism's smaller instruction subset.
 
 ## Acceptance authority
 
 FEX contributes evidence and checklists only. Semantic acceptance remains, in
-order: the native-Windows exact-byte oracle (phase 4 baseline flow in
-`tools/i386/`), the hash-bound interpreter/JIT golden corpus
-(`tests/fixtures/i386_phase5_golden.bin`), the deterministic conformance
-suites, and the Rosetta differential matrix (ADR 0011). No FEX source enters
-the repository; only this inventory, its provenance record, and SharpWine's
-own implementations do.
+order: the native-Windows exact-byte oracle where the VM exposes the family
+(phase 4 baseline flow in `tools/i386/`), independent SDM assertions, the
+hash-bound interpreter/JIT golden corpus
+(`tests/fixtures/i386_phase5_golden.bin`), and deterministic conformance
+suites. A capability-unavailable Windows attempt is evidence about Prism, not
+a ceiling on SharpWine's macOS ARM64 compatibility. No Rosetta lane is used.
+No FEX source enters the repository; only this inventory, its provenance
+record, and SharpWine's own implementations do.
 
 ## Consequences
 

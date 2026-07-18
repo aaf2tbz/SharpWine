@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatorVersion": 1,
+  "generatorVersion": 2,
   "templateRevision": 1,
   "masterSeed": "0x534841525057494e",
   "acceptedQualification": {
@@ -8,8 +8,8 @@
     "finalShard": 15,
     "finalOrdinal": 4095,
     "caseCount": 65536,
-    "baselineRecords": 65536,
-    "nativeToBaselineComparisons": 125662,
+    "baselineRecords": 65531,
+    "nativeToBaselineComparisons": 125650,
     "interpreterJitParityChecks": 65536,
     "classifications": {
       "pass": 65536,
@@ -30,7 +30,7 @@
       "system": 12288,
       "negative": 4096
     },
-    "resultsSha256": "dec897ea886a11148e69f3ad44ae928fa6c1b60ebee6d1927bd7b182fe6b329c"
+    "resultsSha256": "03dc1eb154e25e66e03a5521c4187d474807f8a5bac61254f063a7fe3bce64e8"
   },
   "smokeShard": {
     "caseCount": 4096,
@@ -42,18 +42,18 @@
     "resultsSha256": "e04e154bd288f745379efcf959b90f28d024b1e8646e528973ac0f450f8b1fdb"
   },
   "retainedDeterministicComparisons": 5184,
-  "totalNativeCompatibilityComparisons": 130846,
+  "totalNativeCompatibilityComparisons": 130834,
   "phase5CiCorpus": {
     "path": "tests/fixtures/i386_phase5_golden.bin",
     "schemaVersion": 1,
     "caseCount": 65536,
     "finalShard": 15,
     "finalOrdinal": 4095,
-    "goldenSha256": "5418c210d9d34f77195f6f803d2efbff4796c9797863199e6f90aa5368fe006c",
+    "goldenSha256": "3bc1d9d3eba6dfc08702a55ad0fc83518f24d3ce5bb9def35713539f1c226e50",
     "replayModes": ["interpreter", "jit"],
     "externalRuntimeRequired": false,
     "coverage": {
-      "templateCount": 73,
+      "templateCount": 79,
       "operandForms": ["register", "memory", "implicit-string", "invalid-encoding"],
       "addressingForms": ["register", "esi-indirect", "edi-indirect", "implicit-esi-edi"],
       "widths": [8, 32, 64, 80, 128],
@@ -62,19 +62,20 @@
     "prioritizationInputs": ["32-bit Wine startup", "interactive Notepad", "Steam bootstrap"]
   },
   "sourceSha256": {
-    "generatorAndTemplates": "6e82f9d5e4eba2b5f5c4e7b913b01127d01c13bca75b3545530e4705d910d2fc",
+    "generatorAndTemplates": "b08ba92cd4f93f168d78423544400682999076aef932d2d92f335d610a198ba4",
     "recordSchema": "e3bb1fe0148811b8bae8685994849ad953d8f137498421c6b7d9b13fc2e80bde",
     "baselineWorker": "53190c30d366ce45ad9577d4954835207c109b62a0f892cb1977e1e242919eb7",
     "baselineAssembly": "750e5cb3962ba9223fc5aa29e877bd2009b64d9a19432692c934f55735838ae2",
-    "baselineFixture": "9cd6437211deb7f811cda4a7b09d4902521b4ab8e4fcbcf67a38ca8e00021168",
-    "blinkCorrectionsPatch": "a0fc845f45edfced3c503b3fc08e63228cc9e37461f0f9230057b14fdd8f25c2"
+    "baselineFixture": "596b1ecf9b742a9112f5fa28f2074b5cef80dd85f3ded570bdb4c72f9398219c",
+    "blinkCorrectionsPatch": "2258dcb91a84b534a4cf2d9efd9845b892e323bc5dfba692a0d33dc82e1ba88f"
   },
   "precisionPolicy": {
     "integerAndRawState": "exact",
     "x87Arithmetic": "binary64 normalized with exact signed-zero, infinity, and NaN class",
     "simdFloatingPoint": "one ULP only for templates declaring rounding sensitivity",
     "undefinedState": "explicitly masked",
-    "windowsBaselineAuthority": "exact except templates 300 and 301; those Prism x87 records are non-authoritative and require exact interpreter/JIT parity plus the SDM expectation"
+    "windowsBaselineAuthority": "exact except templates 300 and 301 (Prism x87 deviations) and templates 132 through 137 (the VM exposes no i386 BMI1); non-authoritative cases require exact interpreter/JIT parity plus the SDM expectation",
+    "bmi1Qualification": "Windows rejected templates 132 through 136 and decoded template 137 as legacy BSF; all six attempted results are retained, independent SDM checks and exact interpreter/JIT parity pass, and SharpWine advertises BMI1 for macOS ARM64 compatibility"
   },
   "promotedRegressions": [
     {

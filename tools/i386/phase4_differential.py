@@ -20,7 +20,13 @@ from typing import Any
 SCHEMA = 1
 SHARDS = 16
 CASES_PER_SHARD = 4096
-NON_AUTHORITATIVE_BASELINE_TEMPLATES = frozenset({300, 301})
+# Prism's x87 state is not SDM-exact for 300/301.  The qualification VM also
+# exposes no BMI1 to its i386 process: it rejects the VEX forms in 132-136 and
+# decodes TZCNT (137) as legacy BSF.  Those cases retain the attempted Windows
+# result as evidence, but acceptance is the explicit SDM expectation plus
+# exact interpreter/JIT parity.
+NON_AUTHORITATIVE_BASELINE_TEMPLATES = frozenset({132, 133, 134, 135, 136, 137, 300, 301})
+BASELINE_UNAVAILABLE_TEMPLATES = frozenset({132, 133, 134, 135, 136})
 CLASSIFICATIONS = {
     "pass",
     "semantic-mismatch",
@@ -94,20 +100,19 @@ def run_worker(command: list[str], timeout: float, environment: dict[str, str] |
 
 def classify_triplet(baseline: dict[str, Any], interpreter: dict[str, Any],
                      jit: dict[str, Any]) -> str:
-    for result in (baseline, interpreter, jit):
+    for result in (interpreter, jit):
         if result["classification"] != "pass":
             return str(result["classification"])
-    b_record = baseline["record"]
     i_record = interpreter["record"]
     j_record = jit["record"]
-    if not b_record or not i_record or not j_record:
+    if not i_record or not j_record:
         return "malformed-record"
     if any(record.get("resultClassification") == "unsupported-advertised"
-           for record in (b_record, i_record, j_record)):
+           for record in (i_record, j_record)):
         return "unsupported-advertised"
     if int(j_record.get("jitExecutions", 0)) == 0 and j_record.get("category") != "negative":
         return "jit-fallback"
-    template_ids = {record.get("templateId") for record in (b_record, i_record, j_record)}
+    template_ids = {record.get("templateId") for record in (i_record, j_record)}
     if None in template_ids or len(template_ids) != 1:
         return "semantic-mismatch"
     template_id = int(template_ids.pop())
@@ -115,9 +120,23 @@ def classify_triplet(baseline: dict[str, Any], interpreter: dict[str, Any],
     if None in engine_hashes or len(engine_hashes) != 1:
         return "semantic-mismatch"
     if template_id in NON_AUTHORITATIVE_BASELINE_TEMPLATES:
+        if baseline["classification"] != "pass" and not (
+            template_id in BASELINE_UNAVAILABLE_TEMPLATES and
+            baseline["classification"] == "nonzero-exit"
+        ):
+            return str(baseline["classification"])
         if i_record.get("sdmExpectation") is not True or j_record.get("sdmExpectation") is not True:
             return "semantic-mismatch"
         return "pass"
+    if baseline["classification"] != "pass":
+        return str(baseline["classification"])
+    b_record = baseline["record"]
+    if not b_record:
+        return "malformed-record"
+    if b_record.get("resultClassification") == "unsupported-advertised":
+        return "unsupported-advertised"
+    if b_record.get("templateId") != template_id:
+        return "semantic-mismatch"
     if b_record.get("compatibilityHash") not in engine_hashes:
         return "semantic-mismatch"
     return "pass"
@@ -126,7 +145,8 @@ def classify_triplet(baseline: dict[str, Any], interpreter: dict[str, Any],
 def comparison_metadata(baseline: dict[str, Any], interpreter: dict[str, Any],
                         jit: dict[str, Any]) -> dict[str, Any]:
     records = [result.get("record") for result in (baseline, interpreter, jit)]
-    template_ids = {record.get("templateId") for record in records if record}
+    engine_records = [interpreter.get("record"), jit.get("record")]
+    template_ids = {record.get("templateId") for record in engine_records if record}
     template_id = next(iter(template_ids)) if len(template_ids) == 1 else None
     authoritative = template_id not in NON_AUTHORITATIVE_BASELINE_TEMPLATES
     hashes = [record.get("compatibilityHash") if record else None for record in records]
@@ -192,8 +212,15 @@ def load_saved_baselines(path: Path, shards: list[int], cases: int) -> dict[tupl
                 continue
             identity = (int(shard), case)
             baseline = row.get("baseline")
-            if identity in baselines or not isinstance(baseline, dict) or \
-               baseline.get("classification") != "pass" or not baseline.get("record"):
+            interpreter_record = row.get("interpreter", {}).get("record")
+            template_id = interpreter_record.get("templateId") if interpreter_record else None
+            reusable = isinstance(baseline, dict) and (
+                (baseline.get("classification") == "pass" and baseline.get("record")) or
+                (row.get("baselineAuthoritative") is False and
+                 row.get("comparisonPolicy") == "interpreter-jit-sdm" and
+                 baseline.get("classification") == "nonzero-exit" and
+                 template_id in BASELINE_UNAVAILABLE_TEMPLATES))
+            if identity in baselines or not reusable:
                 raise ValueError(f"invalid saved baseline at line {line_number}")
             baselines[identity] = baseline
     expected = len(shards) * cases

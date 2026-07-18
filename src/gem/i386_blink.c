@@ -616,9 +616,9 @@ const struct gem_i386_engine_ops gem_i386_blink_jit_ops = {
     GEM_I386_ENGINE_OPS_ABI_VERSION,
     GEM_I386_ENGINE_JIT,
     "GEM_i386 Blink AArch64 JIT",
-    "blink-f006a4fc-gem-i386-v2",
+    "blink-f006a4fc-gem-i386-v3",
     "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;legacy32;"
-    "context-v2;cpuid-sse42-aes-pclmul;"
+    "context-v3;cpuid-sse42-aes-pclmul-bmi1;"
     "bounded-multi-instruction;interpreter-or-aarch64-jit",
     gem_i386_blink_create,
     gem_i386_blink_destroy,
@@ -633,9 +633,9 @@ const struct gem_i386_engine_ops gem_i386_blink_interpreter_ops = {
     GEM_I386_ENGINE_OPS_ABI_VERSION,
     GEM_I386_ENGINE_INTERPRETER,
     "GEM_i386 Blink interpreter",
-    "blink-f006a4fc-gem-i386-v2",
+    "blink-f006a4fc-gem-i386-v3",
     "jart/blink@f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580;legacy32;"
-    "context-v2;cpuid-sse42-aes-pclmul;"
+    "context-v3;cpuid-sse42-aes-pclmul-bmi1;"
     "bounded-multi-instruction;interpreter-or-aarch64-jit",
     gem_i386_blink_create,
     gem_i386_blink_destroy,
