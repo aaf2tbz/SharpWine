@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: SharpWine contributors <noreply@sharpwine.dev>
+Date: Sat, 18 Jul 2026 02:55:00 -0600
+Subject: [PATCH] gem: reserve i386 rdtsc for the adapter
+
+Keep legacy-32 RDTSC out of Blink's reviewed execution set so the GEM adapter
+can provide the deterministic virtual counter required by ADR 0013. Preserve
+Blink's decoded instruction length in the decode-attempt sidecar so prefixed
+encodings advance EIP exactly. This prevents Blink's AArch64 host counter from
+crossing the embedding boundary.
+---
+ blink/gem_embed.c | 1 +
+ blink/gem_embed.h | 3 ++-
+ blink/machine.c   | 9 +++++----
+ 3 files changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/blink/gem_embed.c b/blink/gem_embed.c
+index 57da0874db..d0256d1e54 100644
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -605,6 +605,7 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+       g->last_decode.mopcode = (uint32_t)Mopcode(m->xedd->op.rde);
+       g->last_decode.handler_id = (uint32_t)handler_id;
+       g->last_decode.valid = 1u;
++      g->last_decode.instruction_length = (uint8_t)Oplength(m->xedd->op.rde);
+       {
+         const char* mnemonic = DescribeMopcode((int)g->last_decode.mopcode);
+         size_t i;
+diff --git a/blink/gem_embed.h b/blink/gem_embed.h
+index 9f079291aa..68d57acbd4 100644
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -88,7 +88,8 @@ struct blink_gem_decode_attempt {
+   uint32_t mopcode;
+   uint32_t handler_id;
+   uint8_t  valid;
+-  uint8_t  reserved[3];
++  uint8_t  instruction_length;
++  uint8_t  reserved[2];
+   char     name[BLINK_GEM_DECODE_ATTEMPT_NAME_BYTES];
+ };
+ enum blink_gem_access {
+
+diff --git a/blink/machine.c b/blink/machine.c
+index f4b9c09aee..25ae1f0404 100644
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2294,9 +2294,10 @@
+ int GemHandlerId(nexgen32e_f handler, long rde, bool legacy32) {
+-  /* The legacy CPUID profile deliberately masks state families which GEM's
+-   * fixed i386 context cannot restore. Keep their decoded forms outside the
+-   * embedding boundary even when Blink has a host implementation. */
++  /* The legacy profile deliberately masks state families which GEM's fixed
++   * i386 context cannot restore and host-state handlers owned by the adapter.
++   * Keep their decoded forms outside the Blink execution boundary. */
+   if (legacy32 &&
+-      ((Mopcode(rde) == 0x1c7 && ModrmReg(rde) >= 6) ||
++      (Mopcode(rde) == 0x131 ||
++       (Mopcode(rde) == 0x1c7 && ModrmReg(rde) >= 6) ||
+        (Mopcode(rde) == 0x1ae && Rep(rde) && ModrmReg(rde) <= 3) ||
+        (Mopcode(rde) == 0x1ae && !Rep(rde) && !IsModrmRegister(rde) &&
+         ModrmReg(rde) == 6) ||

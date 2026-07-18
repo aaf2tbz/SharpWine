@@ -12,9 +12,9 @@
 #define MSWR_PHASE5_GOLDEN_PATH "tests/fixtures/i386_phase5_golden.bin"
 #endif
 
-#define PHASE5_CASES UINT32_C(20313)
-#define PHASE5_FINAL_SHARD UINT32_C(4)
-#define PHASE5_FINAL_ORDINAL UINT32_C(3928)
+#define PHASE5_CASES UINT32_C(65536)
+#define PHASE5_FINAL_SHARD UINT32_C(15)
+#define PHASE5_FINAL_ORDINAL UINT32_C(4095)
 
 static uint32_t read_u32(FILE *file) {
     uint8_t bytes[4];

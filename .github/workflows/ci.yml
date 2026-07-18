@@ -27,6 +27,7 @@ jobs:
       - run: python3 tools/ci/check-repository.py
       - run: python3 tools/ci/test-check-repository.py
       - run: python3 tools/ci/test-phase4-tools.py
+      - run: python3 tools/ci/test-trace-coverage-tools.py
       - run: python3 tools/release/test-release-tools.py
       - run: python3 tools/release/test-focused-overlay.py
       - run: python3 tools/release/validate-wine-patches.py
@@ -43,6 +44,7 @@ jobs:
           tools/ci/run-blink-tso-conformance.py
           tools/ci/test-check-repository.py
           tools/ci/test-phase4-tools.py
+          tools/ci/test-trace-coverage-tools.py
           tools/ci/validate-arm64x-issue14-artifact.py
           tools/ci/validate-blink-tso-evidence.py
           tools/release/repackage-published-runtime.py
@@ -57,6 +59,7 @@ jobs:
           tools/i386/minimize_phase4_case.py
           tools/i386/phase4_differential.py
           tools/i386/create_phase5_golden.py
+          tools/i386/map_handler_coverage.py
           tools/release/validate-readiness.py
           tools/release/validate-wine-patches.py
           tools/release/validate-dxmt-patches.py

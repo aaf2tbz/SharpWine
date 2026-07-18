@@ -8,7 +8,7 @@ void gem_i386_context_initialize(struct gem_i386_context *context, uint32_t teb)
         return;
     memset(context, 0, sizeof(*context));
     context->layout_version = GEM_I386_CONTEXT_LAYOUT_VERSION;
-    context->context_size = GEM_I386_CONTEXT_SIZE_V2;
+    context->context_size = GEM_I386_CONTEXT_SIZE_V3;
     context->eflags = GEM_I386_EFLAGS_REQUIRED;
     context->fcw = UINT16_C(0x037f);
     context->mxcsr = UINT32_C(0x1f80);
@@ -17,11 +17,23 @@ void gem_i386_context_initialize(struct gem_i386_context *context, uint32_t teb)
 
 bool gem_i386_context_is_valid(const struct gem_i386_context *context) {
     size_t i;
-    if (context == NULL ||
-        (context->layout_version != GEM_I386_CONTEXT_LAYOUT_VERSION_V1 &&
-         context->layout_version != GEM_I386_CONTEXT_LAYOUT_VERSION_V2) ||
-        context->context_size != GEM_I386_CONTEXT_SIZE_V1 || context->teb == 0U ||
-        (context->eflags & GEM_I386_EFLAGS_REQUIRED) == 0U || context->reserved0 != 0U)
+    if (context == NULL)
+        return false;
+    if (context->layout_version == GEM_I386_CONTEXT_LAYOUT_VERSION_V3) {
+        if (context->context_size != GEM_I386_CONTEXT_SIZE_V3 || context->reserved1 != 0U ||
+            (context->xcr0 & ~GEM_I386_XCR0_SUPPORTED) != 0U)
+            return false;
+    } else if (context->layout_version == GEM_I386_CONTEXT_LAYOUT_VERSION_V1 ||
+               context->layout_version == GEM_I386_CONTEXT_LAYOUT_VERSION_V2) {
+        /* A v1/v2 caller owns exactly 448 bytes: nothing past that boundary
+         * may be inspected here. */
+        if (context->context_size != GEM_I386_CONTEXT_SIZE_V1)
+            return false;
+    } else {
+        return false;
+    }
+    if (context->teb == 0U || (context->eflags & GEM_I386_EFLAGS_REQUIRED) == 0U ||
+        context->reserved0 != 0U)
         return false;
     if (context->layout_version == GEM_I386_CONTEXT_LAYOUT_VERSION_V1) {
         for (i = 0; i < sizeof(context->reserved) / sizeof(context->reserved[0]); ++i)

@@ -1,0 +1,7491 @@
+{
+ "schemaVersion": 1,
+ "generator": "tools/i386/map_handler_coverage.py",
+ "generatorVersion": 1,
+ "inputSha256": {
+  "aggregateHistogram": "700c7a5513bdc08ab9845dc0e0241f32c48aa6fdb3274a157222b5f668392bfa",
+  "runHistograms": {
+   "baseline-acceptance": "06609df6f5cc6bbc28fa7945af00cee32dd448bc5b785b656daed876efff5b6f",
+   "notepad": "437e17a90482bc51ccd2dfc90db0efb5e1a2b50b5d9dc31a2166995de3a7a7c0",
+   "steamsetup": "3a264217dd0e2dd27ea935a13e07883646c0e6848ede6220f0b2ad03acf9704e"
+  },
+  "phase4Generator": "e349b56414012340a12da4c78d386129b7c60d9a570ff85f9e111b1d13172a98",
+  "phase3Records": "96997534f3f27742d8673f6dcadb6deb331065dda83ef441b262974e18e32241",
+  "phase3Reference": "daddd096c7f7f61c25823442ff24060d37ef4c3b76ee7171eb161715ad53972b",
+  "rosettaMatrix": "31cf28b1f6a61261296bba11fa90c9b0e9d9f1577f68d30d27ebc70499984964"
+ },
+ "traceSummary": {
+  "runs": {
+   "baseline-acceptance": {
+    "totalDrained": 754791,
+    "overflowEvents": 0,
+    "outOfRange": 0
+   },
+   "notepad": {
+    "totalDrained": 475686,
+    "overflowEvents": 0,
+    "outOfRange": 0
+   },
+   "steamsetup": {
+    "totalDrained": 787316,
+    "overflowEvents": 0,
+    "outOfRange": 0
+   }
+  },
+  "totalDrained": 2017793,
+  "overflowEvents": 0,
+  "outOfRange": 0,
+  "distinctHandlers": 96
+ },
+ "totals": {
+  "tracedHandlers": 96,
+  "corpusCoveredHandlers": 247,
+  "tracedUncoveredHandlers": 14,
+  "corpusOnlyHandlers": 165
+ },
+ "prioritized": {
+  "uncoveredByTraceFrequency": [
+   {
+    "handlerId": 4181,
+    "name": "OpPushZvq",
+    "tracedCount": 9943
+   },
+   {
+    "handlerId": 4189,
+    "name": "OpPopZvq",
+    "tracedCount": 5537
+   },
+   {
+    "handlerId": 4297,
+    "name": "OpLeave",
+    "tracedCount": 4376
+   },
+   {
+    "handlerId": 4290,
+    "name": "OpRetIw",
+    "tracedCount": 2162
+   },
+   {
+    "handlerId": 4183,
+    "name": "OpPushZvq",
+    "tracedCount": 1606
+   },
+   {
+    "handlerId": 4191,
+    "name": "OpPopZvq",
+    "tracedCount": 1582
+   },
+   {
+    "handlerId": 4182,
+    "name": "OpPushZvq",
+    "tracedCount": 1564
+   },
+   {
+    "handlerId": 4190,
+    "name": "OpPopZvq",
+    "tracedCount": 1545
+   },
+   {
+    "handlerId": 4257,
+    "name": "OpMovRaxOvqp",
+    "tracedCount": 471
+   },
+   {
+    "handlerId": 14,
+    "name": "OpJmpEq",
+    "tracedCount": 327
+   },
+   {
+    "handlerId": 13,
+    "name": "OpCallEq",
+    "tracedCount": 302
+   },
+   {
+    "handlerId": 4259,
+    "name": "OpMovOvqpRax",
+    "tracedCount": 93
+   },
+   {
+    "handlerId": 4177,
+    "name": "OpPushZvq",
+    "tracedCount": 32
+   },
+   {
+    "handlerId": 4185,
+    "name": "OpPopZvq",
+    "tracedCount": 29
+   }
+  ],
+  "coveredByTraceFrequency": [
+   {
+    "handlerId": 6,
+    "name": "OpAlui",
+    "tracedCount": 642469
+   },
+   {
+    "handlerId": 7,
+    "name": "OpJcc",
+    "tracedCount": 554577
+   },
+   {
+    "handlerId": 3,
+    "name": "OpMovEvqpGvqp",
+    "tracedCount": 123542
+   },
+   {
+    "handlerId": 4153,
+    "name": "OpAluwCmp",
+    "tracedCount": 117401
+   },
+   {
+    "handlerId": 4260,
+    "name": "OpMovsb",
+    "tracedCount": 104325
+   },
+   {
+    "handlerId": 4535,
+    "name": "OpMovzwGvqpEw",
+    "tracedCount": 63527
+   },
+   {
+    "handlerId": 4097,
+    "name": "OpAluw",
+    "tracedCount": 55619
+   },
+   {
+    "handlerId": 5,
+    "name": "OpBsuwiImm",
+    "tracedCount": 53905
+   },
+   {
+    "handlerId": 4,
+    "name": "OpMovGvqpEvqp",
+    "tracedCount": 53314
+   },
+   {
+    "handlerId": 8,
+    "name": "OpJmp",
+    "tracedCount": 52310
+   },
+   {
+    "handlerId": 4534,
+    "name": "OpMovzbGvqpEb",
+    "tracedCount": 26144
+   },
+   {
+    "handlerId": 10,
+    "name": "OpLeaGvqpM",
+    "tracedCount": 22441
+   },
+   {
+    "handlerId": 4152,
+    "name": "OpAlubCmp",
+    "tracedCount": 12530
+   },
+   {
+    "handlerId": 4228,
+    "name": "OpAlubTest",
+    "tracedCount": 12094
+   },
+   {
+    "handlerId": 17,
+    "name": "OpAluTest",
+    "tracedCount": 11971
+   },
+   {
+    "handlerId": 11,
+    "name": "OpCallJvds",
+    "tracedCount": 10310
+   },
+   {
+    "handlerId": 9,
+    "name": "OpRet",
+    "tracedCount": 8121
+   },
+   {
+    "handlerId": 4229,
+    "name": "OpAluwTest",
+    "tracedCount": 7441
+   },
+   {
+    "handlerId": 4305,
+    "name": "OpBsuwi1",
+    "tracedCount": 6633
+   },
+   {
+    "handlerId": 4137,
+    "name": "OpAluw",
+    "tracedCount": 5807
+   },
+   {
+    "handlerId": 2,
+    "name": "OpMovZvqpIvqp",
+    "tracedCount": 4807
+   },
+   {
+    "handlerId": 4295,
+    "name": "OpMovEvqpIvds",
+    "tracedCount": 4675
+   },
+   {
+    "handlerId": 4179,
+    "name": "OpPushZvq",
+    "tracedCount": 3819
+   },
+   {
+    "handlerId": 4099,
+    "name": "OpAluwFlip",
+    "tracedCount": 3571
+   },
+   {
+    "handlerId": 1,
+    "name": "OpNop",
+    "tracedCount": 3544
+   },
+   {
+    "handlerId": 4145,
+    "name": "OpAluw",
+    "tracedCount": 2672
+   },
+   {
+    "handlerId": 4342,
+    "name": "Op0f6",
+    "tracedCount": 2132
+   },
+   {
+    "handlerId": 4155,
+    "name": "OpAluwFlipCmp",
+    "tracedCount": 1879
+   },
+   {
+    "handlerId": 4232,
+    "name": "OpMovEbGb",
+    "tracedCount": 1716
+   },
+   {
+    "handlerId": 4420,
+    "name": "OpCmove",
+    "tracedCount": 1694
+   },
+   {
+    "handlerId": 4156,
+    "name": "OpCmpAlIb",
+    "tracedCount": 1554
+   },
+   {
+    "handlerId": 4187,
+    "name": "OpPopZvq",
+    "tracedCount": 1548
+   },
+   {
+    "handlerId": 4121,
+    "name": "OpAluw",
+    "tracedCount": 1317
+   },
+   {
+    "handlerId": 4418,
+    "name": "OpCmovb",
+    "tracedCount": 1301
+   },
+   {
+    "handlerId": 4343,
+    "name": "Op0f7",
+    "tracedCount": 644
+   },
+   {
+    "handlerId": 4157,
+    "name": "OpCmpRaxIvds",
+    "tracedCount": 636
+   },
+   {
+    "handlerId": 4393,
+    "name": "OpMovWpsVps",
+    "tracedCount": 584
+   },
+   {
+    "handlerId": 4201,
+    "name": "OpImulGvqpEvqpImm",
+    "tracedCount": 563
+   },
+   {
+    "handlerId": 4421,
+    "name": "OpCmovne",
+    "tracedCount": 492
+   },
+   {
+    "handlerId": 4294,
+    "name": "OpMovEbIb",
+    "tracedCount": 460
+   },
+   {
+    "handlerId": 4105,
+    "name": "OpAluw",
+    "tracedCount": 323
+   },
+   {
+    "handlerId": 4423,
+    "name": "OpCmova",
+    "tracedCount": 290
+   },
+   {
+    "handlerId": 4264,
+    "name": "OpTestAlIb",
+    "tracedCount": 268
+   },
+   {
+    "handlerId": 4422,
+    "name": "OpCmovbe",
+    "tracedCount": 257
+   },
+   {
+    "handlerId": 4133,
+    "name": "OpAluRaxIvds",
+    "tracedCount": 252
+   },
+   {
+    "handlerId": 4139,
+    "name": "OpAluwFlip",
+    "tracedCount": 226
+   },
+   {
+    "handlerId": 4307,
+    "name": "OpBsuwiCl",
+    "tracedCount": 209
+   },
+   {
+    "handlerId": 4500,
+    "name": "OpSete",
+    "tracedCount": 197
+   },
+   {
+    "handlerId": 4541,
+    "name": "OpBsr",
+    "tracedCount": 197
+   },
+   {
+    "handlerId": 4424,
+    "name": "OpCmovs",
+    "tracedCount": 177
+   },
+   {
+    "handlerId": 4419,
+    "name": "OpCmovae",
+    "tracedCount": 175
+   },
+   {
+    "handlerId": 4499,
+    "name": "OpSetae",
+    "tracedCount": 160
+   },
+   {
+    "handlerId": 4109,
+    "name": "OpAluRaxIvds",
+    "tracedCount": 141
+   },
+   {
+    "handlerId": 4542,
+    "name": "OpMovsbGvqpEb",
+    "tracedCount": 138
+   },
+   {
+    "handlerId": 4430,
+    "name": "OpCmovle",
+    "tracedCount": 120
+   },
+   {
+    "handlerId": 4351,
+    "name": "Op0ff",
+    "tracedCount": 117
+   },
+   {
+    "handlerId": 4369,
+    "name": "OpMovWpsVps",
+    "tracedCount": 116
+   },
+   {
+    "handlerId": 4478,
+    "name": "OpMov0f7e",
+    "tracedCount": 102
+   },
+   {
+    "handlerId": 4566,
+    "name": "OpMov0fD6",
+    "tracedCount": 67
+   },
+   {
+    "handlerId": 4462,
+    "name": "OpMov0f6e",
+    "tracedCount": 58
+   },
+   {
+    "handlerId": 4591,
+    "name": "OpSsePxor",
+    "tracedCount": 58
+   },
+   {
+    "handlerId": 4429,
+    "name": "OpCmovge",
+    "tracedCount": 48
+   },
+   {
+    "handlerId": 4149,
+    "name": "OpAluRaxIvds",
+    "tracedCount": 42
+   },
+   {
+    "handlerId": 4431,
+    "name": "OpCmovg",
+    "tracedCount": 42
+   },
+   {
+    "handlerId": 4104,
+    "name": "OpAlub",
+    "tracedCount": 41
+   },
+   {
+    "handlerId": 4129,
+    "name": "OpAluw",
+    "tracedCount": 39
+   },
+   {
+    "handlerId": 4147,
+    "name": "OpAluwFlip",
+    "tracedCount": 36
+   },
+   {
+    "handlerId": 4549,
+    "name": "OpPextrwGdqpUdqIb",
+    "tracedCount": 36
+   },
+   {
+    "handlerId": 4515,
+    "name": "OpBit",
+    "tracedCount": 35
+   },
+   {
+    "handlerId": 4128,
+    "name": "OpAlub",
+    "tracedCount": 31
+   },
+   {
+    "handlerId": 4460,
+    "name": "OpSsePunpcklqdq",
+    "tracedCount": 24
+   },
+   {
+    "handlerId": 4450,
+    "name": "OpSsePunpckldq",
+    "tracedCount": 22
+   },
+   {
+    "handlerId": 4463,
+    "name": "OpMov0f6f",
+    "tracedCount": 20
+   },
+   {
+    "handlerId": 4141,
+    "name": "OpAluRaxIvds",
+    "tracedCount": 14
+   },
+   {
+    "handlerId": 4501,
+    "name": "OpSetne",
+    "tracedCount": 13
+   },
+   {
+    "handlerId": 4107,
+    "name": "OpAluwFlip",
+    "tracedCount": 11
+   },
+   {
+    "handlerId": 4101,
+    "name": "OpAluRaxIvds",
+    "tracedCount": 9
+   },
+   {
+    "handlerId": 4131,
+    "name": "OpAluwFlip",
+    "tracedCount": 6
+   },
+   {
+    "handlerId": 4425,
+    "name": "OpCmovns",
+    "tracedCount": 6
+   },
+   {
+    "handlerId": 4554,
+    "name": "OpBswapZvqp",
+    "tracedCount": 6
+   },
+   {
+    "handlerId": 4108,
+    "name": "OpAluAlIbOr",
+    "tracedCount": 3
+   },
+   {
+    "handlerId": 4605,
+    "name": "OpSsePaddw",
+    "tracedCount": 3
+   },
+   {
+    "handlerId": 4096,
+    "name": "OpAlub",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4100,
+    "name": "OpAluAlIbAdd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4112,
+    "name": "OpAlub",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4113,
+    "name": "OpAluw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4120,
+    "name": "OpAlub",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4132,
+    "name": "OpAluAlIbAnd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4136,
+    "name": "OpAlub",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4140,
+    "name": "OpAluAlIbSub",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4144,
+    "name": "OpAlub",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4148,
+    "name": "OpAluAlIbXor",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4160,
+    "name": "OpIncZv",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4168,
+    "name": "OpDecZv",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4176,
+    "name": "OpPushZvq",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4184,
+    "name": "OpPopZvq",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4192,
+    "name": "OpPusha",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4193,
+    "name": "OpPopa",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4203,
+    "name": "OpImulGvqpEvqpImm",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4230,
+    "name": "OpXchgGbEb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4231,
+    "name": "OpXchgGvqpEvqp",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4234,
+    "name": "OpMovGbEb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4252,
+    "name": "OpPushf",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4253,
+    "name": "OpPopf",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4261,
+    "name": "OpMovs",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4262,
+    "name": "OpCmps",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4266,
+    "name": "OpStosb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4267,
+    "name": "OpStos",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4268,
+    "name": "OpLods",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4270,
+    "name": "OpScas",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4273,
+    "name": "OpMovZbIb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4304,
+    "name": "OpBsubi1",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4306,
+    "name": "OpBsubiCl",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4313,
+    "name": "OpFpu",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4315,
+    "name": "OpFpu",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4322,
+    "name": "OpLoop1",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4323,
+    "name": "OpJcxz",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4344,
+    "name": "OpClc",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4345,
+    "name": "OpStc",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4350,
+    "name": "Op0fe",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4439,
+    "name": "OpXorpsd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4440,
+    "name": "OpAddpsd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4448,
+    "name": "OpSsePunpcklbw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4452,
+    "name": "OpSsePcmpgtb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4453,
+    "name": "OpSsePcmpgtw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4454,
+    "name": "OpSsePcmpgtd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4464,
+    "name": "OpShuffle",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4468,
+    "name": "OpSsePcmpeqb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4469,
+    "name": "OpSsePcmpeqw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4470,
+    "name": "OpSsePcmpeqd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4471,
+    "name": "OpEmms",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4508,
+    "name": "OpSetl",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4514,
+    "name": "OpCpuid",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4516,
+    "name": "OpDoubleShift",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4517,
+    "name": "OpDoubleShift",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4523,
+    "name": "OpBit",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4524,
+    "name": "OpDoubleShift",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4525,
+    "name": "OpDoubleShift",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4526,
+    "name": "Op1ae",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4527,
+    "name": "OpImulGvqpEvqp",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4528,
+    "name": "OpCmpxchgEbAlGb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4529,
+    "name": "OpCmpxchgEvqpRaxGvqp",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4531,
+    "name": "OpBit",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4536,
+    "name": "Op1b8",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4538,
+    "name": "OpBit",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4539,
+    "name": "OpBit",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4540,
+    "name": "OpBsf",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4544,
+    "name": "OpXaddEbGb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4545,
+    "name": "OpXaddEvqpGvqp",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4551,
+    "name": "Op1c7",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4552,
+    "name": "OpBswapZvqp",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4565,
+    "name": "OpSsePmullw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4568,
+    "name": "OpSsePsubusb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4569,
+    "name": "OpSsePsubusw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4570,
+    "name": "OpSsePminub",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4571,
+    "name": "OpSsePand",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4572,
+    "name": "OpSsePaddusb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4573,
+    "name": "OpSsePaddusw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4574,
+    "name": "OpSsePmaxub",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4575,
+    "name": "OpSsePandn",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4576,
+    "name": "OpSsePavgb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4579,
+    "name": "OpSsePavgw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4580,
+    "name": "OpSsePmulhuw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4581,
+    "name": "OpSsePmulhw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4584,
+    "name": "OpSsePsubsb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4585,
+    "name": "OpSsePsubsw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4586,
+    "name": "OpSsePminsw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4587,
+    "name": "OpSsePor",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4588,
+    "name": "OpSsePaddsb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4589,
+    "name": "OpSsePaddsw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4590,
+    "name": "OpSsePmaxsw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4596,
+    "name": "OpSsePmuludq",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4598,
+    "name": "OpSsePsadbw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4600,
+    "name": "OpSsePsubb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4601,
+    "name": "OpSsePsubw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4602,
+    "name": "OpSsePsubd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4604,
+    "name": "OpSsePaddb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4606,
+    "name": "OpSsePaddd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4608,
+    "name": "OpSsePshufb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4624,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4628,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4629,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4631,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4636,
+    "name": "OpSsePabsb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4637,
+    "name": "OpSsePabsw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4638,
+    "name": "OpSsePabsd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4640,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4641,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4642,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4643,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4644,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4645,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4648,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4649,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4651,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4656,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4657,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4658,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4659,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4660,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4661,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4663,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4664,
+    "name": "OpSsePminsb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4665,
+    "name": "OpSsePminsd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4666,
+    "name": "OpSsePminuw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4667,
+    "name": "OpSsePminud",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4668,
+    "name": "OpSsePmaxsb",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4669,
+    "name": "OpSsePmaxsd",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4670,
+    "name": "OpSsePmaxuw",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4671,
+    "name": "OpSsePmaxud",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4672,
+    "name": "OpSsePmulld",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4673,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4827,
+    "name": "OpAesimc",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4828,
+    "name": "OpAesenc",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4829,
+    "name": "OpAesenclast",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4830,
+    "name": "OpAesdec",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4831,
+    "name": "OpAesdeclast",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4849,
+    "name": "UNKNOWN",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4850,
+    "name": "OpAndn",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4851,
+    "name": "OpBls",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4853,
+    "name": "Op2f5",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4854,
+    "name": "Op2f6",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4855,
+    "name": "Op2f7",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4872,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4873,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4874,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4875,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4876,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4877,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4878,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4884,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4885,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4886,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4887,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4896,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4897,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4898,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4928,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4929,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4930,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4932,
+    "name": "OpSsePclmulqdq",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4960,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4961,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4962,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 4963,
+    "name": "OpSse4",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 5087,
+    "name": "OpAeskeygenassist",
+    "tracedCount": 0
+   },
+   {
+    "handlerId": 5104,
+    "name": "OpRorx",
+    "tracedCount": 0
+   }
+  ]
+ },
+ "handlers": [
+  {
+   "handlerId": 1,
+   "name": "OpNop",
+   "tracedCount": 3544,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "1001",
+     "1007",
+     "1013",
+     "1019",
+     "505",
+     "929",
+     "935",
+     "941",
+     "947",
+     "953",
+     "959",
+     "965",
+     "971",
+     "977",
+     "983",
+     "989",
+     "995"
+    ],
+    "rosetta": [
+     "nop"
+    ]
+   }
+  },
+  {
+   "handlerId": 2,
+   "name": "OpMovZvqpIvqp",
+   "tracedCount": 4807,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_branch_eq_ja",
+     "phase1_branch_eq_jb",
+     "phase1_branch_eq_je",
+     "phase1_branch_eq_jge",
+     "phase1_branch_eq_jl",
+     "phase1_branch_eq_jne",
+     "phase1_branch_ne_ja",
+     "phase1_branch_ne_jb",
+     "phase1_branch_ne_je",
+     "phase1_branch_ne_jge",
+     "phase1_branch_ne_jl",
+     "phase1_branch_ne_jne",
+     "phase1_branch_signed_ge_ja",
+     "phase1_branch_signed_ge_jb",
+     "phase1_branch_signed_ge_je",
+     "phase1_branch_signed_ge_jge",
+     "phase1_branch_signed_ge_jl",
+     "phase1_branch_signed_ge_jne",
+     "phase1_branch_signed_lt_ja",
+     "phase1_branch_signed_lt_jb",
+     "phase1_branch_signed_lt_je",
+     "phase1_branch_signed_lt_jge",
+     "phase1_branch_signed_lt_jl",
+     "phase1_branch_signed_lt_jne",
+     "phase1_branch_unsigned_above_ja",
+     "phase1_branch_unsigned_above_jb",
+     "phase1_branch_unsigned_above_je",
+     "phase1_branch_unsigned_above_jge",
+     "phase1_branch_unsigned_above_jl",
+     "phase1_branch_unsigned_above_jne",
+     "phase1_branch_unsigned_below_ja",
+     "phase1_branch_unsigned_below_jb",
+     "phase1_branch_unsigned_below_je",
+     "phase1_branch_unsigned_below_jge",
+     "phase1_branch_unsigned_below_jl",
+     "phase1_branch_unsigned_below_jne",
+     "phase1_call_ret"
+    ]
+   }
+  },
+  {
+   "handlerId": 3,
+   "name": "OpMovEvqpGvqp",
+   "tracedCount": 123542,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "201"
+    ],
+    "rosetta": [
+     "phase1_sib_store_s1_i0_d0",
+     "phase1_sib_store_s1_i0_d1",
+     "phase1_sib_store_s1_i0_d4",
+     "phase1_sib_store_s1_i0_d7",
+     "phase1_sib_store_s1_i1_d0",
+     "phase1_sib_store_s1_i1_d1",
+     "phase1_sib_store_s1_i1_d4",
+     "phase1_sib_store_s1_i1_d7",
+     "phase1_sib_store_s1_i2_d0",
+     "phase1_sib_store_s1_i2_d1",
+     "phase1_sib_store_s1_i2_d4",
+     "phase1_sib_store_s1_i2_d7",
+     "phase1_sib_store_s2_i0_d0",
+     "phase1_sib_store_s2_i0_d1",
+     "phase1_sib_store_s2_i0_d4",
+     "phase1_sib_store_s2_i0_d7",
+     "phase1_sib_store_s2_i1_d0",
+     "phase1_sib_store_s2_i1_d1",
+     "phase1_sib_store_s2_i1_d4",
+     "phase1_sib_store_s2_i1_d7",
+     "phase1_sib_store_s2_i2_d0",
+     "phase1_sib_store_s2_i2_d1",
+     "phase1_sib_store_s2_i2_d4",
+     "phase1_sib_store_s2_i2_d7",
+     "phase1_sib_store_s4_i0_d0",
+     "phase1_sib_store_s4_i0_d1",
+     "phase1_sib_store_s4_i0_d4",
+     "phase1_sib_store_s4_i0_d7",
+     "phase1_sib_store_s4_i1_d0",
+     "phase1_sib_store_s4_i1_d1",
+     "phase1_sib_store_s4_i1_d4",
+     "phase1_sib_store_s4_i1_d7",
+     "phase1_sib_store_s4_i2_d0",
+     "phase1_sib_store_s4_i2_d1",
+     "phase1_sib_store_s4_i2_d4",
+     "phase1_sib_store_s4_i2_d7",
+     "phase1_sib_store_s8_i0_d0",
+     "phase1_sib_store_s8_i0_d1",
+     "phase1_sib_store_s8_i0_d4",
+     "phase1_sib_store_s8_i0_d7",
+     "phase1_sib_store_s8_i1_d0",
+     "phase1_sib_store_s8_i1_d1",
+     "phase1_sib_store_s8_i1_d4",
+     "phase1_sib_store_s8_i1_d7",
+     "phase1_sib_store_s8_i2_d0",
+     "phase1_sib_store_s8_i2_d1",
+     "phase1_sib_store_s8_i2_d4",
+     "phase1_sib_store_s8_i2_d7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4,
+   "name": "OpMovGvqpEvqp",
+   "tracedCount": 53314,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "200"
+    ],
+    "rosetta": [
+     "phase1_mem16_load_off0",
+     "phase1_mem16_load_off1",
+     "phase1_mem16_load_off12",
+     "phase1_mem16_load_off16",
+     "phase1_mem16_load_off2",
+     "phase1_mem16_load_off23",
+     "phase1_mem16_load_off3",
+     "phase1_mem16_load_off4",
+     "phase1_mem16_load_off7",
+     "phase1_mem32_load_off0",
+     "phase1_mem32_load_off1",
+     "phase1_mem32_load_off12",
+     "phase1_mem32_load_off16",
+     "phase1_mem32_load_off2",
+     "phase1_mem32_load_off23",
+     "phase1_mem32_load_off3",
+     "phase1_mem32_load_off4",
+     "phase1_mem32_load_off7",
+     "phase1_sib_load_s1_i0_d0",
+     "phase1_sib_load_s1_i0_d1",
+     "phase1_sib_load_s1_i0_d4",
+     "phase1_sib_load_s1_i0_d7",
+     "phase1_sib_load_s1_i1_d0",
+     "phase1_sib_load_s1_i1_d1",
+     "phase1_sib_load_s1_i1_d4",
+     "phase1_sib_load_s1_i1_d7",
+     "phase1_sib_load_s1_i2_d0",
+     "phase1_sib_load_s1_i2_d1",
+     "phase1_sib_load_s1_i2_d4",
+     "phase1_sib_load_s1_i2_d7",
+     "phase1_sib_load_s2_i0_d0",
+     "phase1_sib_load_s2_i0_d1",
+     "phase1_sib_load_s2_i0_d4",
+     "phase1_sib_load_s2_i0_d7",
+     "phase1_sib_load_s2_i1_d0",
+     "phase1_sib_load_s2_i1_d1",
+     "phase1_sib_load_s2_i1_d4",
+     "phase1_sib_load_s2_i1_d7",
+     "phase1_sib_load_s2_i2_d0",
+     "phase1_sib_load_s2_i2_d1",
+     "phase1_sib_load_s2_i2_d4",
+     "phase1_sib_load_s2_i2_d7",
+     "phase1_sib_load_s4_i0_d0",
+     "phase1_sib_load_s4_i0_d1",
+     "phase1_sib_load_s4_i0_d4",
+     "phase1_sib_load_s4_i0_d7",
+     "phase1_sib_load_s4_i1_d0",
+     "phase1_sib_load_s4_i1_d1",
+     "phase1_sib_load_s4_i1_d4",
+     "phase1_sib_load_s4_i1_d7",
+     "phase1_sib_load_s4_i2_d0",
+     "phase1_sib_load_s4_i2_d1",
+     "phase1_sib_load_s4_i2_d4",
+     "phase1_sib_load_s4_i2_d7",
+     "phase1_sib_load_s8_i0_d0",
+     "phase1_sib_load_s8_i0_d1",
+     "phase1_sib_load_s8_i0_d4",
+     "phase1_sib_load_s8_i0_d7",
+     "phase1_sib_load_s8_i1_d0",
+     "phase1_sib_load_s8_i1_d1",
+     "phase1_sib_load_s8_i1_d4",
+     "phase1_sib_load_s8_i1_d7",
+     "phase1_sib_load_s8_i2_d0",
+     "phase1_sib_load_s8_i2_d1",
+     "phase1_sib_load_s8_i2_d4",
+     "phase1_sib_load_s8_i2_d7"
+    ]
+   }
+  },
+  {
+   "handlerId": 5,
+   "name": "OpBsuwiImm",
+   "tracedCount": 53905,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "106"
+    ],
+    "rosetta": [
+     "ror_31",
+     "sar_31",
+     "shr_31"
+    ]
+   }
+  },
+  {
+   "handlerId": 6,
+   "name": "OpAlui",
+   "tracedCount": 642469,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_call_ret",
+     "phase1_imm16_add_neg1",
+     "phase1_imm16_add_neg128",
+     "phase1_imm16_add_pos0",
+     "phase1_imm16_add_pos1",
+     "phase1_imm16_add_pos127",
+     "phase1_imm16_add_pos7",
+     "phase1_imm16_and_neg1",
+     "phase1_imm16_and_neg128",
+     "phase1_imm16_and_pos0",
+     "phase1_imm16_and_pos1",
+     "phase1_imm16_and_pos127",
+     "phase1_imm16_and_pos7",
+     "phase1_imm16_cmp_neg1",
+     "phase1_imm16_cmp_neg128",
+     "phase1_imm16_cmp_pos0",
+     "phase1_imm16_cmp_pos1",
+     "phase1_imm16_cmp_pos127",
+     "phase1_imm16_cmp_pos7",
+     "phase1_imm16_or_neg1",
+     "phase1_imm16_or_neg128",
+     "phase1_imm16_or_pos0",
+     "phase1_imm16_or_pos1",
+     "phase1_imm16_or_pos127",
+     "phase1_imm16_or_pos7",
+     "phase1_imm16_sub_neg1",
+     "phase1_imm16_sub_neg128",
+     "phase1_imm16_sub_pos0",
+     "phase1_imm16_sub_pos1",
+     "phase1_imm16_sub_pos127",
+     "phase1_imm16_sub_pos7",
+     "phase1_imm16_xor_neg1",
+     "phase1_imm16_xor_neg128",
+     "phase1_imm16_xor_pos0",
+     "phase1_imm16_xor_pos1",
+     "phase1_imm16_xor_pos127",
+     "phase1_imm16_xor_pos7",
+     "phase1_imm32_add_neg1",
+     "phase1_imm32_add_neg128",
+     "phase1_imm32_add_pos0",
+     "phase1_imm32_add_pos1",
+     "phase1_imm32_add_pos127",
+     "phase1_imm32_add_pos7",
+     "phase1_imm32_and_neg1",
+     "phase1_imm32_and_neg128",
+     "phase1_imm32_and_pos0",
+     "phase1_imm32_and_pos1",
+     "phase1_imm32_and_pos127",
+     "phase1_imm32_and_pos7",
+     "phase1_imm32_cmp_neg1",
+     "phase1_imm32_cmp_neg128",
+     "phase1_imm32_cmp_pos0",
+     "phase1_imm32_cmp_pos1",
+     "phase1_imm32_cmp_pos127",
+     "phase1_imm32_cmp_pos7",
+     "phase1_imm32_or_neg1",
+     "phase1_imm32_or_neg128",
+     "phase1_imm32_or_pos0",
+     "phase1_imm32_or_pos1",
+     "phase1_imm32_or_pos127",
+     "phase1_imm32_or_pos7",
+     "phase1_imm32_sub_neg1",
+     "phase1_imm32_sub_neg128",
+     "phase1_imm32_sub_pos0",
+     "phase1_imm32_sub_pos1",
+     "phase1_imm32_sub_pos127",
+     "phase1_imm32_sub_pos7",
+     "phase1_imm32_xor_neg1",
+     "phase1_imm32_xor_neg128",
+     "phase1_imm32_xor_pos0",
+     "phase1_imm32_xor_pos1",
+     "phase1_imm32_xor_pos127",
+     "phase1_imm32_xor_pos7"
+    ]
+   }
+  },
+  {
+   "handlerId": 7,
+   "name": "OpJcc",
+   "tracedCount": 554577,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_branch_eq_ja",
+     "phase1_branch_eq_jb",
+     "phase1_branch_eq_je",
+     "phase1_branch_eq_jge",
+     "phase1_branch_eq_jl",
+     "phase1_branch_eq_jne",
+     "phase1_branch_ne_ja",
+     "phase1_branch_ne_jb",
+     "phase1_branch_ne_je",
+     "phase1_branch_ne_jge",
+     "phase1_branch_ne_jl",
+     "phase1_branch_ne_jne",
+     "phase1_branch_signed_ge_ja",
+     "phase1_branch_signed_ge_jb",
+     "phase1_branch_signed_ge_je",
+     "phase1_branch_signed_ge_jge",
+     "phase1_branch_signed_ge_jl",
+     "phase1_branch_signed_ge_jne",
+     "phase1_branch_signed_lt_ja",
+     "phase1_branch_signed_lt_jb",
+     "phase1_branch_signed_lt_je",
+     "phase1_branch_signed_lt_jge",
+     "phase1_branch_signed_lt_jl",
+     "phase1_branch_signed_lt_jne",
+     "phase1_branch_unsigned_above_ja",
+     "phase1_branch_unsigned_above_jb",
+     "phase1_branch_unsigned_above_je",
+     "phase1_branch_unsigned_above_jge",
+     "phase1_branch_unsigned_above_jl",
+     "phase1_branch_unsigned_above_jne",
+     "phase1_branch_unsigned_below_ja",
+     "phase1_branch_unsigned_below_jb",
+     "phase1_branch_unsigned_below_je",
+     "phase1_branch_unsigned_below_jge",
+     "phase1_branch_unsigned_below_jl",
+     "phase1_branch_unsigned_below_jne"
+    ]
+   }
+  },
+  {
+   "handlerId": 8,
+   "name": "OpJmp",
+   "tracedCount": 52310,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_branch_eq_ja",
+     "phase1_branch_eq_jb",
+     "phase1_branch_eq_jl",
+     "phase1_branch_eq_jne",
+     "phase1_branch_ne_ja",
+     "phase1_branch_ne_jb",
+     "phase1_branch_ne_jl",
+     "phase1_branch_ne_jne",
+     "phase1_branch_signed_ge_ja",
+     "phase1_branch_signed_ge_jb",
+     "phase1_branch_signed_ge_jl",
+     "phase1_branch_signed_ge_jne",
+     "phase1_branch_signed_lt_ja",
+     "phase1_branch_signed_lt_jb",
+     "phase1_branch_signed_lt_jl",
+     "phase1_branch_signed_lt_jne",
+     "phase1_branch_unsigned_above_ja",
+     "phase1_branch_unsigned_above_jb",
+     "phase1_branch_unsigned_above_jl",
+     "phase1_branch_unsigned_above_jne",
+     "phase1_branch_unsigned_below_ja",
+     "phase1_branch_unsigned_below_jb",
+     "phase1_branch_unsigned_below_jl",
+     "phase1_branch_unsigned_below_jne",
+     "phase1_call_ret",
+     "phase1_nested_call_ret"
+    ]
+   }
+  },
+  {
+   "handlerId": 9,
+   "name": "OpRet",
+   "tracedCount": 8121,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_call_ret",
+     "phase1_nested_call_ret"
+    ]
+   }
+  },
+  {
+   "handlerId": 10,
+   "name": "OpLeaGvqpM",
+   "tracedCount": 22441,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "109"
+    ]
+   }
+  },
+  {
+   "handlerId": 11,
+   "name": "OpCallJvds",
+   "tracedCount": 10310,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_call_ret",
+     "phase1_nested_call_ret"
+    ]
+   }
+  },
+  {
+   "handlerId": 13,
+   "name": "OpCallEq",
+   "tracedCount": 302,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 14,
+   "name": "OpJmpEq",
+   "tracedCount": 327,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 17,
+   "name": "OpAluTest",
+   "tracedCount": 11971,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_reg32_test_0",
+     "phase1_reg32_test_1",
+     "phase1_reg32_test_2",
+     "phase1_reg32_test_3",
+     "phase1_reg32_test_4",
+     "test_sign"
+    ]
+   }
+  },
+  {
+   "handlerId": 4096,
+   "name": "OpAlub",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge8_add_0",
+     "edge8_add_1",
+     "edge8_add_2",
+     "edge8_add_3",
+     "edge8_add_4",
+     "edge8_add_5",
+     "edge8_add_6",
+     "phase1_mem8_add_off0",
+     "phase1_mem8_add_off1",
+     "phase1_mem8_add_off12",
+     "phase1_mem8_add_off16",
+     "phase1_mem8_add_off2",
+     "phase1_mem8_add_off23",
+     "phase1_mem8_add_off3",
+     "phase1_mem8_add_off4",
+     "phase1_mem8_add_off7",
+     "phase1_reg8_add_0",
+     "phase1_reg8_add_1",
+     "phase1_reg8_add_2",
+     "phase1_reg8_add_3",
+     "phase1_reg8_add_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4097,
+   "name": "OpAluw",
+   "tracedCount": 55619,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "100"
+    ],
+    "rosetta": [
+     "add_carry",
+     "add_overflow",
+     "edge16_add_0",
+     "edge16_add_1",
+     "edge16_add_2",
+     "edge16_add_3",
+     "edge16_add_4",
+     "edge16_add_5",
+     "edge16_add_6",
+     "edge32_add_0",
+     "edge32_add_1",
+     "edge32_add_2",
+     "edge32_add_3",
+     "edge32_add_4",
+     "edge32_add_5",
+     "edge32_add_6",
+     "edge32_add_7",
+     "edge32_add_8",
+     "edge32_add_9",
+     "phase1_mem16_add_off0",
+     "phase1_mem16_add_off1",
+     "phase1_mem16_add_off12",
+     "phase1_mem16_add_off16",
+     "phase1_mem16_add_off2",
+     "phase1_mem16_add_off23",
+     "phase1_mem16_add_off3",
+     "phase1_mem16_add_off4",
+     "phase1_mem16_add_off7",
+     "phase1_mem32_add_off0",
+     "phase1_mem32_add_off1",
+     "phase1_mem32_add_off12",
+     "phase1_mem32_add_off16",
+     "phase1_mem32_add_off2",
+     "phase1_mem32_add_off23",
+     "phase1_mem32_add_off3",
+     "phase1_mem32_add_off4",
+     "phase1_mem32_add_off7",
+     "phase1_reg16_add_0",
+     "phase1_reg16_add_1",
+     "phase1_reg16_add_2",
+     "phase1_reg16_add_3",
+     "phase1_reg16_add_4",
+     "phase1_reg32_add_0",
+     "phase1_reg32_add_1",
+     "phase1_reg32_add_2",
+     "phase1_reg32_add_3",
+     "phase1_reg32_add_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4099,
+   "name": "OpAluwFlip",
+   "tracedCount": 3571,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "202"
+    ]
+   }
+  },
+  {
+   "handlerId": 4100,
+   "name": "OpAluAlIbAdd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm8_add_neg1",
+     "phase1_imm8_add_neg128",
+     "phase1_imm8_add_pos0",
+     "phase1_imm8_add_pos1",
+     "phase1_imm8_add_pos127",
+     "phase1_imm8_add_pos128",
+     "phase1_imm8_add_pos7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4101,
+   "name": "OpAluRaxIvds",
+   "tracedCount": 9,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm16_add_pos128",
+     "phase1_imm16_add_pos4660",
+     "phase1_imm32_add_pos128",
+     "phase1_imm32_add_pos4660"
+    ]
+   }
+  },
+  {
+   "handlerId": 4104,
+   "name": "OpAlub",
+   "tracedCount": 41,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_mem8_or_off0",
+     "phase1_mem8_or_off1",
+     "phase1_mem8_or_off12",
+     "phase1_mem8_or_off16",
+     "phase1_mem8_or_off2",
+     "phase1_mem8_or_off23",
+     "phase1_mem8_or_off3",
+     "phase1_mem8_or_off4",
+     "phase1_mem8_or_off7",
+     "phase1_reg8_or_0",
+     "phase1_reg8_or_1",
+     "phase1_reg8_or_2",
+     "phase1_reg8_or_3",
+     "phase1_reg8_or_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4105,
+   "name": "OpAluw",
+   "tracedCount": 323,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge32_or_0",
+     "edge32_or_1",
+     "edge32_or_2",
+     "edge32_or_3",
+     "edge32_or_4",
+     "edge32_or_5",
+     "edge32_or_6",
+     "edge32_or_7",
+     "edge32_or_8",
+     "edge32_or_9",
+     "or",
+     "phase1_mem16_or_off0",
+     "phase1_mem16_or_off1",
+     "phase1_mem16_or_off12",
+     "phase1_mem16_or_off16",
+     "phase1_mem16_or_off2",
+     "phase1_mem16_or_off23",
+     "phase1_mem16_or_off3",
+     "phase1_mem16_or_off4",
+     "phase1_mem16_or_off7",
+     "phase1_mem32_or_off0",
+     "phase1_mem32_or_off1",
+     "phase1_mem32_or_off12",
+     "phase1_mem32_or_off16",
+     "phase1_mem32_or_off2",
+     "phase1_mem32_or_off23",
+     "phase1_mem32_or_off3",
+     "phase1_mem32_or_off4",
+     "phase1_mem32_or_off7",
+     "phase1_reg16_or_0",
+     "phase1_reg16_or_1",
+     "phase1_reg16_or_2",
+     "phase1_reg16_or_3",
+     "phase1_reg16_or_4",
+     "phase1_reg32_or_0",
+     "phase1_reg32_or_1",
+     "phase1_reg32_or_2",
+     "phase1_reg32_or_3",
+     "phase1_reg32_or_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4107,
+   "name": "OpAluwFlip",
+   "tracedCount": 11,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "111"
+    ]
+   }
+  },
+  {
+   "handlerId": 4108,
+   "name": "OpAluAlIbOr",
+   "tracedCount": 3,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm8_or_neg1",
+     "phase1_imm8_or_neg128",
+     "phase1_imm8_or_pos0",
+     "phase1_imm8_or_pos1",
+     "phase1_imm8_or_pos127",
+     "phase1_imm8_or_pos128",
+     "phase1_imm8_or_pos7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4109,
+   "name": "OpAluRaxIvds",
+   "tracedCount": 141,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm16_or_pos128",
+     "phase1_imm16_or_pos4660",
+     "phase1_imm32_or_pos128",
+     "phase1_imm32_or_pos4660"
+    ]
+   }
+  },
+  {
+   "handlerId": 4112,
+   "name": "OpAlub",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_reg8_adc_0",
+     "phase1_reg8_adc_1",
+     "phase1_reg8_adc_2",
+     "phase1_reg8_adc_3",
+     "phase1_reg8_adc_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4113,
+   "name": "OpAluw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "adc_carry_in",
+     "edge32_adc_0",
+     "edge32_adc_1",
+     "edge32_adc_2",
+     "edge32_adc_3",
+     "edge32_adc_4",
+     "edge32_adc_5",
+     "edge32_adc_6",
+     "edge32_adc_7",
+     "edge32_adc_8",
+     "edge32_adc_9",
+     "phase1_reg16_adc_0",
+     "phase1_reg16_adc_1",
+     "phase1_reg16_adc_2",
+     "phase1_reg16_adc_3",
+     "phase1_reg16_adc_4",
+     "phase1_reg32_adc_0",
+     "phase1_reg32_adc_1",
+     "phase1_reg32_adc_2",
+     "phase1_reg32_adc_3",
+     "phase1_reg32_adc_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4120,
+   "name": "OpAlub",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_reg8_sbb_0",
+     "phase1_reg8_sbb_1",
+     "phase1_reg8_sbb_2",
+     "phase1_reg8_sbb_3",
+     "phase1_reg8_sbb_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4121,
+   "name": "OpAluw",
+   "tracedCount": 1317,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge32_sbb_0",
+     "edge32_sbb_1",
+     "edge32_sbb_2",
+     "edge32_sbb_3",
+     "edge32_sbb_4",
+     "edge32_sbb_5",
+     "edge32_sbb_6",
+     "edge32_sbb_7",
+     "edge32_sbb_8",
+     "edge32_sbb_9",
+     "phase1_reg16_sbb_0",
+     "phase1_reg16_sbb_1",
+     "phase1_reg16_sbb_2",
+     "phase1_reg16_sbb_3",
+     "phase1_reg16_sbb_4",
+     "phase1_reg32_sbb_0",
+     "phase1_reg32_sbb_1",
+     "phase1_reg32_sbb_2",
+     "phase1_reg32_sbb_3",
+     "phase1_reg32_sbb_4",
+     "sbb_borrow_in"
+    ]
+   }
+  },
+  {
+   "handlerId": 4128,
+   "name": "OpAlub",
+   "tracedCount": 31,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge8_and_0",
+     "edge8_and_1",
+     "edge8_and_2",
+     "edge8_and_3",
+     "edge8_and_4",
+     "edge8_and_5",
+     "edge8_and_6",
+     "phase1_mem8_and_off0",
+     "phase1_mem8_and_off1",
+     "phase1_mem8_and_off12",
+     "phase1_mem8_and_off16",
+     "phase1_mem8_and_off2",
+     "phase1_mem8_and_off23",
+     "phase1_mem8_and_off3",
+     "phase1_mem8_and_off4",
+     "phase1_mem8_and_off7",
+     "phase1_reg8_and_0",
+     "phase1_reg8_and_1",
+     "phase1_reg8_and_2",
+     "phase1_reg8_and_3",
+     "phase1_reg8_and_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4129,
+   "name": "OpAluw",
+   "tracedCount": 39,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "and",
+     "edge16_and_0",
+     "edge16_and_1",
+     "edge16_and_2",
+     "edge16_and_3",
+     "edge16_and_4",
+     "edge16_and_5",
+     "edge16_and_6",
+     "edge32_and_0",
+     "edge32_and_1",
+     "edge32_and_2",
+     "edge32_and_3",
+     "edge32_and_4",
+     "edge32_and_5",
+     "edge32_and_6",
+     "edge32_and_7",
+     "edge32_and_8",
+     "edge32_and_9",
+     "phase1_mem16_and_off0",
+     "phase1_mem16_and_off1",
+     "phase1_mem16_and_off12",
+     "phase1_mem16_and_off16",
+     "phase1_mem16_and_off2",
+     "phase1_mem16_and_off23",
+     "phase1_mem16_and_off3",
+     "phase1_mem16_and_off4",
+     "phase1_mem16_and_off7",
+     "phase1_mem32_and_off0",
+     "phase1_mem32_and_off1",
+     "phase1_mem32_and_off12",
+     "phase1_mem32_and_off16",
+     "phase1_mem32_and_off2",
+     "phase1_mem32_and_off23",
+     "phase1_mem32_and_off3",
+     "phase1_mem32_and_off4",
+     "phase1_mem32_and_off7",
+     "phase1_reg16_and_0",
+     "phase1_reg16_and_1",
+     "phase1_reg16_and_2",
+     "phase1_reg16_and_3",
+     "phase1_reg16_and_4",
+     "phase1_reg32_and_0",
+     "phase1_reg32_and_1",
+     "phase1_reg32_and_2",
+     "phase1_reg32_and_3",
+     "phase1_reg32_and_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4131,
+   "name": "OpAluwFlip",
+   "tracedCount": 6,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "113"
+    ]
+   }
+  },
+  {
+   "handlerId": 4132,
+   "name": "OpAluAlIbAnd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm8_and_neg1",
+     "phase1_imm8_and_neg128",
+     "phase1_imm8_and_pos0",
+     "phase1_imm8_and_pos1",
+     "phase1_imm8_and_pos127",
+     "phase1_imm8_and_pos128",
+     "phase1_imm8_and_pos7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4133,
+   "name": "OpAluRaxIvds",
+   "tracedCount": 252,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm16_and_pos128",
+     "phase1_imm16_and_pos4660",
+     "phase1_imm32_and_pos128",
+     "phase1_imm32_and_pos4660"
+    ]
+   }
+  },
+  {
+   "handlerId": 4136,
+   "name": "OpAlub",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge8_sub_0",
+     "edge8_sub_1",
+     "edge8_sub_2",
+     "edge8_sub_3",
+     "edge8_sub_4",
+     "edge8_sub_5",
+     "edge8_sub_6",
+     "phase1_mem8_sub_off0",
+     "phase1_mem8_sub_off1",
+     "phase1_mem8_sub_off12",
+     "phase1_mem8_sub_off16",
+     "phase1_mem8_sub_off2",
+     "phase1_mem8_sub_off23",
+     "phase1_mem8_sub_off3",
+     "phase1_mem8_sub_off4",
+     "phase1_mem8_sub_off7",
+     "phase1_reg8_sub_0",
+     "phase1_reg8_sub_1",
+     "phase1_reg8_sub_2",
+     "phase1_reg8_sub_3",
+     "phase1_reg8_sub_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4137,
+   "name": "OpAluw",
+   "tracedCount": 5807,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "101"
+    ],
+    "rosetta": [
+     "edge16_sub_0",
+     "edge16_sub_1",
+     "edge16_sub_2",
+     "edge16_sub_3",
+     "edge16_sub_4",
+     "edge16_sub_5",
+     "edge16_sub_6",
+     "edge32_sub_0",
+     "edge32_sub_1",
+     "edge32_sub_2",
+     "edge32_sub_3",
+     "edge32_sub_4",
+     "edge32_sub_5",
+     "edge32_sub_6",
+     "edge32_sub_7",
+     "edge32_sub_8",
+     "edge32_sub_9",
+     "phase1_mem16_sub_off0",
+     "phase1_mem16_sub_off1",
+     "phase1_mem16_sub_off12",
+     "phase1_mem16_sub_off16",
+     "phase1_mem16_sub_off2",
+     "phase1_mem16_sub_off23",
+     "phase1_mem16_sub_off3",
+     "phase1_mem16_sub_off4",
+     "phase1_mem16_sub_off7",
+     "phase1_mem32_sub_off0",
+     "phase1_mem32_sub_off1",
+     "phase1_mem32_sub_off12",
+     "phase1_mem32_sub_off16",
+     "phase1_mem32_sub_off2",
+     "phase1_mem32_sub_off23",
+     "phase1_mem32_sub_off3",
+     "phase1_mem32_sub_off4",
+     "phase1_mem32_sub_off7",
+     "phase1_reg16_sub_0",
+     "phase1_reg16_sub_1",
+     "phase1_reg16_sub_2",
+     "phase1_reg16_sub_3",
+     "phase1_reg16_sub_4",
+     "phase1_reg32_sub_0",
+     "phase1_reg32_sub_1",
+     "phase1_reg32_sub_2",
+     "phase1_reg32_sub_3",
+     "phase1_reg32_sub_4",
+     "sub_borrow"
+    ]
+   }
+  },
+  {
+   "handlerId": 4139,
+   "name": "OpAluwFlip",
+   "tracedCount": 226,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "112"
+    ]
+   }
+  },
+  {
+   "handlerId": 4140,
+   "name": "OpAluAlIbSub",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm8_sub_neg1",
+     "phase1_imm8_sub_neg128",
+     "phase1_imm8_sub_pos0",
+     "phase1_imm8_sub_pos1",
+     "phase1_imm8_sub_pos127",
+     "phase1_imm8_sub_pos128",
+     "phase1_imm8_sub_pos7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4141,
+   "name": "OpAluRaxIvds",
+   "tracedCount": 14,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm16_sub_pos128",
+     "phase1_imm16_sub_pos4660",
+     "phase1_imm32_sub_pos128",
+     "phase1_imm32_sub_pos4660"
+    ]
+   }
+  },
+  {
+   "handlerId": 4144,
+   "name": "OpAlub",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge8_xor_0",
+     "edge8_xor_1",
+     "edge8_xor_2",
+     "edge8_xor_3",
+     "edge8_xor_4",
+     "edge8_xor_5",
+     "edge8_xor_6",
+     "phase1_mem8_xor_off0",
+     "phase1_mem8_xor_off1",
+     "phase1_mem8_xor_off12",
+     "phase1_mem8_xor_off16",
+     "phase1_mem8_xor_off2",
+     "phase1_mem8_xor_off23",
+     "phase1_mem8_xor_off3",
+     "phase1_mem8_xor_off4",
+     "phase1_mem8_xor_off7",
+     "phase1_reg8_xor_0",
+     "phase1_reg8_xor_1",
+     "phase1_reg8_xor_2",
+     "phase1_reg8_xor_3",
+     "phase1_reg8_xor_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4145,
+   "name": "OpAluw",
+   "tracedCount": 2672,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "102"
+    ],
+    "rosetta": [
+     "edge16_xor_0",
+     "edge16_xor_1",
+     "edge16_xor_2",
+     "edge16_xor_3",
+     "edge16_xor_4",
+     "edge16_xor_5",
+     "edge16_xor_6",
+     "edge32_xor_0",
+     "edge32_xor_1",
+     "edge32_xor_2",
+     "edge32_xor_3",
+     "edge32_xor_4",
+     "edge32_xor_5",
+     "edge32_xor_6",
+     "edge32_xor_7",
+     "edge32_xor_8",
+     "edge32_xor_9",
+     "phase1_loop_0",
+     "phase1_loop_1",
+     "phase1_loop_2",
+     "phase1_loop_5",
+     "phase1_mem16_xor_off0",
+     "phase1_mem16_xor_off1",
+     "phase1_mem16_xor_off12",
+     "phase1_mem16_xor_off16",
+     "phase1_mem16_xor_off2",
+     "phase1_mem16_xor_off23",
+     "phase1_mem16_xor_off3",
+     "phase1_mem16_xor_off4",
+     "phase1_mem16_xor_off7",
+     "phase1_mem32_xor_off0",
+     "phase1_mem32_xor_off1",
+     "phase1_mem32_xor_off12",
+     "phase1_mem32_xor_off16",
+     "phase1_mem32_xor_off2",
+     "phase1_mem32_xor_off23",
+     "phase1_mem32_xor_off3",
+     "phase1_mem32_xor_off4",
+     "phase1_mem32_xor_off7",
+     "phase1_reg16_xor_0",
+     "phase1_reg16_xor_1",
+     "phase1_reg16_xor_2",
+     "phase1_reg16_xor_3",
+     "phase1_reg16_xor_4",
+     "phase1_reg32_xor_0",
+     "phase1_reg32_xor_1",
+     "phase1_reg32_xor_2",
+     "phase1_reg32_xor_3",
+     "phase1_reg32_xor_4",
+     "phase1_stack_pushad",
+     "xor"
+    ]
+   }
+  },
+  {
+   "handlerId": 4147,
+   "name": "OpAluwFlip",
+   "tracedCount": 36,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "209"
+    ]
+   }
+  },
+  {
+   "handlerId": 4148,
+   "name": "OpAluAlIbXor",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm8_xor_neg1",
+     "phase1_imm8_xor_neg128",
+     "phase1_imm8_xor_pos0",
+     "phase1_imm8_xor_pos1",
+     "phase1_imm8_xor_pos127",
+     "phase1_imm8_xor_pos128",
+     "phase1_imm8_xor_pos7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4149,
+   "name": "OpAluRaxIvds",
+   "tracedCount": 42,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm16_xor_pos128",
+     "phase1_imm16_xor_pos4660",
+     "phase1_imm32_xor_pos128",
+     "phase1_imm32_xor_pos4660",
+     "phase1_nested_call_ret"
+    ]
+   }
+  },
+  {
+   "handlerId": 4152,
+   "name": "OpAlubCmp",
+   "tracedCount": 12530,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge8_cmp_0",
+     "edge8_cmp_1",
+     "edge8_cmp_2",
+     "edge8_cmp_3",
+     "edge8_cmp_4",
+     "edge8_cmp_5",
+     "edge8_cmp_6",
+     "phase1_mem8_cmp_off0",
+     "phase1_mem8_cmp_off1",
+     "phase1_mem8_cmp_off12",
+     "phase1_mem8_cmp_off16",
+     "phase1_mem8_cmp_off2",
+     "phase1_mem8_cmp_off23",
+     "phase1_mem8_cmp_off3",
+     "phase1_mem8_cmp_off4",
+     "phase1_mem8_cmp_off7",
+     "phase1_reg8_cmp_0",
+     "phase1_reg8_cmp_1",
+     "phase1_reg8_cmp_2",
+     "phase1_reg8_cmp_3",
+     "phase1_reg8_cmp_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4153,
+   "name": "OpAluwCmp",
+   "tracedCount": 117401,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "cmovz_taken",
+     "cmp_equal",
+     "edge16_cmp_0",
+     "edge16_cmp_1",
+     "edge16_cmp_2",
+     "edge16_cmp_3",
+     "edge16_cmp_4",
+     "edge16_cmp_5",
+     "edge16_cmp_6",
+     "edge32_cmp_0",
+     "edge32_cmp_1",
+     "edge32_cmp_2",
+     "edge32_cmp_3",
+     "edge32_cmp_4",
+     "edge32_cmp_5",
+     "edge32_cmp_6",
+     "edge32_cmp_7",
+     "edge32_cmp_8",
+     "edge32_cmp_9",
+     "phase1_branch_eq_ja",
+     "phase1_branch_eq_jb",
+     "phase1_branch_eq_je",
+     "phase1_branch_eq_jge",
+     "phase1_branch_eq_jl",
+     "phase1_branch_eq_jne",
+     "phase1_branch_ne_ja",
+     "phase1_branch_ne_jb",
+     "phase1_branch_ne_je",
+     "phase1_branch_ne_jge",
+     "phase1_branch_ne_jl",
+     "phase1_branch_ne_jne",
+     "phase1_branch_signed_ge_ja",
+     "phase1_branch_signed_ge_jb",
+     "phase1_branch_signed_ge_je",
+     "phase1_branch_signed_ge_jge",
+     "phase1_branch_signed_ge_jl",
+     "phase1_branch_signed_ge_jne",
+     "phase1_branch_signed_lt_ja",
+     "phase1_branch_signed_lt_jb",
+     "phase1_branch_signed_lt_je",
+     "phase1_branch_signed_lt_jge",
+     "phase1_branch_signed_lt_jl",
+     "phase1_branch_signed_lt_jne",
+     "phase1_branch_unsigned_above_ja",
+     "phase1_branch_unsigned_above_jb",
+     "phase1_branch_unsigned_above_je",
+     "phase1_branch_unsigned_above_jge",
+     "phase1_branch_unsigned_above_jl",
+     "phase1_branch_unsigned_above_jne",
+     "phase1_branch_unsigned_below_ja",
+     "phase1_branch_unsigned_below_jb",
+     "phase1_branch_unsigned_below_je",
+     "phase1_branch_unsigned_below_jge",
+     "phase1_branch_unsigned_below_jl",
+     "phase1_branch_unsigned_below_jne",
+     "phase1_mem16_cmp_off0",
+     "phase1_mem16_cmp_off1",
+     "phase1_mem16_cmp_off12",
+     "phase1_mem16_cmp_off16",
+     "phase1_mem16_cmp_off2",
+     "phase1_mem16_cmp_off23",
+     "phase1_mem16_cmp_off3",
+     "phase1_mem16_cmp_off4",
+     "phase1_mem16_cmp_off7",
+     "phase1_mem32_cmp_off0",
+     "phase1_mem32_cmp_off1",
+     "phase1_mem32_cmp_off12",
+     "phase1_mem32_cmp_off16",
+     "phase1_mem32_cmp_off2",
+     "phase1_mem32_cmp_off23",
+     "phase1_mem32_cmp_off3",
+     "phase1_mem32_cmp_off4",
+     "phase1_mem32_cmp_off7",
+     "phase1_reg16_cmp_0",
+     "phase1_reg16_cmp_1",
+     "phase1_reg16_cmp_2",
+     "phase1_reg16_cmp_3",
+     "phase1_reg16_cmp_4",
+     "phase1_reg32_cmp_0",
+     "phase1_reg32_cmp_1",
+     "phase1_reg32_cmp_2",
+     "phase1_reg32_cmp_3",
+     "phase1_reg32_cmp_4",
+     "setl_taken"
+    ]
+   }
+  },
+  {
+   "handlerId": 4155,
+   "name": "OpAluwFlipCmp",
+   "tracedCount": 1879,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "110"
+    ]
+   }
+  },
+  {
+   "handlerId": 4156,
+   "name": "OpCmpAlIb",
+   "tracedCount": 1554,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm8_cmp_neg1",
+     "phase1_imm8_cmp_neg128",
+     "phase1_imm8_cmp_pos0",
+     "phase1_imm8_cmp_pos1",
+     "phase1_imm8_cmp_pos127",
+     "phase1_imm8_cmp_pos128",
+     "phase1_imm8_cmp_pos7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4157,
+   "name": "OpCmpRaxIvds",
+   "tracedCount": 636,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imm16_cmp_pos128",
+     "phase1_imm16_cmp_pos4660",
+     "phase1_imm32_cmp_pos128",
+     "phase1_imm32_cmp_pos4660"
+    ]
+   }
+  },
+  {
+   "handlerId": 4160,
+   "name": "OpIncZv",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "103"
+    ],
+    "rosetta": [
+     "edge16_inc_0",
+     "edge16_inc_1",
+     "edge16_inc_2",
+     "edge16_inc_3",
+     "edge16_inc_4",
+     "edge16_inc_5",
+     "edge16_inc_6",
+     "edge32_inc_0",
+     "edge32_inc_1",
+     "edge32_inc_2",
+     "edge32_inc_3",
+     "edge32_inc_4",
+     "edge32_inc_5",
+     "edge32_inc_6",
+     "edge32_inc_7",
+     "edge32_inc_8",
+     "edge32_inc_9",
+     "inc_overflow",
+     "phase1_loop_0",
+     "phase1_loop_1",
+     "phase1_loop_2",
+     "phase1_loop_5"
+    ]
+   }
+  },
+  {
+   "handlerId": 4168,
+   "name": "OpDecZv",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "dec_overflow",
+     "edge16_dec_0",
+     "edge16_dec_1",
+     "edge16_dec_2",
+     "edge16_dec_3",
+     "edge16_dec_4",
+     "edge16_dec_5",
+     "edge16_dec_6",
+     "edge32_dec_0",
+     "edge32_dec_1",
+     "edge32_dec_2",
+     "edge32_dec_3",
+     "edge32_dec_4",
+     "edge32_dec_5",
+     "edge32_dec_6",
+     "edge32_dec_7",
+     "edge32_dec_8",
+     "edge32_dec_9"
+    ]
+   }
+  },
+  {
+   "handlerId": 4176,
+   "name": "OpPushZvq",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_stack_flags",
+     "phase1_stack_push_pop"
+    ]
+   }
+  },
+  {
+   "handlerId": 4177,
+   "name": "OpPushZvq",
+   "tracedCount": 32,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4179,
+   "name": "OpPushZvq",
+   "tracedCount": 3819,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_stack_push_pop"
+    ]
+   }
+  },
+  {
+   "handlerId": 4181,
+   "name": "OpPushZvq",
+   "tracedCount": 9943,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4182,
+   "name": "OpPushZvq",
+   "tracedCount": 1564,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4183,
+   "name": "OpPushZvq",
+   "tracedCount": 1606,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4184,
+   "name": "OpPopZvq",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_stack_flags",
+     "phase1_stack_push_pop"
+    ]
+   }
+  },
+  {
+   "handlerId": 4185,
+   "name": "OpPopZvq",
+   "tracedCount": 29,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4187,
+   "name": "OpPopZvq",
+   "tracedCount": 1548,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_stack_push_pop"
+    ]
+   }
+  },
+  {
+   "handlerId": 4189,
+   "name": "OpPopZvq",
+   "tracedCount": 5537,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4190,
+   "name": "OpPopZvq",
+   "tracedCount": 1545,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4191,
+   "name": "OpPopZvq",
+   "tracedCount": 1582,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4192,
+   "name": "OpPusha",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_stack_pushad"
+    ]
+   }
+  },
+  {
+   "handlerId": 4193,
+   "name": "OpPopa",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_stack_pushad"
+    ]
+   }
+  },
+  {
+   "handlerId": 4201,
+   "name": "OpImulGvqpEvqpImm",
+   "tracedCount": 563,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imul3_1234",
+     "phase1_imul3_80"
+    ]
+   }
+  },
+  {
+   "handlerId": 4203,
+   "name": "OpImulGvqpEvqpImm",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_imul3_0",
+     "phase1_imul3_1",
+     "phase1_imul3_7",
+     "phase1_imul3_7f",
+     "phase1_imul3_ff80",
+     "phase1_imul3_fff9",
+     "phase1_imul3_ffff"
+    ]
+   }
+  },
+  {
+   "handlerId": 4228,
+   "name": "OpAlubTest",
+   "tracedCount": 12094,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_reg8_test_0",
+     "phase1_reg8_test_1",
+     "phase1_reg8_test_2",
+     "phase1_reg8_test_3",
+     "phase1_reg8_test_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4229,
+   "name": "OpAluwTest",
+   "tracedCount": 7441,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_reg16_test_0",
+     "phase1_reg16_test_1",
+     "phase1_reg16_test_2",
+     "phase1_reg16_test_3",
+     "phase1_reg16_test_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4230,
+   "name": "OpXchgGbEb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_atomic_xchg8_off0",
+     "phase1_atomic_xchg8_off1",
+     "phase1_atomic_xchg8_off12",
+     "phase1_atomic_xchg8_off15",
+     "phase1_atomic_xchg8_off2",
+     "phase1_atomic_xchg8_off3",
+     "phase1_atomic_xchg8_off4",
+     "phase1_atomic_xchg8_off7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4231,
+   "name": "OpXchgGvqpEvqp",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "203"
+    ],
+    "rosetta": [
+     "phase1_atomic_xchg16_off0",
+     "phase1_atomic_xchg16_off1",
+     "phase1_atomic_xchg16_off12",
+     "phase1_atomic_xchg16_off15",
+     "phase1_atomic_xchg16_off2",
+     "phase1_atomic_xchg16_off3",
+     "phase1_atomic_xchg16_off4",
+     "phase1_atomic_xchg16_off7",
+     "phase1_atomic_xchg32_off0",
+     "phase1_atomic_xchg32_off1",
+     "phase1_atomic_xchg32_off12",
+     "phase1_atomic_xchg32_off15",
+     "phase1_atomic_xchg32_off2",
+     "phase1_atomic_xchg32_off3",
+     "phase1_atomic_xchg32_off4",
+     "phase1_atomic_xchg32_off7",
+     "xchg_memory"
+    ]
+   }
+  },
+  {
+   "handlerId": 4232,
+   "name": "OpMovEbGb",
+   "tracedCount": 1716,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "116",
+     "206"
+    ]
+   }
+  },
+  {
+   "handlerId": 4234,
+   "name": "OpMovGbEb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_mem8_load_off0",
+     "phase1_mem8_load_off1",
+     "phase1_mem8_load_off12",
+     "phase1_mem8_load_off16",
+     "phase1_mem8_load_off2",
+     "phase1_mem8_load_off23",
+     "phase1_mem8_load_off3",
+     "phase1_mem8_load_off4",
+     "phase1_mem8_load_off7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4252,
+   "name": "OpPushf",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_stack_flags"
+    ]
+   }
+  },
+  {
+   "handlerId": 4253,
+   "name": "OpPopf",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_stack_flags"
+    ]
+   }
+  },
+  {
+   "handlerId": 4257,
+   "name": "OpMovRaxOvqp",
+   "tracedCount": 471,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4259,
+   "name": "OpMovOvqpRax",
+   "tracedCount": 93,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4260,
+   "name": "OpMovsb",
+   "tracedCount": 104325,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "500",
+     "768",
+     "776",
+     "784",
+     "792",
+     "800",
+     "808",
+     "816",
+     "824",
+     "832",
+     "840",
+     "848",
+     "856",
+     "864",
+     "872",
+     "880",
+     "888",
+     "896",
+     "904",
+     "912",
+     "920"
+    ]
+   }
+  },
+  {
+   "handlerId": 4261,
+   "name": "OpMovs",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "769",
+     "770",
+     "777",
+     "778",
+     "785",
+     "786",
+     "793",
+     "794",
+     "801",
+     "802",
+     "809",
+     "810",
+     "817",
+     "818",
+     "825",
+     "826",
+     "833",
+     "834",
+     "841",
+     "842",
+     "849",
+     "850",
+     "857",
+     "858",
+     "865",
+     "866",
+     "873",
+     "874",
+     "881",
+     "882",
+     "889",
+     "890",
+     "897",
+     "898",
+     "905",
+     "906",
+     "913",
+     "914",
+     "921",
+     "922"
+    ]
+   }
+  },
+  {
+   "handlerId": 4262,
+   "name": "OpCmps",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "503",
+     "774",
+     "782",
+     "790",
+     "798",
+     "806",
+     "814",
+     "822",
+     "830",
+     "838",
+     "846",
+     "854",
+     "862",
+     "870",
+     "878",
+     "886",
+     "894",
+     "902",
+     "910",
+     "918",
+     "926"
+    ]
+   }
+  },
+  {
+   "handlerId": 4264,
+   "name": "OpTestAlIb",
+   "tracedCount": 268,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "114"
+    ]
+   }
+  },
+  {
+   "handlerId": 4266,
+   "name": "OpStosb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "501",
+     "771",
+     "779",
+     "787",
+     "795",
+     "803",
+     "811",
+     "819",
+     "827",
+     "835",
+     "843",
+     "851",
+     "859",
+     "867",
+     "875",
+     "883",
+     "891",
+     "899",
+     "907",
+     "915",
+     "923"
+    ]
+   }
+  },
+  {
+   "handlerId": 4267,
+   "name": "OpStos",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "772",
+     "780",
+     "788",
+     "796",
+     "804",
+     "812",
+     "820",
+     "828",
+     "836",
+     "844",
+     "852",
+     "860",
+     "868",
+     "876",
+     "884",
+     "892",
+     "900",
+     "908",
+     "916",
+     "924"
+    ]
+   }
+  },
+  {
+   "handlerId": 4268,
+   "name": "OpLods",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "502",
+     "773",
+     "781",
+     "789",
+     "797",
+     "805",
+     "813",
+     "821",
+     "829",
+     "837",
+     "845",
+     "853",
+     "861",
+     "869",
+     "877",
+     "885",
+     "893",
+     "901",
+     "909",
+     "917",
+     "925"
+    ]
+   }
+  },
+  {
+   "handlerId": 4270,
+   "name": "OpScas",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "504",
+     "775",
+     "783",
+     "791",
+     "799",
+     "807",
+     "815",
+     "823",
+     "831",
+     "839",
+     "847",
+     "855",
+     "863",
+     "871",
+     "879",
+     "887",
+     "895",
+     "903",
+     "911",
+     "919",
+     "927"
+    ]
+   }
+  },
+  {
+   "handlerId": 4273,
+   "name": "OpMovZbIb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "double_shift_shld_0",
+     "double_shift_shld_1",
+     "double_shift_shld_16",
+     "double_shift_shld_31",
+     "double_shift_shld_32",
+     "double_shift_shld_33",
+     "double_shift_shld_4",
+     "double_shift_shrd_0",
+     "double_shift_shrd_1",
+     "double_shift_shrd_16",
+     "double_shift_shrd_31",
+     "double_shift_shrd_32",
+     "double_shift_shrd_33",
+     "double_shift_shrd_4",
+     "phase1_shift16_rcl_0",
+     "phase1_shift16_rcl_1",
+     "phase1_shift16_rcl_15",
+     "phase1_shift16_rcl_16",
+     "phase1_shift16_rcl_17",
+     "phase1_shift16_rcl_2",
+     "phase1_shift16_rcl_31",
+     "phase1_shift16_rcl_32",
+     "phase1_shift16_rcl_33",
+     "phase1_shift16_rcl_7",
+     "phase1_shift16_rcl_8",
+     "phase1_shift16_rcr_0",
+     "phase1_shift16_rcr_1",
+     "phase1_shift16_rcr_15",
+     "phase1_shift16_rcr_16",
+     "phase1_shift16_rcr_17",
+     "phase1_shift16_rcr_2",
+     "phase1_shift16_rcr_31",
+     "phase1_shift16_rcr_32",
+     "phase1_shift16_rcr_33",
+     "phase1_shift16_rcr_7",
+     "phase1_shift16_rcr_8",
+     "phase1_shift16_rol_0",
+     "phase1_shift16_rol_1",
+     "phase1_shift16_rol_15",
+     "phase1_shift16_rol_16",
+     "phase1_shift16_rol_17",
+     "phase1_shift16_rol_2",
+     "phase1_shift16_rol_31",
+     "phase1_shift16_rol_32",
+     "phase1_shift16_rol_33",
+     "phase1_shift16_rol_7",
+     "phase1_shift16_rol_8",
+     "phase1_shift16_ror_0",
+     "phase1_shift16_ror_1",
+     "phase1_shift16_ror_15",
+     "phase1_shift16_ror_16",
+     "phase1_shift16_ror_17",
+     "phase1_shift16_ror_2",
+     "phase1_shift16_ror_31",
+     "phase1_shift16_ror_32",
+     "phase1_shift16_ror_33",
+     "phase1_shift16_ror_7",
+     "phase1_shift16_ror_8",
+     "phase1_shift16_sar_0",
+     "phase1_shift16_sar_1",
+     "phase1_shift16_sar_15",
+     "phase1_shift16_sar_16",
+     "phase1_shift16_sar_17",
+     "phase1_shift16_sar_2",
+     "phase1_shift16_sar_31",
+     "phase1_shift16_sar_32",
+     "phase1_shift16_sar_33",
+     "phase1_shift16_sar_7",
+     "phase1_shift16_sar_8",
+     "phase1_shift16_shl_0",
+     "phase1_shift16_shl_1",
+     "phase1_shift16_shl_15",
+     "phase1_shift16_shl_16",
+     "phase1_shift16_shl_17",
+     "phase1_shift16_shl_2",
+     "phase1_shift16_shl_31",
+     "phase1_shift16_shl_32",
+     "phase1_shift16_shl_33",
+     "phase1_shift16_shl_7",
+     "phase1_shift16_shl_8",
+     "phase1_shift16_shr_0",
+     "phase1_shift16_shr_1",
+     "phase1_shift16_shr_15",
+     "phase1_shift16_shr_16",
+     "phase1_shift16_shr_17",
+     "phase1_shift16_shr_2",
+     "phase1_shift16_shr_31",
+     "phase1_shift16_shr_32",
+     "phase1_shift16_shr_33",
+     "phase1_shift16_shr_7",
+     "phase1_shift16_shr_8",
+     "phase1_shift8_rcl_0",
+     "phase1_shift8_rcl_1",
+     "phase1_shift8_rcl_15",
+     "phase1_shift8_rcl_16",
+     "phase1_shift8_rcl_17",
+     "phase1_shift8_rcl_2",
+     "phase1_shift8_rcl_31",
+     "phase1_shift8_rcl_32",
+     "phase1_shift8_rcl_33",
+     "phase1_shift8_rcl_7",
+     "phase1_shift8_rcl_8",
+     "phase1_shift8_rcr_0",
+     "phase1_shift8_rcr_1",
+     "phase1_shift8_rcr_15",
+     "phase1_shift8_rcr_16",
+     "phase1_shift8_rcr_17",
+     "phase1_shift8_rcr_2",
+     "phase1_shift8_rcr_31",
+     "phase1_shift8_rcr_32",
+     "phase1_shift8_rcr_33",
+     "phase1_shift8_rcr_7",
+     "phase1_shift8_rcr_8",
+     "phase1_shift8_rol_0",
+     "phase1_shift8_rol_1",
+     "phase1_shift8_rol_15",
+     "phase1_shift8_rol_16",
+     "phase1_shift8_rol_17",
+     "phase1_shift8_rol_2",
+     "phase1_shift8_rol_31",
+     "phase1_shift8_rol_32",
+     "phase1_shift8_rol_33",
+     "phase1_shift8_rol_7",
+     "phase1_shift8_rol_8",
+     "phase1_shift8_ror_0",
+     "phase1_shift8_ror_1",
+     "phase1_shift8_ror_15",
+     "phase1_shift8_ror_16",
+     "phase1_shift8_ror_17",
+     "phase1_shift8_ror_2",
+     "phase1_shift8_ror_31",
+     "phase1_shift8_ror_32",
+     "phase1_shift8_ror_33",
+     "phase1_shift8_ror_7",
+     "phase1_shift8_ror_8",
+     "phase1_shift8_sar_0",
+     "phase1_shift8_sar_1",
+     "phase1_shift8_sar_15",
+     "phase1_shift8_sar_16",
+     "phase1_shift8_sar_17",
+     "phase1_shift8_sar_2",
+     "phase1_shift8_sar_31",
+     "phase1_shift8_sar_32",
+     "phase1_shift8_sar_33",
+     "phase1_shift8_sar_7",
+     "phase1_shift8_sar_8",
+     "phase1_shift8_shl_0",
+     "phase1_shift8_shl_1",
+     "phase1_shift8_shl_15",
+     "phase1_shift8_shl_16",
+     "phase1_shift8_shl_17",
+     "phase1_shift8_shl_2",
+     "phase1_shift8_shl_31",
+     "phase1_shift8_shl_32",
+     "phase1_shift8_shl_33",
+     "phase1_shift8_shl_7",
+     "phase1_shift8_shl_8",
+     "phase1_shift8_shr_0",
+     "phase1_shift8_shr_1",
+     "phase1_shift8_shr_15",
+     "phase1_shift8_shr_16",
+     "phase1_shift8_shr_17",
+     "phase1_shift8_shr_2",
+     "phase1_shift8_shr_31",
+     "phase1_shift8_shr_32",
+     "phase1_shift8_shr_33",
+     "phase1_shift8_shr_7",
+     "phase1_shift8_shr_8",
+     "rol_33",
+     "shift32_rcl_0",
+     "shift32_rcl_1",
+     "shift32_rcl_15",
+     "shift32_rcl_16",
+     "shift32_rcl_2",
+     "shift32_rcl_31",
+     "shift32_rcl_32",
+     "shift32_rcl_33",
+     "shift32_rcl_7",
+     "shift32_rcr_0",
+     "shift32_rcr_1",
+     "shift32_rcr_15",
+     "shift32_rcr_16",
+     "shift32_rcr_2",
+     "shift32_rcr_31",
+     "shift32_rcr_32",
+     "shift32_rcr_33",
+     "shift32_rcr_7",
+     "shift32_rol_0",
+     "shift32_rol_1",
+     "shift32_rol_15",
+     "shift32_rol_16",
+     "shift32_rol_2",
+     "shift32_rol_31",
+     "shift32_rol_32",
+     "shift32_rol_33",
+     "shift32_rol_7",
+     "shift32_ror_0",
+     "shift32_ror_1",
+     "shift32_ror_15",
+     "shift32_ror_16",
+     "shift32_ror_2",
+     "shift32_ror_31",
+     "shift32_ror_32",
+     "shift32_ror_33",
+     "shift32_ror_7",
+     "shift32_sar_0",
+     "shift32_sar_1",
+     "shift32_sar_15",
+     "shift32_sar_16",
+     "shift32_sar_2",
+     "shift32_sar_31",
+     "shift32_sar_32",
+     "shift32_sar_33",
+     "shift32_sar_7",
+     "shift32_shl_0",
+     "shift32_shl_1",
+     "shift32_shl_15",
+     "shift32_shl_16",
+     "shift32_shl_2",
+     "shift32_shl_31",
+     "shift32_shl_32",
+     "shift32_shl_33",
+     "shift32_shl_7",
+     "shift32_shr_0",
+     "shift32_shr_1",
+     "shift32_shr_15",
+     "shift32_shr_16",
+     "shift32_shr_2",
+     "shift32_shr_31",
+     "shift32_shr_32",
+     "shift32_shr_33",
+     "shift32_shr_7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4290,
+   "name": "OpRetIw",
+   "tracedCount": 2162,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4294,
+   "name": "OpMovEbIb",
+   "tracedCount": 460,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "117",
+     "207"
+    ]
+   }
+  },
+  {
+   "handlerId": 4295,
+   "name": "OpMovEvqpIvds",
+   "tracedCount": 4675,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "208"
+    ]
+   }
+  },
+  {
+   "handlerId": 4297,
+   "name": "OpLeave",
+   "tracedCount": 4376,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {}
+  },
+  {
+   "handlerId": 4304,
+   "name": "OpBsubi1",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_shiftmem8_ror_off0",
+     "phase1_shiftmem8_ror_off1",
+     "phase1_shiftmem8_ror_off3",
+     "phase1_shiftmem8_ror_off7",
+     "phase1_shiftmem8_shl_off0",
+     "phase1_shiftmem8_shl_off1",
+     "phase1_shiftmem8_shl_off3",
+     "phase1_shiftmem8_shl_off7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4305,
+   "name": "OpBsuwi1",
+   "tracedCount": 6633,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_shiftmem16_ror_off0",
+     "phase1_shiftmem16_ror_off1",
+     "phase1_shiftmem16_ror_off3",
+     "phase1_shiftmem16_ror_off7",
+     "phase1_shiftmem16_shl_off0",
+     "phase1_shiftmem16_shl_off1",
+     "phase1_shiftmem16_shl_off3",
+     "phase1_shiftmem16_shl_off7",
+     "rol_1",
+     "shl_1"
+    ]
+   }
+  },
+  {
+   "handlerId": 4306,
+   "name": "OpBsubiCl",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_shift8_rcl_0",
+     "phase1_shift8_rcl_1",
+     "phase1_shift8_rcl_15",
+     "phase1_shift8_rcl_16",
+     "phase1_shift8_rcl_17",
+     "phase1_shift8_rcl_2",
+     "phase1_shift8_rcl_31",
+     "phase1_shift8_rcl_32",
+     "phase1_shift8_rcl_33",
+     "phase1_shift8_rcl_7",
+     "phase1_shift8_rcl_8",
+     "phase1_shift8_rcr_0",
+     "phase1_shift8_rcr_1",
+     "phase1_shift8_rcr_15",
+     "phase1_shift8_rcr_16",
+     "phase1_shift8_rcr_17",
+     "phase1_shift8_rcr_2",
+     "phase1_shift8_rcr_31",
+     "phase1_shift8_rcr_32",
+     "phase1_shift8_rcr_33",
+     "phase1_shift8_rcr_7",
+     "phase1_shift8_rcr_8",
+     "phase1_shift8_rol_0",
+     "phase1_shift8_rol_1",
+     "phase1_shift8_rol_15",
+     "phase1_shift8_rol_16",
+     "phase1_shift8_rol_17",
+     "phase1_shift8_rol_2",
+     "phase1_shift8_rol_31",
+     "phase1_shift8_rol_32",
+     "phase1_shift8_rol_33",
+     "phase1_shift8_rol_7",
+     "phase1_shift8_rol_8",
+     "phase1_shift8_ror_0",
+     "phase1_shift8_ror_1",
+     "phase1_shift8_ror_15",
+     "phase1_shift8_ror_16",
+     "phase1_shift8_ror_17",
+     "phase1_shift8_ror_2",
+     "phase1_shift8_ror_31",
+     "phase1_shift8_ror_32",
+     "phase1_shift8_ror_33",
+     "phase1_shift8_ror_7",
+     "phase1_shift8_ror_8",
+     "phase1_shift8_sar_0",
+     "phase1_shift8_sar_1",
+     "phase1_shift8_sar_15",
+     "phase1_shift8_sar_16",
+     "phase1_shift8_sar_17",
+     "phase1_shift8_sar_2",
+     "phase1_shift8_sar_31",
+     "phase1_shift8_sar_32",
+     "phase1_shift8_sar_33",
+     "phase1_shift8_sar_7",
+     "phase1_shift8_sar_8",
+     "phase1_shift8_shl_0",
+     "phase1_shift8_shl_1",
+     "phase1_shift8_shl_15",
+     "phase1_shift8_shl_16",
+     "phase1_shift8_shl_17",
+     "phase1_shift8_shl_2",
+     "phase1_shift8_shl_31",
+     "phase1_shift8_shl_32",
+     "phase1_shift8_shl_33",
+     "phase1_shift8_shl_7",
+     "phase1_shift8_shl_8",
+     "phase1_shift8_shr_0",
+     "phase1_shift8_shr_1",
+     "phase1_shift8_shr_15",
+     "phase1_shift8_shr_16",
+     "phase1_shift8_shr_17",
+     "phase1_shift8_shr_2",
+     "phase1_shift8_shr_31",
+     "phase1_shift8_shr_32",
+     "phase1_shift8_shr_33",
+     "phase1_shift8_shr_7",
+     "phase1_shift8_shr_8"
+    ]
+   }
+  },
+  {
+   "handlerId": 4307,
+   "name": "OpBsuwiCl",
+   "tracedCount": 209,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_shift16_rcl_0",
+     "phase1_shift16_rcl_1",
+     "phase1_shift16_rcl_15",
+     "phase1_shift16_rcl_16",
+     "phase1_shift16_rcl_17",
+     "phase1_shift16_rcl_2",
+     "phase1_shift16_rcl_31",
+     "phase1_shift16_rcl_32",
+     "phase1_shift16_rcl_33",
+     "phase1_shift16_rcl_7",
+     "phase1_shift16_rcl_8",
+     "phase1_shift16_rcr_0",
+     "phase1_shift16_rcr_1",
+     "phase1_shift16_rcr_15",
+     "phase1_shift16_rcr_16",
+     "phase1_shift16_rcr_17",
+     "phase1_shift16_rcr_2",
+     "phase1_shift16_rcr_31",
+     "phase1_shift16_rcr_32",
+     "phase1_shift16_rcr_33",
+     "phase1_shift16_rcr_7",
+     "phase1_shift16_rcr_8",
+     "phase1_shift16_rol_0",
+     "phase1_shift16_rol_1",
+     "phase1_shift16_rol_15",
+     "phase1_shift16_rol_16",
+     "phase1_shift16_rol_17",
+     "phase1_shift16_rol_2",
+     "phase1_shift16_rol_31",
+     "phase1_shift16_rol_32",
+     "phase1_shift16_rol_33",
+     "phase1_shift16_rol_7",
+     "phase1_shift16_rol_8",
+     "phase1_shift16_ror_0",
+     "phase1_shift16_ror_1",
+     "phase1_shift16_ror_15",
+     "phase1_shift16_ror_16",
+     "phase1_shift16_ror_17",
+     "phase1_shift16_ror_2",
+     "phase1_shift16_ror_31",
+     "phase1_shift16_ror_32",
+     "phase1_shift16_ror_33",
+     "phase1_shift16_ror_7",
+     "phase1_shift16_ror_8",
+     "phase1_shift16_sar_0",
+     "phase1_shift16_sar_1",
+     "phase1_shift16_sar_15",
+     "phase1_shift16_sar_16",
+     "phase1_shift16_sar_17",
+     "phase1_shift16_sar_2",
+     "phase1_shift16_sar_31",
+     "phase1_shift16_sar_32",
+     "phase1_shift16_sar_33",
+     "phase1_shift16_sar_7",
+     "phase1_shift16_sar_8",
+     "phase1_shift16_shl_0",
+     "phase1_shift16_shl_1",
+     "phase1_shift16_shl_15",
+     "phase1_shift16_shl_16",
+     "phase1_shift16_shl_17",
+     "phase1_shift16_shl_2",
+     "phase1_shift16_shl_31",
+     "phase1_shift16_shl_32",
+     "phase1_shift16_shl_33",
+     "phase1_shift16_shl_7",
+     "phase1_shift16_shl_8",
+     "phase1_shift16_shr_0",
+     "phase1_shift16_shr_1",
+     "phase1_shift16_shr_15",
+     "phase1_shift16_shr_16",
+     "phase1_shift16_shr_17",
+     "phase1_shift16_shr_2",
+     "phase1_shift16_shr_31",
+     "phase1_shift16_shr_32",
+     "phase1_shift16_shr_33",
+     "phase1_shift16_shr_7",
+     "phase1_shift16_shr_8",
+     "rol_33",
+     "shift32_rcl_0",
+     "shift32_rcl_1",
+     "shift32_rcl_15",
+     "shift32_rcl_16",
+     "shift32_rcl_2",
+     "shift32_rcl_31",
+     "shift32_rcl_32",
+     "shift32_rcl_33",
+     "shift32_rcl_7",
+     "shift32_rcr_0",
+     "shift32_rcr_1",
+     "shift32_rcr_15",
+     "shift32_rcr_16",
+     "shift32_rcr_2",
+     "shift32_rcr_31",
+     "shift32_rcr_32",
+     "shift32_rcr_33",
+     "shift32_rcr_7",
+     "shift32_rol_0",
+     "shift32_rol_1",
+     "shift32_rol_15",
+     "shift32_rol_16",
+     "shift32_rol_2",
+     "shift32_rol_31",
+     "shift32_rol_32",
+     "shift32_rol_33",
+     "shift32_rol_7",
+     "shift32_ror_0",
+     "shift32_ror_1",
+     "shift32_ror_15",
+     "shift32_ror_16",
+     "shift32_ror_2",
+     "shift32_ror_31",
+     "shift32_ror_32",
+     "shift32_ror_33",
+     "shift32_ror_7",
+     "shift32_sar_0",
+     "shift32_sar_1",
+     "shift32_sar_15",
+     "shift32_sar_16",
+     "shift32_sar_2",
+     "shift32_sar_31",
+     "shift32_sar_32",
+     "shift32_sar_33",
+     "shift32_sar_7",
+     "shift32_shl_0",
+     "shift32_shl_1",
+     "shift32_shl_15",
+     "shift32_shl_16",
+     "shift32_shl_2",
+     "shift32_shl_31",
+     "shift32_shl_32",
+     "shift32_shl_33",
+     "shift32_shl_7",
+     "shift32_shr_0",
+     "shift32_shr_1",
+     "shift32_shr_15",
+     "shift32_shr_16",
+     "shift32_shr_2",
+     "shift32_shr_31",
+     "shift32_shr_32",
+     "shift32_shr_33",
+     "shift32_shr_7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4313,
+   "name": "OpFpu",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "0",
+     "1",
+     "10",
+     "100",
+     "101",
+     "102",
+     "103",
+     "104",
+     "106",
+     "107",
+     "108",
+     "109",
+     "11",
+     "110",
+     "112",
+     "113",
+     "114",
+     "115",
+     "116",
+     "118",
+     "119",
+     "12",
+     "120",
+     "121",
+     "122",
+     "124",
+     "125",
+     "126",
+     "127",
+     "128",
+     "13",
+     "130",
+     "131",
+     "132",
+     "133",
+     "134",
+     "136",
+     "137",
+     "138",
+     "139",
+     "14",
+     "140",
+     "142",
+     "143",
+     "144",
+     "145",
+     "146",
+     "148",
+     "149",
+     "150",
+     "151",
+     "152",
+     "154",
+     "155",
+     "156",
+     "157",
+     "158",
+     "16",
+     "160",
+     "161",
+     "162",
+     "163",
+     "164",
+     "166",
+     "167",
+     "168",
+     "169",
+     "17",
+     "170",
+     "172",
+     "173",
+     "174",
+     "175",
+     "176",
+     "178",
+     "179",
+     "18",
+     "180",
+     "181",
+     "182",
+     "184",
+     "185",
+     "186",
+     "187",
+     "188",
+     "19",
+     "190",
+     "191",
+     "192",
+     "193",
+     "194",
+     "196",
+     "197",
+     "198",
+     "199",
+     "2",
+     "20",
+     "200",
+     "202",
+     "203",
+     "204",
+     "205",
+     "206",
+     "208",
+     "209",
+     "210",
+     "211",
+     "212",
+     "214",
+     "215",
+     "216",
+     "217",
+     "218",
+     "22",
+     "220",
+     "221",
+     "222",
+     "223",
+     "224",
+     "226",
+     "227",
+     "228",
+     "229",
+     "23",
+     "230",
+     "232",
+     "233",
+     "234",
+     "235",
+     "236",
+     "238",
+     "239",
+     "24",
+     "240",
+     "241",
+     "242",
+     "244",
+     "245",
+     "246",
+     "247",
+     "248",
+     "25",
+     "250",
+     "251",
+     "252",
+     "253",
+     "254",
+     "26",
+     "28",
+     "29",
+     "30",
+     "300",
+     "301",
+     "302",
+     "31",
+     "32",
+     "34",
+     "35",
+     "36",
+     "37",
+     "38",
+     "4",
+     "40",
+     "41",
+     "42",
+     "43",
+     "44",
+     "46",
+     "47",
+     "48",
+     "49",
+     "5",
+     "50",
+     "52",
+     "53",
+     "54",
+     "55",
+     "56",
+     "58",
+     "59",
+     "6",
+     "60",
+     "61",
+     "62",
+     "64",
+     "65",
+     "66",
+     "67",
+     "68",
+     "7",
+     "70",
+     "71",
+     "72",
+     "73",
+     "74",
+     "76",
+     "77",
+     "78",
+     "79",
+     "8",
+     "80",
+     "82",
+     "83",
+     "84",
+     "85",
+     "86",
+     "88",
+     "89",
+     "90",
+     "91",
+     "92",
+     "94",
+     "95",
+     "96",
+     "97",
+     "98"
+    ]
+   }
+  },
+  {
+   "handlerId": 4315,
+   "name": "OpFpu",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "105",
+     "111",
+     "117",
+     "123",
+     "129",
+     "135",
+     "141",
+     "147",
+     "15",
+     "153",
+     "159",
+     "165",
+     "171",
+     "177",
+     "183",
+     "189",
+     "195",
+     "201",
+     "207",
+     "21",
+     "213",
+     "219",
+     "225",
+     "231",
+     "237",
+     "243",
+     "249",
+     "255",
+     "27",
+     "3",
+     "33",
+     "39",
+     "45",
+     "51",
+     "57",
+     "63",
+     "69",
+     "75",
+     "81",
+     "87",
+     "9",
+     "93",
+     "99"
+    ]
+   }
+  },
+  {
+   "handlerId": 4322,
+   "name": "OpLoop1",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_loop_0",
+     "phase1_loop_1",
+     "phase1_loop_2",
+     "phase1_loop_5"
+    ]
+   }
+  },
+  {
+   "handlerId": 4323,
+   "name": "OpJcxz",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_loop_0",
+     "phase1_loop_1",
+     "phase1_loop_2",
+     "phase1_loop_5"
+    ]
+   }
+  },
+  {
+   "handlerId": 4342,
+   "name": "Op0f6",
+   "tracedCount": 2132,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge8_neg_0",
+     "edge8_neg_1",
+     "edge8_neg_2",
+     "edge8_neg_3",
+     "edge8_neg_4",
+     "edge8_neg_5",
+     "edge8_neg_6",
+     "phase1_imul8_0",
+     "phase1_imul8_1",
+     "phase1_imul8_2",
+     "phase1_mul8_0",
+     "phase1_mul8_1",
+     "phase1_mul8_2"
+    ]
+   }
+  },
+  {
+   "handlerId": 4343,
+   "name": "Op0f7",
+   "tracedCount": 644,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "104"
+    ],
+    "rosetta": [
+     "edge16_neg_0",
+     "edge16_neg_1",
+     "edge16_neg_2",
+     "edge16_neg_3",
+     "edge16_neg_4",
+     "edge16_neg_5",
+     "edge16_neg_6",
+     "edge32_neg_0",
+     "edge32_neg_1",
+     "edge32_neg_2",
+     "edge32_neg_3",
+     "edge32_neg_4",
+     "edge32_neg_5",
+     "edge32_neg_6",
+     "edge32_neg_7",
+     "edge32_neg_8",
+     "edge32_neg_9",
+     "edge32_not_0",
+     "edge32_not_1",
+     "edge32_not_2",
+     "edge32_not_3",
+     "edge32_not_4",
+     "edge32_not_5",
+     "edge32_not_6",
+     "edge32_not_7",
+     "edge32_not_8",
+     "edge32_not_9",
+     "imul_wide",
+     "mul_wide",
+     "neg_min",
+     "not",
+     "phase1_imul16_0",
+     "phase1_imul16_1",
+     "phase1_imul16_2",
+     "phase1_imul32_0",
+     "phase1_imul32_1",
+     "phase1_imul32_2",
+     "phase1_mul16_0",
+     "phase1_mul16_1",
+     "phase1_mul16_2",
+     "phase1_mul32_0",
+     "phase1_mul32_1",
+     "phase1_mul32_2"
+    ]
+   }
+  },
+  {
+   "handlerId": 4344,
+   "name": "OpClc",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge32_adc_0",
+     "edge32_adc_2",
+     "edge32_adc_4",
+     "edge32_adc_6",
+     "edge32_adc_8",
+     "edge32_add_0",
+     "edge32_add_1",
+     "edge32_add_2",
+     "edge32_add_3",
+     "edge32_add_4",
+     "edge32_add_5",
+     "edge32_add_6",
+     "edge32_add_7",
+     "edge32_add_8",
+     "edge32_add_9",
+     "edge32_and_0",
+     "edge32_and_1",
+     "edge32_and_2",
+     "edge32_and_3",
+     "edge32_and_4",
+     "edge32_and_5",
+     "edge32_and_6",
+     "edge32_and_7",
+     "edge32_and_8",
+     "edge32_and_9",
+     "edge32_cmp_0",
+     "edge32_cmp_1",
+     "edge32_cmp_2",
+     "edge32_cmp_3",
+     "edge32_cmp_4",
+     "edge32_cmp_5",
+     "edge32_cmp_6",
+     "edge32_cmp_7",
+     "edge32_cmp_8",
+     "edge32_cmp_9",
+     "edge32_or_0",
+     "edge32_or_1",
+     "edge32_or_2",
+     "edge32_or_3",
+     "edge32_or_4",
+     "edge32_or_5",
+     "edge32_or_6",
+     "edge32_or_7",
+     "edge32_or_8",
+     "edge32_or_9",
+     "edge32_sbb_0",
+     "edge32_sbb_2",
+     "edge32_sbb_4",
+     "edge32_sbb_6",
+     "edge32_sbb_8",
+     "edge32_sub_0",
+     "edge32_sub_1",
+     "edge32_sub_2",
+     "edge32_sub_3",
+     "edge32_sub_4",
+     "edge32_sub_5",
+     "edge32_sub_6",
+     "edge32_sub_7",
+     "edge32_sub_8",
+     "edge32_sub_9",
+     "edge32_xor_0",
+     "edge32_xor_1",
+     "edge32_xor_2",
+     "edge32_xor_3",
+     "edge32_xor_4",
+     "edge32_xor_5",
+     "edge32_xor_6",
+     "edge32_xor_7",
+     "edge32_xor_8",
+     "edge32_xor_9",
+     "phase1_reg16_adc_0",
+     "phase1_reg16_adc_2",
+     "phase1_reg16_adc_4",
+     "phase1_reg16_add_0",
+     "phase1_reg16_add_1",
+     "phase1_reg16_add_2",
+     "phase1_reg16_add_3",
+     "phase1_reg16_add_4",
+     "phase1_reg16_and_0",
+     "phase1_reg16_and_1",
+     "phase1_reg16_and_2",
+     "phase1_reg16_and_3",
+     "phase1_reg16_and_4",
+     "phase1_reg16_cmp_0",
+     "phase1_reg16_cmp_1",
+     "phase1_reg16_cmp_2",
+     "phase1_reg16_cmp_3",
+     "phase1_reg16_cmp_4",
+     "phase1_reg16_or_0",
+     "phase1_reg16_or_1",
+     "phase1_reg16_or_2",
+     "phase1_reg16_or_3",
+     "phase1_reg16_or_4",
+     "phase1_reg16_sbb_0",
+     "phase1_reg16_sbb_2",
+     "phase1_reg16_sbb_4",
+     "phase1_reg16_sub_0",
+     "phase1_reg16_sub_1",
+     "phase1_reg16_sub_2",
+     "phase1_reg16_sub_3",
+     "phase1_reg16_sub_4",
+     "phase1_reg16_test_0",
+     "phase1_reg16_test_1",
+     "phase1_reg16_test_2",
+     "phase1_reg16_test_3",
+     "phase1_reg16_test_4",
+     "phase1_reg16_xor_0",
+     "phase1_reg16_xor_1",
+     "phase1_reg16_xor_2",
+     "phase1_reg16_xor_3",
+     "phase1_reg16_xor_4",
+     "phase1_reg32_adc_0",
+     "phase1_reg32_adc_2",
+     "phase1_reg32_adc_4",
+     "phase1_reg32_add_0",
+     "phase1_reg32_add_1",
+     "phase1_reg32_add_2",
+     "phase1_reg32_add_3",
+     "phase1_reg32_add_4",
+     "phase1_reg32_and_0",
+     "phase1_reg32_and_1",
+     "phase1_reg32_and_2",
+     "phase1_reg32_and_3",
+     "phase1_reg32_and_4",
+     "phase1_reg32_cmp_0",
+     "phase1_reg32_cmp_1",
+     "phase1_reg32_cmp_2",
+     "phase1_reg32_cmp_3",
+     "phase1_reg32_cmp_4",
+     "phase1_reg32_or_0",
+     "phase1_reg32_or_1",
+     "phase1_reg32_or_2",
+     "phase1_reg32_or_3",
+     "phase1_reg32_or_4",
+     "phase1_reg32_sbb_0",
+     "phase1_reg32_sbb_2",
+     "phase1_reg32_sbb_4",
+     "phase1_reg32_sub_0",
+     "phase1_reg32_sub_1",
+     "phase1_reg32_sub_2",
+     "phase1_reg32_sub_3",
+     "phase1_reg32_sub_4",
+     "phase1_reg32_test_0",
+     "phase1_reg32_test_1",
+     "phase1_reg32_test_2",
+     "phase1_reg32_test_3",
+     "phase1_reg32_test_4",
+     "phase1_reg32_xor_0",
+     "phase1_reg32_xor_1",
+     "phase1_reg32_xor_2",
+     "phase1_reg32_xor_3",
+     "phase1_reg32_xor_4",
+     "phase1_reg8_adc_0",
+     "phase1_reg8_adc_2",
+     "phase1_reg8_adc_4",
+     "phase1_reg8_add_0",
+     "phase1_reg8_add_1",
+     "phase1_reg8_add_2",
+     "phase1_reg8_add_3",
+     "phase1_reg8_add_4",
+     "phase1_reg8_and_0",
+     "phase1_reg8_and_1",
+     "phase1_reg8_and_2",
+     "phase1_reg8_and_3",
+     "phase1_reg8_and_4",
+     "phase1_reg8_cmp_0",
+     "phase1_reg8_cmp_1",
+     "phase1_reg8_cmp_2",
+     "phase1_reg8_cmp_3",
+     "phase1_reg8_cmp_4",
+     "phase1_reg8_or_0",
+     "phase1_reg8_or_1",
+     "phase1_reg8_or_2",
+     "phase1_reg8_or_3",
+     "phase1_reg8_or_4",
+     "phase1_reg8_sbb_0",
+     "phase1_reg8_sbb_2",
+     "phase1_reg8_sbb_4",
+     "phase1_reg8_sub_0",
+     "phase1_reg8_sub_1",
+     "phase1_reg8_sub_2",
+     "phase1_reg8_sub_3",
+     "phase1_reg8_sub_4",
+     "phase1_reg8_test_0",
+     "phase1_reg8_test_1",
+     "phase1_reg8_test_2",
+     "phase1_reg8_test_3",
+     "phase1_reg8_test_4",
+     "phase1_reg8_xor_0",
+     "phase1_reg8_xor_1",
+     "phase1_reg8_xor_2",
+     "phase1_reg8_xor_3",
+     "phase1_reg8_xor_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4345,
+   "name": "OpStc",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "adc_carry_in",
+     "edge32_adc_1",
+     "edge32_adc_3",
+     "edge32_adc_5",
+     "edge32_adc_7",
+     "edge32_adc_9",
+     "edge32_sbb_1",
+     "edge32_sbb_3",
+     "edge32_sbb_5",
+     "edge32_sbb_7",
+     "edge32_sbb_9",
+     "phase1_reg16_adc_1",
+     "phase1_reg16_adc_3",
+     "phase1_reg16_sbb_1",
+     "phase1_reg16_sbb_3",
+     "phase1_reg32_adc_1",
+     "phase1_reg32_adc_3",
+     "phase1_reg32_sbb_1",
+     "phase1_reg32_sbb_3",
+     "phase1_reg8_adc_1",
+     "phase1_reg8_adc_3",
+     "phase1_reg8_sbb_1",
+     "phase1_reg8_sbb_3",
+     "sbb_borrow_in"
+    ]
+   }
+  },
+  {
+   "handlerId": 4350,
+   "name": "Op0fe",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "edge8_dec_0",
+     "edge8_dec_1",
+     "edge8_dec_2",
+     "edge8_dec_3",
+     "edge8_dec_4",
+     "edge8_dec_5",
+     "edge8_dec_6",
+     "edge8_inc_0",
+     "edge8_inc_1",
+     "edge8_inc_2",
+     "edge8_inc_3",
+     "edge8_inc_4",
+     "edge8_inc_5",
+     "edge8_inc_6"
+    ]
+   }
+  },
+  {
+   "handlerId": 4351,
+   "name": "Op0ff",
+   "tracedCount": 117,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "131"
+    ]
+   }
+  },
+  {
+   "handlerId": 4369,
+   "name": "OpMovWpsVps",
+   "tracedCount": 116,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "407"
+    ]
+   }
+  },
+  {
+   "handlerId": 4393,
+   "name": "OpMovWpsVps",
+   "tracedCount": 584,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "406"
+    ]
+   }
+  },
+  {
+   "handlerId": 4418,
+   "name": "OpCmovb",
+   "tracedCount": 1301,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "118"
+    ]
+   }
+  },
+  {
+   "handlerId": 4419,
+   "name": "OpCmovae",
+   "tracedCount": 175,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "119"
+    ]
+   }
+  },
+  {
+   "handlerId": 4420,
+   "name": "OpCmove",
+   "tracedCount": 1694,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "1003",
+     "1009",
+     "1015",
+     "1021",
+     "931",
+     "937",
+     "943",
+     "949",
+     "955",
+     "961",
+     "967",
+     "973",
+     "979",
+     "985",
+     "991",
+     "997"
+    ],
+    "rosetta": [
+     "cmovz_taken"
+    ]
+   }
+  },
+  {
+   "handlerId": 4421,
+   "name": "OpCmovne",
+   "tracedCount": 492,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "120"
+    ]
+   }
+  },
+  {
+   "handlerId": 4422,
+   "name": "OpCmovbe",
+   "tracedCount": 257,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "121"
+    ]
+   }
+  },
+  {
+   "handlerId": 4423,
+   "name": "OpCmova",
+   "tracedCount": 290,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "122"
+    ]
+   }
+  },
+  {
+   "handlerId": 4424,
+   "name": "OpCmovs",
+   "tracedCount": 177,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "123"
+    ]
+   }
+  },
+  {
+   "handlerId": 4425,
+   "name": "OpCmovns",
+   "tracedCount": 6,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "124"
+    ]
+   }
+  },
+  {
+   "handlerId": 4429,
+   "name": "OpCmovge",
+   "tracedCount": 48,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "125"
+    ]
+   }
+  },
+  {
+   "handlerId": 4430,
+   "name": "OpCmovle",
+   "tracedCount": 120,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "126"
+    ]
+   }
+  },
+  {
+   "handlerId": 4431,
+   "name": "OpCmovg",
+   "tracedCount": 42,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "127"
+    ]
+   }
+  },
+  {
+   "handlerId": 4439,
+   "name": "OpXorpsd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "384",
+     "438",
+     "492",
+     "546",
+     "600",
+     "654",
+     "708",
+     "762"
+    ]
+   }
+  },
+  {
+   "handlerId": 4440,
+   "name": "OpAddpsd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "sse2_addps"
+    ]
+   }
+  },
+  {
+   "handlerId": 4448,
+   "name": "OpSsePunpcklbw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "260",
+     "267",
+     "274",
+     "281",
+     "288",
+     "295",
+     "302",
+     "309",
+     "316",
+     "323",
+     "330",
+     "337",
+     "344",
+     "351",
+     "358",
+     "365",
+     "372",
+     "379"
+    ]
+   }
+  },
+  {
+   "handlerId": 4450,
+   "name": "OpSsePunpckldq",
+   "tracedCount": 22,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "408"
+    ]
+   }
+  },
+  {
+   "handlerId": 4452,
+   "name": "OpSsePcmpgtb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pcmpgtb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4453,
+   "name": "OpSsePcmpgtw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pcmpgtw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4454,
+   "name": "OpSsePcmpgtd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pcmpgtd"
+    ]
+   }
+  },
+  {
+   "handlerId": 4460,
+   "name": "OpSsePunpcklqdq",
+   "tracedCount": 24,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "410"
+    ]
+   }
+  },
+  {
+   "handlerId": 4462,
+   "name": "OpMov0f6e",
+   "tracedCount": 58,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "411"
+    ]
+   }
+  },
+  {
+   "handlerId": 4463,
+   "name": "OpMov0f6f",
+   "tracedCount": 20,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "409"
+    ]
+   }
+  },
+  {
+   "handlerId": 4464,
+   "name": "OpShuffle",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "sse2_pshufd"
+    ]
+   }
+  },
+  {
+   "handlerId": 4468,
+   "name": "OpSsePcmpeqb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "259",
+     "266",
+     "273",
+     "280",
+     "287",
+     "294",
+     "301",
+     "308",
+     "315",
+     "322",
+     "329",
+     "336",
+     "343",
+     "350",
+     "357",
+     "364",
+     "371",
+     "378"
+    ],
+    "rosetta": [
+     "simd_pcmpeqb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4469,
+   "name": "OpSsePcmpeqw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pcmpeqw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4470,
+   "name": "OpSsePcmpeqd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pcmpeqd"
+    ]
+   }
+  },
+  {
+   "handlerId": 4471,
+   "name": "OpEmms",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "262",
+     "269",
+     "276",
+     "283",
+     "290",
+     "297",
+     "304",
+     "305",
+     "311",
+     "318",
+     "325",
+     "332",
+     "339",
+     "346",
+     "353",
+     "360",
+     "367",
+     "374",
+     "381"
+    ]
+   }
+  },
+  {
+   "handlerId": 4478,
+   "name": "OpMov0f7e",
+   "tracedCount": 102,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "412"
+    ]
+   }
+  },
+  {
+   "handlerId": 4499,
+   "name": "OpSetae",
+   "tracedCount": 160,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "128"
+    ]
+   }
+  },
+  {
+   "handlerId": 4500,
+   "name": "OpSete",
+   "tracedCount": 197,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "129"
+    ]
+   }
+  },
+  {
+   "handlerId": 4501,
+   "name": "OpSetne",
+   "tracedCount": 13,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "130"
+    ]
+   }
+  },
+  {
+   "handlerId": 4508,
+   "name": "OpSetl",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "setl_taken"
+    ]
+   }
+  },
+  {
+   "handlerId": 4514,
+   "name": "OpCpuid",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "1000",
+     "1006",
+     "1012",
+     "1018",
+     "928",
+     "934",
+     "940",
+     "946",
+     "952",
+     "958",
+     "964",
+     "970",
+     "976",
+     "982",
+     "988",
+     "994"
+    ]
+   }
+  },
+  {
+   "handlerId": 4515,
+   "name": "OpBit",
+   "tracedCount": 35,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_bitmemreg_bt_0",
+     "phase1_bitmemreg_bt_1",
+     "phase1_bitmemreg_bt_15",
+     "phase1_bitmemreg_bt_16",
+     "phase1_bitmemreg_bt_31",
+     "phase1_bitmemreg_bt_32",
+     "phase1_bitmemreg_bt_63",
+     "phase1_bitmemreg_bt_7",
+     "phase1_bitreg_bt_0",
+     "phase1_bitreg_bt_1",
+     "phase1_bitreg_bt_15",
+     "phase1_bitreg_bt_16",
+     "phase1_bitreg_bt_31",
+     "phase1_bitreg_bt_32",
+     "phase1_bitreg_bt_63",
+     "phase1_bitreg_bt_7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4516,
+   "name": "OpDoubleShift",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "shld"
+    ]
+   }
+  },
+  {
+   "handlerId": 4517,
+   "name": "OpDoubleShift",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "double_shift_shld_0",
+     "double_shift_shld_1",
+     "double_shift_shld_16",
+     "double_shift_shld_31",
+     "double_shift_shld_32",
+     "double_shift_shld_33",
+     "double_shift_shld_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4523,
+   "name": "OpBit",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_bitmemreg_bts_0",
+     "phase1_bitmemreg_bts_1",
+     "phase1_bitmemreg_bts_15",
+     "phase1_bitmemreg_bts_16",
+     "phase1_bitmemreg_bts_31",
+     "phase1_bitmemreg_bts_32",
+     "phase1_bitmemreg_bts_63",
+     "phase1_bitmemreg_bts_7",
+     "phase1_bitreg_bts_0",
+     "phase1_bitreg_bts_1",
+     "phase1_bitreg_bts_15",
+     "phase1_bitreg_bts_16",
+     "phase1_bitreg_bts_31",
+     "phase1_bitreg_bts_32",
+     "phase1_bitreg_bts_63",
+     "phase1_bitreg_bts_7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4524,
+   "name": "OpDoubleShift",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "shrd"
+    ]
+   }
+  },
+  {
+   "handlerId": 4525,
+   "name": "OpDoubleShift",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "double_shift_shrd_0",
+     "double_shift_shrd_1",
+     "double_shift_shrd_16",
+     "double_shift_shrd_31",
+     "double_shift_shrd_32",
+     "double_shift_shrd_33",
+     "double_shift_shrd_4"
+    ]
+   }
+  },
+  {
+   "handlerId": 4526,
+   "name": "Op1ae",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "1005",
+     "1011",
+     "1017",
+     "1023",
+     "933",
+     "939",
+     "945",
+     "951",
+     "957",
+     "963",
+     "969",
+     "975",
+     "981",
+     "987",
+     "993",
+     "999"
+    ]
+   }
+  },
+  {
+   "handlerId": 4527,
+   "name": "OpImulGvqpEvqp",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "105"
+    ],
+    "rosetta": [
+     "imul_low"
+    ]
+   }
+  },
+  {
+   "handlerId": 4528,
+   "name": "OpCmpxchgEbAlGb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "atomic_cmpxchg8_ok_off0",
+     "atomic_cmpxchg8_ok_off1",
+     "atomic_cmpxchg8_ok_off2",
+     "atomic_cmpxchg8_ok_off3",
+     "atomic_cmpxchg8_ok_off7",
+     "phase1_atomic_cmpxchg8_off0",
+     "phase1_atomic_cmpxchg8_off1",
+     "phase1_atomic_cmpxchg8_off12",
+     "phase1_atomic_cmpxchg8_off15",
+     "phase1_atomic_cmpxchg8_off2",
+     "phase1_atomic_cmpxchg8_off3",
+     "phase1_atomic_cmpxchg8_off4",
+     "phase1_atomic_cmpxchg8_off7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4529,
+   "name": "OpCmpxchgEvqpRaxGvqp",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "205"
+    ],
+    "rosetta": [
+     "atomic_cmpxchg16_ok_off0",
+     "atomic_cmpxchg16_ok_off1",
+     "atomic_cmpxchg16_ok_off2",
+     "atomic_cmpxchg16_ok_off3",
+     "atomic_cmpxchg16_ok_off7",
+     "atomic_cmpxchg32_fail_off0",
+     "atomic_cmpxchg32_fail_off1",
+     "atomic_cmpxchg32_fail_off12",
+     "atomic_cmpxchg32_fail_off2",
+     "atomic_cmpxchg32_fail_off3",
+     "atomic_cmpxchg32_fail_off4",
+     "atomic_cmpxchg32_fail_off7",
+     "cmpxchg_fail",
+     "cmpxchg_success",
+     "phase1_atomic_cmpxchg16_off0",
+     "phase1_atomic_cmpxchg16_off1",
+     "phase1_atomic_cmpxchg16_off12",
+     "phase1_atomic_cmpxchg16_off15",
+     "phase1_atomic_cmpxchg16_off2",
+     "phase1_atomic_cmpxchg16_off3",
+     "phase1_atomic_cmpxchg16_off4",
+     "phase1_atomic_cmpxchg16_off7",
+     "phase1_atomic_cmpxchg32_off0",
+     "phase1_atomic_cmpxchg32_off1",
+     "phase1_atomic_cmpxchg32_off12",
+     "phase1_atomic_cmpxchg32_off15",
+     "phase1_atomic_cmpxchg32_off2",
+     "phase1_atomic_cmpxchg32_off3",
+     "phase1_atomic_cmpxchg32_off4",
+     "phase1_atomic_cmpxchg32_off7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4531,
+   "name": "OpBit",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_bitmemreg_btr_0",
+     "phase1_bitmemreg_btr_1",
+     "phase1_bitmemreg_btr_15",
+     "phase1_bitmemreg_btr_16",
+     "phase1_bitmemreg_btr_31",
+     "phase1_bitmemreg_btr_32",
+     "phase1_bitmemreg_btr_63",
+     "phase1_bitmemreg_btr_7",
+     "phase1_bitreg_btr_0",
+     "phase1_bitreg_btr_1",
+     "phase1_bitreg_btr_15",
+     "phase1_bitreg_btr_16",
+     "phase1_bitreg_btr_31",
+     "phase1_bitreg_btr_32",
+     "phase1_bitreg_btr_63",
+     "phase1_bitreg_btr_7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4534,
+   "name": "OpMovzbGvqpEb",
+   "tracedCount": 26144,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "movzx"
+    ]
+   }
+  },
+  {
+   "handlerId": 4535,
+   "name": "OpMovzwGvqpEw",
+   "tracedCount": 63527,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "108"
+    ]
+   }
+  },
+  {
+   "handlerId": 4536,
+   "name": "Op1b8",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "1004",
+     "1010",
+     "1016",
+     "1022",
+     "107",
+     "932",
+     "938",
+     "944",
+     "950",
+     "956",
+     "962",
+     "968",
+     "974",
+     "980",
+     "986",
+     "992",
+     "998"
+    ],
+    "rosetta": [
+     "bits_popcnt_0",
+     "bits_popcnt_1",
+     "bits_popcnt_2",
+     "bits_popcnt_3",
+     "bits_popcnt_4",
+     "bits_popcnt_5",
+     "bits_popcnt_6",
+     "bits_popcnt_7",
+     "bits_popcnt_8",
+     "bits_popcnt_9",
+     "popcnt"
+    ]
+   }
+  },
+  {
+   "handlerId": 4538,
+   "name": "OpBit",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "bitmem_bt_0",
+     "bitmem_bt_1",
+     "bitmem_bt_15",
+     "bitmem_bt_16",
+     "bitmem_bt_31",
+     "bitmem_bt_32",
+     "bitmem_bt_33",
+     "bitmem_bt_63",
+     "bitmem_bt_7",
+     "bitmem_btc_0",
+     "bitmem_btc_1",
+     "bitmem_btc_15",
+     "bitmem_btc_16",
+     "bitmem_btc_31",
+     "bitmem_btc_32",
+     "bitmem_btc_33",
+     "bitmem_btc_63",
+     "bitmem_btc_7",
+     "bitmem_btr_0",
+     "bitmem_btr_1",
+     "bitmem_btr_15",
+     "bitmem_btr_16",
+     "bitmem_btr_31",
+     "bitmem_btr_32",
+     "bitmem_btr_33",
+     "bitmem_btr_63",
+     "bitmem_btr_7",
+     "bitmem_bts_0",
+     "bitmem_bts_1",
+     "bitmem_bts_15",
+     "bitmem_bts_16",
+     "bitmem_bts_31",
+     "bitmem_bts_32",
+     "bitmem_bts_33",
+     "bitmem_bts_63",
+     "bitmem_bts_7",
+     "bt",
+     "btc",
+     "btr",
+     "bts"
+    ]
+   }
+  },
+  {
+   "handlerId": 4539,
+   "name": "OpBit",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_bitmemreg_btc_0",
+     "phase1_bitmemreg_btc_1",
+     "phase1_bitmemreg_btc_15",
+     "phase1_bitmemreg_btc_16",
+     "phase1_bitmemreg_btc_31",
+     "phase1_bitmemreg_btc_32",
+     "phase1_bitmemreg_btc_63",
+     "phase1_bitmemreg_btc_7",
+     "phase1_bitreg_btc_0",
+     "phase1_bitreg_btc_1",
+     "phase1_bitreg_btc_15",
+     "phase1_bitreg_btc_16",
+     "phase1_bitreg_btc_31",
+     "phase1_bitreg_btc_32",
+     "phase1_bitreg_btc_63",
+     "phase1_bitreg_btc_7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4540,
+   "name": "OpBsf",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "137"
+    ],
+    "rosetta": [
+     "bits_bsf_1",
+     "bits_bsf_2",
+     "bits_bsf_3",
+     "bits_bsf_4",
+     "bits_bsf_5",
+     "bits_bsf_6",
+     "bits_bsf_7",
+     "bits_bsf_8",
+     "bits_bsf_9",
+     "bits_tzcnt_0",
+     "bits_tzcnt_1",
+     "bits_tzcnt_2",
+     "bits_tzcnt_3",
+     "bits_tzcnt_4",
+     "bits_tzcnt_5",
+     "bits_tzcnt_6",
+     "bits_tzcnt_7",
+     "bits_tzcnt_8",
+     "bits_tzcnt_9",
+     "bsf",
+     "tzcnt"
+    ]
+   }
+  },
+  {
+   "handlerId": 4541,
+   "name": "OpBsr",
+   "tracedCount": 197,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "bits_bsr_1",
+     "bits_bsr_2",
+     "bits_bsr_3",
+     "bits_bsr_4",
+     "bits_bsr_5",
+     "bits_bsr_6",
+     "bits_bsr_7",
+     "bits_bsr_8",
+     "bits_bsr_9",
+     "bits_lzcnt_0",
+     "bits_lzcnt_1",
+     "bits_lzcnt_2",
+     "bits_lzcnt_3",
+     "bits_lzcnt_4",
+     "bits_lzcnt_5",
+     "bits_lzcnt_6",
+     "bits_lzcnt_7",
+     "bits_lzcnt_8",
+     "bits_lzcnt_9",
+     "bsr",
+     "lzcnt"
+    ]
+   }
+  },
+  {
+   "handlerId": 4542,
+   "name": "OpMovsbGvqpEb",
+   "tracedCount": 138,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "movsx"
+    ]
+   }
+  },
+  {
+   "handlerId": 4544,
+   "name": "OpXaddEbGb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "phase1_atomic_xadd8_off0",
+     "phase1_atomic_xadd8_off1",
+     "phase1_atomic_xadd8_off12",
+     "phase1_atomic_xadd8_off15",
+     "phase1_atomic_xadd8_off2",
+     "phase1_atomic_xadd8_off3",
+     "phase1_atomic_xadd8_off4",
+     "phase1_atomic_xadd8_off7"
+    ]
+   }
+  },
+  {
+   "handlerId": 4545,
+   "name": "OpXaddEvqpGvqp",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "204"
+    ],
+    "rosetta": [
+     "atomic_xadd32_off0",
+     "atomic_xadd32_off1",
+     "atomic_xadd32_off12",
+     "atomic_xadd32_off2",
+     "atomic_xadd32_off3",
+     "atomic_xadd32_off4",
+     "atomic_xadd32_off7",
+     "phase1_atomic_xadd16_off0",
+     "phase1_atomic_xadd16_off1",
+     "phase1_atomic_xadd16_off12",
+     "phase1_atomic_xadd16_off15",
+     "phase1_atomic_xadd16_off2",
+     "phase1_atomic_xadd16_off3",
+     "phase1_atomic_xadd16_off4",
+     "phase1_atomic_xadd16_off7",
+     "phase1_atomic_xadd32_off0",
+     "phase1_atomic_xadd32_off1",
+     "phase1_atomic_xadd32_off12",
+     "phase1_atomic_xadd32_off15",
+     "phase1_atomic_xadd32_off2",
+     "phase1_atomic_xadd32_off3",
+     "phase1_atomic_xadd32_off4",
+     "phase1_atomic_xadd32_off7",
+     "xadd_memory"
+    ]
+   }
+  },
+  {
+   "handlerId": 4549,
+   "name": "OpPextrwGdqpUdqIb",
+   "tracedCount": 36,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "414"
+    ]
+   }
+  },
+  {
+   "handlerId": 4551,
+   "name": "Op1c7",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "1002",
+     "1008",
+     "1014",
+     "1020",
+     "930",
+     "936",
+     "942",
+     "948",
+     "954",
+     "960",
+     "966",
+     "972",
+     "978",
+     "984",
+     "990",
+     "996"
+    ],
+    "rosetta": [
+     "phase1_cmpxchg8b_failure",
+     "phase1_cmpxchg8b_success"
+    ]
+   }
+  },
+  {
+   "handlerId": 4552,
+   "name": "OpBswapZvqp",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "bswap"
+    ]
+   }
+  },
+  {
+   "handlerId": 4554,
+   "name": "OpBswapZvqp",
+   "tracedCount": 6,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "115"
+    ]
+   }
+  },
+  {
+   "handlerId": 4565,
+   "name": "OpSsePmullw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "261",
+     "268",
+     "275",
+     "282",
+     "289",
+     "296",
+     "303",
+     "310",
+     "317",
+     "324",
+     "331",
+     "338",
+     "345",
+     "352",
+     "359",
+     "366",
+     "373",
+     "380"
+    ],
+    "rosetta": [
+     "simd_pmullw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4566,
+   "name": "OpMov0fD6",
+   "tracedCount": 67,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "413"
+    ]
+   }
+  },
+  {
+   "handlerId": 4568,
+   "name": "OpSsePsubusb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "258",
+     "265",
+     "272",
+     "279",
+     "286",
+     "293",
+     "300",
+     "307",
+     "314",
+     "321",
+     "328",
+     "335",
+     "342",
+     "349",
+     "356",
+     "363",
+     "370",
+     "377"
+    ],
+    "rosetta": [
+     "simd_psubusb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4569,
+   "name": "OpSsePsubusw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_psubusw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4570,
+   "name": "OpSsePminub",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pminub"
+    ]
+   }
+  },
+  {
+   "handlerId": 4571,
+   "name": "OpSsePand",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pand"
+    ]
+   }
+  },
+  {
+   "handlerId": 4572,
+   "name": "OpSsePaddusb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_paddusb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4573,
+   "name": "OpSsePaddusw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_paddusw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4574,
+   "name": "OpSsePmaxub",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmaxub"
+    ]
+   }
+  },
+  {
+   "handlerId": 4575,
+   "name": "OpSsePandn",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pandn"
+    ]
+   }
+  },
+  {
+   "handlerId": 4576,
+   "name": "OpSsePavgb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pavgb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4579,
+   "name": "OpSsePavgw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pavgw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4580,
+   "name": "OpSsePmulhuw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmulhuw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4581,
+   "name": "OpSsePmulhw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmulhw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4584,
+   "name": "OpSsePsubsb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_psubsb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4585,
+   "name": "OpSsePsubsw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_psubsw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4586,
+   "name": "OpSsePminsw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pminsw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4587,
+   "name": "OpSsePor",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_por"
+    ]
+   }
+  },
+  {
+   "handlerId": 4588,
+   "name": "OpSsePaddsb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_paddsb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4589,
+   "name": "OpSsePaddsw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_paddsw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4590,
+   "name": "OpSsePmaxsw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmaxsw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4591,
+   "name": "OpSsePxor",
+   "tracedCount": 58,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "phase3": [
+     "256",
+     "263",
+     "270",
+     "277",
+     "284",
+     "291",
+     "298",
+     "303",
+     "305",
+     "312",
+     "319",
+     "326",
+     "333",
+     "340",
+     "347",
+     "354",
+     "361",
+     "368",
+     "375",
+     "382",
+     "385",
+     "400",
+     "439",
+     "493",
+     "547",
+     "601",
+     "655",
+     "709",
+     "763"
+    ],
+    "rosetta": [
+     "simd_pxor"
+    ]
+   }
+  },
+  {
+   "handlerId": 4596,
+   "name": "OpSsePmuludq",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmuludq"
+    ]
+   }
+  },
+  {
+   "handlerId": 4598,
+   "name": "OpSsePsadbw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_psadbw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4600,
+   "name": "OpSsePsubb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_psubb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4601,
+   "name": "OpSsePsubw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_psubw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4602,
+   "name": "OpSsePsubd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_psubd"
+    ]
+   }
+  },
+  {
+   "handlerId": 4604,
+   "name": "OpSsePaddb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "257",
+     "264",
+     "271",
+     "278",
+     "285",
+     "292",
+     "299",
+     "304",
+     "306",
+     "313",
+     "320",
+     "327",
+     "334",
+     "341",
+     "348",
+     "355",
+     "362",
+     "369",
+     "376",
+     "383"
+    ],
+    "rosetta": [
+     "simd_paddb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4605,
+   "name": "OpSsePaddw",
+   "tracedCount": 3,
+   "tracedRuns": [
+    "baseline-acceptance",
+    "notepad",
+    "steamsetup"
+   ],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_paddw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4606,
+   "name": "OpSsePaddd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "401"
+    ],
+    "rosetta": [
+     "simd_paddd"
+    ]
+   }
+  },
+  {
+   "handlerId": 4608,
+   "name": "OpSsePshufb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "386",
+     "402",
+     "440",
+     "494",
+     "548",
+     "602",
+     "656",
+     "710",
+     "764"
+    ]
+   }
+  },
+  {
+   "handlerId": 4624,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "396",
+     "450",
+     "504",
+     "558",
+     "612",
+     "666",
+     "720"
+    ]
+   }
+  },
+  {
+   "handlerId": 4628,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "397",
+     "451",
+     "505",
+     "559",
+     "613",
+     "667",
+     "721"
+    ]
+   }
+  },
+  {
+   "handlerId": 4629,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "398",
+     "452",
+     "506",
+     "560",
+     "614",
+     "668",
+     "722"
+    ]
+   }
+  },
+  {
+   "handlerId": 4631,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "399",
+     "453",
+     "507",
+     "561",
+     "615",
+     "669",
+     "723"
+    ]
+   }
+  },
+  {
+   "handlerId": 4636,
+   "name": "OpSsePabsb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pabsb",
+     "ssse3_pabsb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4637,
+   "name": "OpSsePabsw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pabsw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4638,
+   "name": "OpSsePabsd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pabsd"
+    ]
+   }
+  },
+  {
+   "handlerId": 4640,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "400",
+     "454",
+     "508",
+     "562",
+     "616",
+     "670",
+     "724"
+    ]
+   }
+  },
+  {
+   "handlerId": 4641,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "401",
+     "455",
+     "509",
+     "563",
+     "617",
+     "671",
+     "725"
+    ]
+   }
+  },
+  {
+   "handlerId": 4642,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "402",
+     "456",
+     "510",
+     "564",
+     "618",
+     "672",
+     "726"
+    ]
+   }
+  },
+  {
+   "handlerId": 4643,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "403",
+     "457",
+     "511",
+     "565",
+     "619",
+     "673",
+     "727"
+    ]
+   }
+  },
+  {
+   "handlerId": 4644,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "404",
+     "458",
+     "512",
+     "566",
+     "620",
+     "674",
+     "728"
+    ]
+   }
+  },
+  {
+   "handlerId": 4645,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "405",
+     "459",
+     "513",
+     "567",
+     "621",
+     "675",
+     "729"
+    ]
+   }
+  },
+  {
+   "handlerId": 4648,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "406",
+     "460",
+     "514",
+     "568",
+     "622",
+     "676",
+     "730"
+    ]
+   }
+  },
+  {
+   "handlerId": 4649,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "407",
+     "461",
+     "515",
+     "569",
+     "623",
+     "677",
+     "731"
+    ]
+   }
+  },
+  {
+   "handlerId": 4651,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "408",
+     "462",
+     "516",
+     "570",
+     "624",
+     "678",
+     "732"
+    ]
+   }
+  },
+  {
+   "handlerId": 4656,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "409",
+     "463",
+     "517",
+     "571",
+     "625",
+     "679",
+     "733"
+    ]
+   }
+  },
+  {
+   "handlerId": 4657,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "410",
+     "464",
+     "518",
+     "572",
+     "626",
+     "680",
+     "734"
+    ]
+   }
+  },
+  {
+   "handlerId": 4658,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "411",
+     "465",
+     "519",
+     "573",
+     "627",
+     "681",
+     "735"
+    ]
+   }
+  },
+  {
+   "handlerId": 4659,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "412",
+     "466",
+     "520",
+     "574",
+     "628",
+     "682",
+     "736"
+    ]
+   }
+  },
+  {
+   "handlerId": 4660,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "413",
+     "467",
+     "521",
+     "575",
+     "629",
+     "683",
+     "737"
+    ]
+   }
+  },
+  {
+   "handlerId": 4661,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "414",
+     "468",
+     "522",
+     "576",
+     "630",
+     "684",
+     "738"
+    ]
+   }
+  },
+  {
+   "handlerId": 4663,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "415",
+     "469",
+     "523",
+     "577",
+     "631",
+     "685",
+     "739"
+    ]
+   }
+  },
+  {
+   "handlerId": 4664,
+   "name": "OpSsePminsb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pminsb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4665,
+   "name": "OpSsePminsd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "387",
+     "403",
+     "441",
+     "495",
+     "549",
+     "603",
+     "657",
+     "711",
+     "765"
+    ],
+    "rosetta": [
+     "simd_pminsd",
+     "sse41_pminsd"
+    ]
+   }
+  },
+  {
+   "handlerId": 4666,
+   "name": "OpSsePminuw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pminuw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4667,
+   "name": "OpSsePminud",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pminud"
+    ]
+   }
+  },
+  {
+   "handlerId": 4668,
+   "name": "OpSsePmaxsb",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmaxsb"
+    ]
+   }
+  },
+  {
+   "handlerId": 4669,
+   "name": "OpSsePmaxsd",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmaxsd"
+    ]
+   }
+  },
+  {
+   "handlerId": 4670,
+   "name": "OpSsePmaxuw",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmaxuw"
+    ]
+   }
+  },
+  {
+   "handlerId": 4671,
+   "name": "OpSsePmaxud",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmaxud"
+    ]
+   }
+  },
+  {
+   "handlerId": 4672,
+   "name": "OpSsePmulld",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "rosetta": [
+     "simd_pmulld"
+    ]
+   }
+  },
+  {
+   "handlerId": 4673,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "416",
+     "470",
+     "524",
+     "578",
+     "632",
+     "686",
+     "740"
+    ]
+   }
+  },
+  {
+   "handlerId": 4827,
+   "name": "OpAesimc",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "394",
+     "448",
+     "502",
+     "556",
+     "610",
+     "664",
+     "718"
+    ]
+   }
+  },
+  {
+   "handlerId": 4828,
+   "name": "OpAesenc",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "390",
+     "404",
+     "444",
+     "498",
+     "552",
+     "606",
+     "660",
+     "714"
+    ]
+   }
+  },
+  {
+   "handlerId": 4829,
+   "name": "OpAesenclast",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "391",
+     "445",
+     "499",
+     "553",
+     "607",
+     "661",
+     "715"
+    ]
+   }
+  },
+  {
+   "handlerId": 4830,
+   "name": "OpAesdec",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "392",
+     "446",
+     "500",
+     "554",
+     "608",
+     "662",
+     "716"
+    ]
+   }
+  },
+  {
+   "handlerId": 4831,
+   "name": "OpAesdeclast",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "393",
+     "447",
+     "501",
+     "555",
+     "609",
+     "663",
+     "717"
+    ]
+   }
+  },
+  {
+   "handlerId": 4849,
+   "name": "UNKNOWN",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "388",
+     "442",
+     "496",
+     "550",
+     "604",
+     "658",
+     "712",
+     "766"
+    ]
+   }
+  },
+  {
+   "handlerId": 4850,
+   "name": "OpAndn",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "132"
+    ]
+   }
+  },
+  {
+   "handlerId": 4851,
+   "name": "OpBls",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "134",
+     "135",
+     "136"
+    ]
+   }
+  },
+  {
+   "handlerId": 4853,
+   "name": "Op2f5",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "138",
+     "139",
+     "140"
+    ]
+   }
+  },
+  {
+   "handlerId": 4854,
+   "name": "Op2f6",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "141"
+    ]
+   }
+  },
+  {
+   "handlerId": 4855,
+   "name": "Op2f7",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "133",
+     "142",
+     "143",
+     "144"
+    ]
+   }
+  },
+  {
+   "handlerId": 4872,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "417",
+     "471",
+     "525",
+     "579",
+     "633",
+     "687",
+     "741"
+    ]
+   }
+  },
+  {
+   "handlerId": 4873,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "418",
+     "472",
+     "526",
+     "580",
+     "634",
+     "688",
+     "742"
+    ]
+   }
+  },
+  {
+   "handlerId": 4874,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "419",
+     "473",
+     "527",
+     "581",
+     "635",
+     "689",
+     "743"
+    ]
+   }
+  },
+  {
+   "handlerId": 4875,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "420",
+     "474",
+     "528",
+     "582",
+     "636",
+     "690",
+     "744"
+    ]
+   }
+  },
+  {
+   "handlerId": 4876,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "421",
+     "475",
+     "529",
+     "583",
+     "637",
+     "691",
+     "745"
+    ]
+   }
+  },
+  {
+   "handlerId": 4877,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "422",
+     "476",
+     "530",
+     "584",
+     "638",
+     "692",
+     "746"
+    ]
+   }
+  },
+  {
+   "handlerId": 4878,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "423",
+     "477",
+     "531",
+     "585",
+     "639",
+     "693",
+     "747"
+    ]
+   }
+  },
+  {
+   "handlerId": 4884,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "424",
+     "478",
+     "532",
+     "586",
+     "640",
+     "694",
+     "748"
+    ]
+   }
+  },
+  {
+   "handlerId": 4885,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "425",
+     "479",
+     "533",
+     "587",
+     "641",
+     "695",
+     "749"
+    ]
+   }
+  },
+  {
+   "handlerId": 4886,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "426",
+     "480",
+     "534",
+     "588",
+     "642",
+     "696",
+     "750"
+    ]
+   }
+  },
+  {
+   "handlerId": 4887,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "427",
+     "481",
+     "535",
+     "589",
+     "643",
+     "697",
+     "751"
+    ]
+   }
+  },
+  {
+   "handlerId": 4896,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "428",
+     "482",
+     "536",
+     "590",
+     "644",
+     "698",
+     "752"
+    ]
+   }
+  },
+  {
+   "handlerId": 4897,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "429",
+     "483",
+     "537",
+     "591",
+     "645",
+     "699",
+     "753"
+    ]
+   }
+  },
+  {
+   "handlerId": 4898,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "430",
+     "484",
+     "538",
+     "592",
+     "646",
+     "700",
+     "754"
+    ]
+   }
+  },
+  {
+   "handlerId": 4928,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "431",
+     "485",
+     "539",
+     "593",
+     "647",
+     "701",
+     "755"
+    ]
+   }
+  },
+  {
+   "handlerId": 4929,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "432",
+     "486",
+     "540",
+     "594",
+     "648",
+     "702",
+     "756"
+    ]
+   }
+  },
+  {
+   "handlerId": 4930,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "433",
+     "487",
+     "541",
+     "595",
+     "649",
+     "703",
+     "757"
+    ]
+   }
+  },
+  {
+   "handlerId": 4932,
+   "name": "OpSsePclmulqdq",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "389",
+     "405",
+     "443",
+     "497",
+     "551",
+     "605",
+     "659",
+     "713",
+     "767"
+    ]
+   }
+  },
+  {
+   "handlerId": 4960,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "434",
+     "488",
+     "542",
+     "596",
+     "650",
+     "704",
+     "758"
+    ]
+   }
+  },
+  {
+   "handlerId": 4961,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "435",
+     "489",
+     "543",
+     "597",
+     "651",
+     "705",
+     "759"
+    ]
+   }
+  },
+  {
+   "handlerId": 4962,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "436",
+     "490",
+     "544",
+     "598",
+     "652",
+     "706",
+     "760"
+    ]
+   }
+  },
+  {
+   "handlerId": 4963,
+   "name": "OpSse4",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "437",
+     "491",
+     "545",
+     "599",
+     "653",
+     "707",
+     "761"
+    ]
+   }
+  },
+  {
+   "handlerId": 5087,
+   "name": "OpAeskeygenassist",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "395",
+     "449",
+     "503",
+     "557",
+     "611",
+     "665",
+     "719"
+    ]
+   }
+  },
+  {
+   "handlerId": 5104,
+   "name": "OpRorx",
+   "tracedCount": 0,
+   "tracedRuns": [],
+   "corpusCoverage": {
+    "phase3": [
+     "145"
+    ]
+   }
+  }
+ ],
+ "resultsSha256": "bf7ed214b9bd9c04a5c15afeeca58fe4a77d5c3deee59c1b830b6796452b5f69"
+}

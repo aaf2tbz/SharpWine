@@ -14,12 +14,20 @@ extern "C" {
 
 #define GEM_I386_CONTEXT_LAYOUT_VERSION_V1 UINT32_C(1)
 #define GEM_I386_CONTEXT_LAYOUT_VERSION_V2 UINT32_C(2)
-#define GEM_I386_CONTEXT_LAYOUT_VERSION GEM_I386_CONTEXT_LAYOUT_VERSION_V2
-#define GEM_I386_CONTEXT_SERIALIZATION_VERSION UINT32_C(1)
+#define GEM_I386_CONTEXT_LAYOUT_VERSION_V3 UINT32_C(3)
+#define GEM_I386_CONTEXT_LAYOUT_VERSION GEM_I386_CONTEXT_LAYOUT_VERSION_V3
+/* Wire format versions (ADR 0013 section d): version 1 is the retroactive
+ * definition for layout 1|2 with the 448-byte body; version 2 is the current
+ * format for layout 3 with the 592-byte body. */
+#define GEM_I386_CONTEXT_SERIALIZATION_VERSION_V1 UINT32_C(1)
+#define GEM_I386_CONTEXT_SERIALIZATION_VERSION_V2 UINT32_C(2)
+#define GEM_I386_CONTEXT_SERIALIZATION_VERSION GEM_I386_CONTEXT_SERIALIZATION_VERSION_V2
 #define GEM_I386_CONTEXT_SIZE_V1 UINT32_C(448)
 #define GEM_I386_CONTEXT_SIZE_V2 UINT32_C(448)
+#define GEM_I386_CONTEXT_SIZE_V3 UINT32_C(592)
 #define GEM_I386_CONTEXT_ALIGNMENT_V1 UINT32_C(8)
 #define GEM_I386_EFLAGS_REQUIRED UINT32_C(0x00000002)
+#define GEM_I386_XCR0_SUPPORTED UINT64_C(0x7)
 
 enum gem_i386_segment_attribute {
     GEM_I386_SEGMENT_PRESENT = 1U << 0,
@@ -85,6 +93,11 @@ struct gem_i386_context {
         uint32_t reserved[5];
         struct gem_i386_x87_environment x87_environment;
     };
+    /* ABI v3 extension (ADR 0013): YMM upper halves and XCR0. Appended after
+     * the pinned 448-byte v1/v2 body; every offset above is unchanged. */
+    struct gem_u128 ymm_upper[8];
+    uint64_t xcr0;
+    uint64_t reserved1;
 };
 
 #if defined(__cplusplus)
@@ -95,8 +108,9 @@ struct gem_i386_context {
 #define GEM_I386_ALIGNOF(type) _Alignof(type)
 #endif
 
-GEM_I386_STATIC_ASSERT(sizeof(struct gem_i386_context) == GEM_I386_CONTEXT_SIZE_V1,
-                       "gem_i386_context v1 size changed");
+/* The v1/v2 size assert (sizeof == 448) is intentionally superseded by the
+ * ABI v3 append in ADR 0013: every v1/v2 offset below is preserved and the
+ * new sizeof == GEM_I386_CONTEXT_SIZE_V3 assert is pinned at the end. */
 GEM_I386_STATIC_ASSERT(GEM_I386_ALIGNOF(struct gem_i386_context) == GEM_I386_CONTEXT_ALIGNMENT_V1,
                        "gem_i386_context v1 alignment changed");
 GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, gpr) == 8U, "i386 gpr offset changed");
@@ -117,6 +131,13 @@ GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, x87_environment.fcs) ==
                        "i386 x87 code selector offset changed");
 GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, x87_environment.fds) == 438U,
                        "i386 x87 data selector offset changed");
+GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, ymm_upper) == 448U,
+                       "i386 ymm upper offset changed");
+GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, xcr0) == 576U, "i386 xcr0 offset changed");
+GEM_I386_STATIC_ASSERT(offsetof(struct gem_i386_context, reserved1) == 584U,
+                       "i386 v3 reserved offset changed");
+GEM_I386_STATIC_ASSERT(sizeof(struct gem_i386_context) == GEM_I386_CONTEXT_SIZE_V3,
+                       "gem_i386_context v3 size changed");
 
 #undef GEM_I386_ALIGNOF
 #undef GEM_I386_STATIC_ASSERT

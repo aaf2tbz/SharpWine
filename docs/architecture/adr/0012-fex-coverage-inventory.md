@@ -12,8 +12,11 @@ teardown; Blink remains the selected decoder/JIT and interpreter oracle. The
 phase requires an inventory of FEX's stable x86 implementations, tests, ARM64
 lowering strategies, and licenses by exact upstream revision, recording which
 ideas are adapted, independently implemented, or rejected. FEX is used as
-implementation evidence only; the native-Windows exact-byte oracle and the
-hash-bound interpreter/JIT corpus remain the semantic acceptance authority.
+implementation evidence only. SharpWine's own architecture assertions,
+hash-bound interpreter/JIT corpus, precise state/fault tests, and application
+compatibility are the semantic acceptance authority. Native Windows supplies
+exact comparison results for families it exposes, but is only an oracle and
+does not define SharpWine's capability ceiling.
 
 This ADR is that inventory. It is the document later phase 6 commits cite when
 unmasking a CPUID family or adapting a DBT technique.
@@ -133,23 +136,146 @@ The selected guest is i386 legacy32 (Windows WoW64):
   the x86_64 engine adopts it (its corpus tooling and the FEX lowering
   evidence above apply there) is a separate, later decision and is not phase 6
   scope creep.
+- Intel XED marks every RDFSBASE, RDGSBASE, WRFSBASE, and WRGSBASE pattern
+  `mode64`. FSGSBASE is therefore not encodable in the selected legacy32 guest
+  and is recorded as not applicable rather than force-enabled through Blink's
+  long-mode handlers. Its CPUID bit remains clear; x86_64 adoption is outside
+  this i386 phase.
 - Every CPUID unmask is atomic across three artifacts: the Blink `cpuid.c`
   patch (with its new SHA-256 in `cmake/patch-blink-gem.cmake`),
   `i386-phase3-capabilities.json`, and the expected sets in
   `tools/audit_blink_embedding.py` — and happens only after the family's
-  corpus, interpreter/JIT parity, and native-Windows comparison gates pass.
-  Incomplete families stay masked, including AVX/AVX2/FMA, BMI, ADX,
-  FSGSBASE, RDRAND/RDSEED, RDPID, and RDTSCP.
+  corpus, interpreter/JIT parity, architecture-semantics checks, and
+  native-Windows comparison attempt are reviewed. An exact Windows match is
+  required when the qualification VM exposes the instruction family; when it
+  does not, the unavailable capability is recorded and independent SDM tests
+  are the semantic authority.
+  A family is not left masked merely because the current Blink/GEM snapshot or
+  an external oracle lacks it. Phase 6 first makes a deliberate native
+  implementation attempt in SharpWine's Blink patch series, then advertises
+  every family that passes the complete gate. Only functionality SharpWine
+  itself cannot yet implement completely or qualify honestly stays masked.
+- The native Windows ARM64 qualification VM does not expose BMI1 to its i386
+  process: ANDN, BEXTR, BLSR, BLSMSK, and BLSI terminate as illegal
+  instructions, while the TZCNT encoding executes with legacy BSF semantics.
+  SharpWine's BMI1 handlers have deterministic SDM checks, exact
+  interpreter/JIT coverage, precise fault tests, and a full-corpus replay.
+  BMI1 is therefore advertised by SharpWine even though Prism cannot serve as
+  its result oracle; the compatibility target is the x86 architecture and the
+  programs that use it, not Prism's smaller instruction subset.
+- The same VM terminates all eight directly attempted BMI2 fixtures with exit
+  255. SharpWine deliberately admits Blink's portable BZHI, PDEP, PEXT, MULX,
+  SHLX, SHRX, SARX, and RORX implementations through the exact legacy-32 GEM
+  boundary while retaining ADX and invalid VEX forms as unsupported. All eight
+  pass independent architectural assertions, exact interpreter/JIT parity,
+  precise state and cross-page fault tests, a mapped multi-instruction guest
+  program in both engines, and the complete 65,536-case corpus replay. BMI2 is
+  therefore advertised from SharpWine's native macOS ARM64 profile; Prism's
+  missing family is retained only as comparison evidence.
+- The VM does execute RDTSCP and returned TSC_AUX zero in the direct i386
+  attempt, but its wall-clock-derived EDX:EAX value is intentionally not the
+  semantic authority for SharpWine's deterministic policy. SharpWine keeps
+  Blink's host-counter handler outside the legacy boundary and completes
+  RDTSCP in the GEM adapter using the epoch-zero committed-retired counter,
+  with fixed TSC_AUX zero. Prefixed instruction length, one-step execution,
+  whole/split quantum equality, interpreter/JIT parity, and both 65,536-case
+  golden replays pass. RDTSCP is therefore advertised without importing host
+  timing nondeterminism.
+- The AVX admission review is checked against Intel XED revision
+  `519c843c86547e2003f5a404a53358a7dcfb82f3`, covering all 255 AVX instruction
+  classes and 723 encoding-pattern records in `datafiles/avx/avx-isa.txt`.
+  The review found and closed valid legacy32 forms that the initial
+  operation-family implementation had missed: store-direction register
+  destinations (including scalar merge moves), 256-bit duplicate and
+  unaligned loads, and 256-bit lane-local round, blend, and dot-product forms.
+  Long-mode-only GPR64 scalar insert/extract variants remain inapplicable to
+  the selected legacy32 guest; every applicable AVX form is now routed through
+  a native portable handler or a reviewed legacy semantic handler behind exact
+  VEX admission.
+- The AVX2 review uses the same pinned XED revision and covers 138 instruction
+  classes and 302 encoding-pattern records across `datafiles/hswavx`. Patch
+  0033 deliberately implements the first native slice: 256-bit packed integer
+  arithmetic, comparison, packing/unpacking, lane-local map-2/map-3 shuffles,
+  blends, movemasks, and immediate/shared-count shifts. Patch 0034 adds every
+  signed/unsigned widening form, broadcasts, lane insert/extract, variable and
+  immediate permutation, cross-lane permutation, and dword blending, with
+  exact-width page-boundary memory tests. Patch 0035 closes the remaining
+  masked-memory, non-temporal-load, per-element variable-shift, and all 16
+  gather patterns, including restartable partial destination/mask state on a
+  gather fault. Patch 0036 adds a four-instruction loaded guest-program witness
+  and atomically advertises AVX2 in CPUID leaf 7 and manifest profile v6. The
+  pinned AVX2 inventory is complete and enabled based on SharpWine's native
+  macOS ARM64 proof, not on an external oracle ceiling.
+- The FMA review covers all 60 FMA3 classes and 192 register/memory patterns in
+  pinned XED `avx-fma-isa.xed.txt`. Patch 0037 implements every 132/213/231
+  operand order, packed/scalar float/double shape, alternating add/sub form,
+  and negated-product form with a single fused host operation. Interpreter/JIT
+  tests exercise every class plus an exact fused-rounding discriminator and a
+  scalar page-boundary no-overread witness. Patch 0038 adds a five-instruction
+  mapped guest-program witness and atomically advertises FMA in CPUID leaf 1
+  and manifest profile v7. FMA is kept because SharpWine proves the complete
+  native family on macOS ARM64; an external oracle is comparison evidence, not
+  a reason to discard working program-loading capability.
+- ADX has two instruction classes and four legacy32 register/memory patterns.
+  Blink already contained portable ADCX/ADOX arithmetic and native ARM64
+  micro-ops, but the GEM legacy boundary masked both. Patch 0039 replaces that
+  blanket mask with exact `66` ADCX and `F3` ADOX admission while retaining
+  invalid and VEX encodings as unsupported. Tests cover both independent carry
+  chains, register and exact-width memory sources, both carry-in states, and
+  interpreter/JIT parity. Patch 0040 adds an eight-instruction loaded program
+  that establishes CF and OF simultaneously, executes both chains with zero
+  JIT failures, and atomically advertises ADX in CPUID leaf 7 and manifest v8.
+  This is native capability recovered from an overly broad mask, not inherited
+  from the comparison oracle.
+- RDPID has one applicable legacy32 pattern in pinned XED (`not64`, GPR32).
+  Patch 0041 narrows the old `/6-or-/7` mask so exact `F3 0F C7 /7` reaches
+  Blink's portable handler while RDRAND, RDSEED, and invalid prefixes remain
+  fail-closed. Patch 0042 advertises leaf 7 ECX bit 22 after a loaded program
+  reads TSC_AUX and stores it through both engines with zero JIT fallback. The
+  returned value is the profile's deterministic TSC_AUX zero, matching RDTSCP.
+- RDRAND and RDSEED each have applicable legacy16 and legacy32 register forms.
+  Patch 0043 deliberately admits only the no-REP forms, retains invalid prefix
+  encodings as unsupported, and fixes Blink's incomplete flag behavior: every
+  successful result sets CF and clears OF, SF, ZF, AF, and PF. The handlers use
+  native host entropy, so the value itself is intentionally not forced to
+  match an external oracle or the other engine run. Qualification instead
+  proves width semantics, repeated cached JIT execution with zero fallback,
+  all defined flags, and a loaded program that obtains and stores both values.
+  Patch 0044 atomically advertises leaf 1 ECX RDRAND and leaf 7 EBX RDSEED.
+
+## Native DBT adaptations
+
+- Patch 0045 makes the Phase 5.5 resident integer-state design explicit for
+  deferred flag and SIMD state. Blink's internal lazy-parity byte and YMM/XCR0
+  registers remain resident between instructions in a checked GEM quantum;
+  imports still occur on quantum entry and transactional retry, and complete
+  architectural state is exported at every budget, stop, fault, or host
+  boundary. `ExportFlags` now strips the private lazy-parity byte after
+  materializing PF, preventing internal representation bits from escaping in
+  EFLAGS. The three-way 1..256 budget gate covers flag consumers, touched
+  memory, conditional/direct branches, and YMM arithmetic across one-step
+  interpreter, bounded interpreter, and production JIT execution.
+- Patch 0046 adapts block linking at GEM's checked dispatcher boundary rather
+  than bypassing it. A fixed-size tag-validated cache links observed successor
+  PCs, reuses the decoded no-fault classification that selects the resident
+  multi-instruction quantum path, and maintains a bounded return-address stack
+  for near CALL/RET prediction. Exact per-instruction budgets, stop PCs,
+  asynchronous requests, memory transactions, and fault/export boundaries are
+  unchanged. Code invalidation removes overlapping entries and incoming links;
+  the three-way 1..256 equality gate must observe real cache and direct-link
+  hits before the path is accepted.
 
 ## Acceptance authority
 
 FEX contributes evidence and checklists only. Semantic acceptance remains, in
-order: the native-Windows exact-byte oracle (phase 4 baseline flow in
-`tools/i386/`), the hash-bound interpreter/JIT golden corpus
-(`tests/fixtures/i386_phase5_golden.bin`), the deterministic conformance
-suites, and the Rosetta differential matrix (ADR 0011). No FEX source enters
-the repository; only this inventory, its provenance record, and SharpWine's
-own implementations do.
+order: the native-Windows exact-byte oracle where the VM exposes the family
+(phase 4 baseline flow in `tools/i386/`), independent SDM assertions, the
+hash-bound interpreter/JIT golden corpus
+(`tests/fixtures/i386_phase5_golden.bin`), and deterministic conformance
+suites. A capability-unavailable Windows attempt is evidence about Prism, not
+a ceiling on SharpWine's macOS ARM64 compatibility. No Rosetta lane is used.
+No FEX source enters the repository; only this inventory, its provenance
+record, and SharpWine's own implementations do.
 
 ## Consequences
 

@@ -201,14 +201,14 @@ def audit_trace(provenance, machine_text, embedding_text, embedding_header):
     need(
         jit_policy.get("pathBound") == "exactly one decoded instruction per GEM path"
         and jit_policy.get("productionFallback")
-        == "none; interpreter mode is an explicit test oracle only",
+        == "a newly compiled aligned SIMD memory store retires once through Blink's native dispatcher; legacy REP string stores commit their complete destination range; compile rollback scans only the exact architectural write and guarded stack ranges; installed JIT hooks execute subsequent iterations; no CPUID family is masked",
         "bounded JIT policy provenance drift",
     )
 
     # Identity must originate at Blink's own selected decode/dispatch handler.
     need(
         re.search(
-            r"GemHandlerId\(GetOp\(Mopcode\(m->xedd->op.rde\)\),\s*"
+            r"GemHandlerId\(GetOpForRde\(m, m->xedd->op.rde\),\s*"
             r"m->xedd->op.rde,\s*"
             r"g->guest_mode == BLINK_GEM_GUEST_LEGACY_32\)",
             embedding_text,
@@ -264,13 +264,13 @@ def audit_decode_attempt(provenance, machine_text, embedding_text, embedding_hea
     )
     need("Mopcode(m->xedd->op.rde)" in embedding_text,
          "decode attempt identity not sourced from Blink mopcode")
-    need("DescribeMopcode((int)g->last_decode.mopcode)" in embedding_text,
+    need("DescribeMopcode((int)out->mopcode)" in embedding_text,
          "decode attempt name not sourced from Blink DescribeMopcode")
     need('#include "blink/debug.h"' in embedding_text,
          "decode attempt name source header missing")
     need(
         re.search(
-            r"GemHandlerId\(GetOp\(Mopcode\(m->xedd->op.rde\)\),\s*"
+            r"GemHandlerId\(GetOpForRde\(m, m->xedd->op.rde\),\s*"
             r"m->xedd->op.rde,\s*"
             r"g->guest_mode == BLINK_GEM_GUEST_LEGACY_32\)", embedding_text,
         ) and "g->last_decode.handler_id" in embedding_text,
@@ -317,16 +317,26 @@ def audit_phase3_capabilities(source_root, manifest_path, corpus_path):
         ("PCLMUL", "0x00000001", "ecx", 1), ("SSSE3", "0x00000001", "ecx", 9),
         ("SSE4.1", "0x00000001", "ecx", 19), ("SSE4.2", "0x00000001", "ecx", 20),
         ("POPCNT", "0x00000001", "ecx", 23), ("AES", "0x00000001", "ecx", 25),
+        ("XSAVE", "0x00000001", "ecx", 26), ("OSXSAVE", "0x00000001", "ecx", 27),
+        ("AVX", "0x00000001", "ecx", 28),
+        ("FMA", "0x00000001", "ecx", 12),
+        ("RDRAND", "0x00000001", "ecx", 30),
+        ("AVX2", "0x00000007", "ebx", 5),
+        ("ADX", "0x00000007", "ebx", 19),
+        ("RDPID", "0x00000007", "ecx", 22),
+        ("RDSEED", "0x00000007", "ebx", 18),
         ("ERMS", "0x00000007", "ebx", 9),
+        ("BMI1", "0x00000007", "ebx", 3),
+        ("BMI2", "0x00000007", "ebx", 8),
+        ("RDTSCP", "0x80000001", "edx", 27),
     }
     actual = {(item["name"], item["leaf"], item["register"], item["bit"])
               for item in manifest["advertised"]}
     need(actual == expected, "advertised CPUID capability drift")
     need(
         set(manifest["masked"])
-        == {"AVX", "AVX2", "FMA", "OSXSAVE", "BMI1", "BMI2", "ADX",
-            "FSGSBASE", "RDRAND", "RDSEED", "RDPID", "CX16", "LONG_MODE",
-            "SYSCALL", "RDTSCP"},
+        == {"FSGSBASE", "CX16",
+            "LONG_MODE", "SYSCALL"},
         "masked CPUID capability drift",
     )
     sources = "\n".join(path.read_text() for path in (source_root / "blink").glob("*.c"))
@@ -335,7 +345,18 @@ def audit_phase3_capabilities(source_root, manifest_path, corpus_path):
         need(item["handlers"], f"missing handlers for {item['name']}")
         for handler in item["handlers"]:
             need(f"{handler}(" in sources, f"missing advertised handler {handler}")
-        need(item["witness"] in corpus, f"missing corpus witness for {item['name']}")
+        witness_source = corpus
+        if "witnessSource" in item:
+            witness_path = manifest_path.parents[3] / item["witnessSource"]
+            need(witness_path.is_file(), f"missing witness source for {item['name']}")
+            witness_source = witness_path.read_text()
+        need(item["witness"] in witness_source, f"missing corpus witness for {item['name']}")
+        if "cpuidWitness" in item:
+            need(item["cpuidWitness"] in witness_source,
+                 f"missing CPUID witness for {item['name']}")
+        if "programWitness" in item:
+            need(item["programWitness"] in corpus,
+                 f"missing program-loading witness for {item['name']}")
         for witness in item.get("opcodeWitnesses", ()):
             need(witness in corpus, f"missing opcode witness {item['name']} {witness}")
     sse41 = next(item for item in manifest["advertised"] if item["name"] == "SSE4.1")
@@ -364,13 +385,48 @@ def main():
     parser.add_argument("--phase55-patch", type=Path, required=True)
     parser.add_argument("--phase55-optimization-patch", type=Path, required=True)
     parser.add_argument("--phase55-concurrency-patch", type=Path, required=True)
+    parser.add_argument("--cmpxchg-patch", type=Path, required=True)
+    parser.add_argument("--state-abi-patch", type=Path, required=True)
+    parser.add_argument("--xsave-foundation-patch", type=Path, required=True)
+    parser.add_argument("--virtual-tsc-patch", type=Path, required=True)
+    parser.add_argument("--bmi1-patch", type=Path, required=True)
+    parser.add_argument("--bmi2-patch", type=Path, required=True)
+    parser.add_argument("--rdtscp-patch", type=Path, required=True)
+    parser.add_argument("--avx-foundation-patch", type=Path, required=True)
+    parser.add_argument("--avx-packed-patch", type=Path, required=True)
+    parser.add_argument("--avx-promoted-patch", type=Path, required=True)
+    parser.add_argument("--avx-store-patch", type=Path, required=True)
+    parser.add_argument("--avx-cross-lane-patch", type=Path, required=True)
+    parser.add_argument("--avx-shift-patch", type=Path, required=True)
+    parser.add_argument("--avx-misc-patch", type=Path, required=True)
+    parser.add_argument("--avx-mask-patch", type=Path, required=True)
+    parser.add_argument("--avx-conversion-patch", type=Path, required=True)
+    parser.add_argument("--avx-inventory-patch", type=Path, required=True)
+    parser.add_argument("--avx-cpuid-patch", type=Path, required=True)
+    parser.add_argument("--avx2-packed-patch", type=Path, required=True)
+    parser.add_argument("--avx2-data-patch", type=Path, required=True)
+    parser.add_argument("--avx2-memory-patch", type=Path, required=True)
+    parser.add_argument("--avx2-cpuid-patch", type=Path, required=True)
+    parser.add_argument("--fma-patch", type=Path, required=True)
+    parser.add_argument("--fma-cpuid-patch", type=Path, required=True)
+    parser.add_argument("--adx-patch", type=Path, required=True)
+    parser.add_argument("--adx-cpuid-patch", type=Path, required=True)
+    parser.add_argument("--rdpid-patch", type=Path, required=True)
+    parser.add_argument("--rdpid-cpuid-patch", type=Path, required=True)
+    parser.add_argument("--random-patch", type=Path, required=True)
+    parser.add_argument("--random-cpuid-patch", type=Path, required=True)
+    parser.add_argument("--resident-state-patch", type=Path, required=True)
+    parser.add_argument("--block-linking-patch", type=Path, required=True)
+    parser.add_argument("--aligned-simd-store-patch", type=Path, required=True)
+    parser.add_argument("--precise-host-dirty-patch", type=Path, required=True)
+    parser.add_argument("--tiered-resident-fastpath-patch", type=Path, required=True)
     parser.add_argument("--capability-manifest", type=Path, required=True)
     parser.add_argument("--phase3-corpus", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 11, "provenance schema")
+    need(provenance["schemaVersion"] == 46, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -399,12 +455,139 @@ def main():
         digest(args.phase55_concurrency_patch) == provenance["phase55ConcurrencyPatchSha256"],
         "phase 5.5 concurrency patch hash",
     )
+    need(
+        digest(args.cmpxchg_patch) == provenance["cmpxchgPatchSha256"],
+        "cmpxchg flag-order patch hash",
+    )
+    need(
+        digest(args.state_abi_patch) == provenance["stateAbiPatchSha256"],
+        "state ABI ymm/xcr0 patch hash",
+    )
+    need(
+        digest(args.xsave_foundation_patch) == provenance["xsaveFoundationPatchSha256"],
+        "VEX/XSAVE foundation patch hash",
+    )
+    need(
+        digest(args.virtual_tsc_patch) == provenance["virtualTscPatchSha256"],
+        "virtual TSC admission patch hash",
+    )
+    need(digest(args.bmi1_patch) == provenance["bmi1PatchSha256"], "BMI1 patch hash")
+    need(digest(args.bmi2_patch) == provenance["bmi2PatchSha256"], "BMI2 patch hash")
+    need(digest(args.rdtscp_patch) == provenance["rdtscpPatchSha256"], "RDTSCP patch hash")
+    need(
+        digest(args.avx_foundation_patch) == provenance["avxFoundationPatchSha256"],
+        "AVX foundation patch hash",
+    )
+    need(
+        digest(args.avx_packed_patch) == provenance["avxPackedPatchSha256"],
+        "AVX packed-lane patch hash",
+    )
+    need(
+        digest(args.avx_promoted_patch) == provenance["avxPromotedPatchSha256"],
+        "AVX promoted-128 patch hash",
+    )
+    need(
+        digest(args.avx_store_patch) == provenance["avxStorePatchSha256"],
+        "AVX store patch hash",
+    )
+    need(
+        digest(args.avx_cross_lane_patch) == provenance["avxCrossLanePatchSha256"],
+        "AVX cross-lane patch hash",
+    )
+    need(
+        digest(args.avx_shift_patch) == provenance["avxShiftPatchSha256"],
+        "AVX immediate-shift patch hash",
+    )
+    need(
+        digest(args.avx_misc_patch) == provenance["avxMiscPatchSha256"],
+        "AVX miscellaneous-destination patch hash",
+    )
+    need(
+        digest(args.avx_mask_patch) == provenance["avxMaskPatchSha256"],
+        "AVX mask-move patch hash",
+    )
+    need(
+        digest(args.avx_conversion_patch) == provenance["avxConversionPatchSha256"],
+        "AVX conversion patch hash",
+    )
+    need(
+        digest(args.avx_inventory_patch) == provenance["avxInventoryPatchSha256"],
+        "AVX inventory-closure patch hash",
+    )
+    need(
+        digest(args.avx_cpuid_patch) == provenance["avxCpuidPatchSha256"],
+        "AVX CPUID patch hash",
+    )
+    need(
+        digest(args.avx2_packed_patch) == provenance["avx2PackedPatchSha256"],
+        "AVX2 packed-lane patch hash",
+    )
+    need(
+        digest(args.avx2_data_patch) == provenance["avx2DataPatchSha256"],
+        "AVX2 data-movement patch hash",
+    )
+    need(
+        digest(args.avx2_memory_patch) == provenance["avx2MemoryPatchSha256"],
+        "AVX2 memory/gather patch hash",
+    )
+    need(
+        digest(args.avx2_cpuid_patch) == provenance["avx2CpuidPatchSha256"],
+        "AVX2 CPUID patch hash",
+    )
+    need(digest(args.fma_patch) == provenance["fmaPatchSha256"], "FMA patch hash")
+    need(
+        digest(args.fma_cpuid_patch) == provenance["fmaCpuidPatchSha256"],
+        "FMA CPUID patch hash",
+    )
+    need(digest(args.adx_patch) == provenance["adxPatchSha256"], "ADX patch hash")
+    need(
+        digest(args.adx_cpuid_patch) == provenance["adxCpuidPatchSha256"],
+        "ADX CPUID patch hash",
+    )
+    need(digest(args.rdpid_patch) == provenance["rdpidPatchSha256"], "RDPID patch hash")
+    need(
+        digest(args.rdpid_cpuid_patch) == provenance["rdpidCpuidPatchSha256"],
+        "RDPID CPUID patch hash",
+    )
+    need(digest(args.random_patch) == provenance["randomPatchSha256"], "random patch hash")
+    need(
+        digest(args.random_cpuid_patch) == provenance["randomCpuidPatchSha256"],
+        "random CPUID patch hash",
+    )
+    need(
+        digest(args.resident_state_patch) == provenance["residentStatePatchSha256"],
+        "resident quantum-state patch hash",
+    )
+    need(
+        digest(args.block_linking_patch) == provenance["blockLinkingPatchSha256"],
+        "block-linking patch hash",
+    )
+    need(
+        digest(args.aligned_simd_store_patch)
+        == provenance["alignedSimdStorePatchSha256"],
+        "aligned SIMD store patch hash",
+    )
+    need(
+        digest(args.precise_host_dirty_patch)
+        == provenance["preciseHostDirtyPatchSha256"],
+        "precise host-dirty patch hash",
+    )
+    need(
+        digest(args.tiered_resident_fastpath_patch)
+        == provenance["tieredResidentFastpathPatchSha256"],
+        "tiered resident fast-path patch hash",
+    )
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
 
     embedding = (args.source / "blink/gem_embed.c").read_text()
     embedding_header = (args.source / "blink/gem_embed.h").read_text()
     machine = (args.source / "blink/machine.c").read_text()
+    need("Mopcode(rde) == 0x131" in machine, "legacy32 RDTSC host-handler exclusion missing")
+    need(
+        "last_decode.instruction_length = (uint8_t)Oplength" in embedding,
+        "decode-attempt instruction length missing",
+    )
     fusion = (args.source / "blink/fusion.c").read_text()
     jit = (args.source / "blink/jit.c").read_text()
     jit_header = (args.source / "blink/jit.h").read_text()
@@ -417,7 +600,7 @@ def main():
         "NewSystem(",
         "NewMachine(",
         "LoadInstruction(",
-        "GetOp(",
+        "GetOpForRde(",
         "GemCompileInstruction(",
         "ExecuteInstruction(",
         "ReserveVirtual(",
@@ -453,6 +636,10 @@ def main():
         "BLINK_GEM_EXCEPTION_DIVIDE",
         "BLINK_GEM_EXCEPTION_ILLEGAL_INSTRUCTION",
         "BLINK_GEM_EXCEPTION_OVERFLOW",
+        "block_linked_successor(",
+        "return_prediction_hits",
+        "invalidate_blocks(g, address, size)",
+        "blink_gem_machine_invalidate_memory(",
     ):
         need(required in embedding, f"missing bounded JIT embedding invariant {required}")
     need("m->gemembed || opclass == kOpBranching" in machine, "JIT path is not one instruction")

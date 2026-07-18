@@ -1,0 +1,149 @@
+From 0000000000000000000000000000000000000023 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: execute native i386 avx packed lanes
+
+Execute the promoted 256-bit AVX floating-point family as two architectural
+128-bit lanes while retaining a single checked GEM transaction. Snapshot the
+complete memory source before touching destination state so cross-page faults
+remain precise, then commit both YMM halves together. The same helper remains
+the interpreter semantic authority and Blink JIT target.
+
+---
+diff -ruN --exclude=*.orig a/blink/avx.c b/blink/avx.c
+--- a/blink/avx.c	2026-07-18 01:04:24
++++ b/blink/avx.c	2026-07-18 01:04:53
+@@ -21,13 +21,43 @@
+   return 0;
+ }
+ 
++static bool Supports256(unsigned op, unsigned pp) {
++  switch (op) {
++    case 0x14:
++    case 0x15:
++    case 0x51:
++    case 0x54:
++    case 0x55:
++    case 0x56:
++    case 0x57:
++    case 0x58:
++    case 0x59:
++    case 0x5c:
++    case 0x5d:
++    case 0x5e:
++    case 0x5f:
++    case 0xc2:
++    case 0xc6:
++      return pp <= 1;
++    case 0x52:
++    case 0x53:
++      return pp == 0;
++    case 0x7c:
++    case 0x7d:
++    case 0xd0:
++      return pp == 1 || pp == 3;
++    default:
++      return false;
++  }
++}
++
+ bool IsAvxFoundationOp(struct Machine *m, u64 rde) {
+   unsigned op, pp;
+   if (!IsVex(m) || Opmap(rde) != XED_ILD_MAP1) return false;
+   op = Opcode(rde);
+   pp = Prefix(rde);
+   if (op == 0x77) return pp == 0;
+-  if (Ymm(rde)) return false;
++  if (Ymm(rde)) return Supports256(op, pp);
+   switch (op) {
+     case 0x10:
+       return pp >= 2;
+@@ -98,11 +128,41 @@
+   return rde;
+ }
+ 
+-static void RunAvxFoundation(P) {
++static size_t SourceSize(u64 rde) {
++  unsigned op = Opcode(rde);
++  if ((op == 0x10 || (op >= 0x51 && op <= 0x53) ||
++       (op >= 0x58 && op <= 0x5f) || op == 0xc2) &&
++      Rep(rde)) {
++    return Rep(rde) == 3 ? 4 : 8;
++  }
++  return Ymm(rde) ? 32 : 16;
++}
++
++static void RunLane(P, const u8 initial[16], const u8 source[16],
++                    u8 result[16]) {
+   nexgen32e_f legacy;
+-  u8 source[16], scratch[16];
+-  unsigned dst, tmp;
++  u8 saved_dst[16], saved_tmp[16];
++  unsigned dst = RexrReg(rde);
++  unsigned tmp = (dst + 1) & 7;
++  rde &= ~UINT64_C(010000000000);
++  memcpy(saved_dst, m->xmm[dst], 16);
++  memcpy(saved_tmp, m->xmm[tmp], 16);
++  memcpy(m->xmm[dst], initial, 16);
++  memcpy(m->xmm[tmp], source, 16);
++  rde = RedirectRegisterSource(rde, tmp);
++  legacy = GetOp(Mopcode(rde));
++  legacy(A);
++  memcpy(result, m->xmm[dst], 16);
++  memcpy(m->xmm[dst], saved_dst, 16);
++  memcpy(m->xmm[tmp], saved_tmp, 16);
++}
+ 
++static void RunAvxFoundation(P) {
++  u8 initial[2][16], source[2][16], result[2][16];
++  const u8 *memory_source;
++  size_t source_size;
++  unsigned dst, lanes;
++
+   if (Opcode(rde) == 0x77) {
+     unsigned i;
+     for (i = 0; i < 8; ++i) {
+@@ -113,23 +173,30 @@
+   }
+ 
+   dst = RexrReg(rde);
++  lanes = Ymm(rde) ? 2 : 1;
+   if (UsesVreg(rde)) {
+-    memcpy(m->xmm[dst], m->xmm[Vreg(rde)], 16);
++    memcpy(initial[0], m->xmm[Vreg(rde)], 16);
++    memcpy(initial[1], m->ymm_upper[Vreg(rde)], 16);
++  } else {
++    memcpy(initial[0], m->xmm[dst], 16);
++    memcpy(initial[1], m->ymm_upper[dst], 16);
+   }
+   if (IsModrmRegister(rde)) {
+-    memcpy(source, m->xmm[RexbRm(rde)], 16);
+-    tmp = (dst + 1) & 7;
+-    memcpy(scratch, m->xmm[tmp], 16);
+-    memcpy(m->xmm[tmp], source, 16);
+-    rde = RedirectRegisterSource(rde, tmp);
++    memcpy(source[0], m->xmm[RexbRm(rde)], 16);
++    memcpy(source[1], m->ymm_upper[RexbRm(rde)], 16);
+   } else {
+-    tmp = 8;
++    source_size = SourceSize(rde);
++    memory_source = ComputeReserveAddressRead(A, source_size);
++    memset(source, 0, sizeof(source));
++    memcpy(source, memory_source, source_size);
+   }
+-
+-  legacy = GetOp(Mopcode(rde));
+-  legacy(A);
+-  if (tmp < 8 && tmp != dst) memcpy(m->xmm[tmp], scratch, 16);
+-  memset(m->ymm_upper[dst], 0, 16);
++  RunLane(A, initial[0], source[0], result[0]);
++  if (lanes == 2) RunLane(A, initial[1], source[1], result[1]);
++  memcpy(m->xmm[dst], result[0], 16);
++  if (lanes == 2)
++    memcpy(m->ymm_upper[dst], result[1], 16);
++  else
++    memset(m->ymm_upper[dst], 0, 16);
+ }
+ 
+ void OpAvxFoundation(P) {
+

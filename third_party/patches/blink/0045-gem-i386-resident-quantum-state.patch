@@ -1,0 +1,37 @@
+--- a/blink/flags.c
++++ b/blink/flags.c
+@@ -55,8 +55,10 @@
+ u64 ExportFlags(u64 flags) {
++  bool parity = GetLazyParityBool(flags);
++  flags &= ~((u64)0xff << FLAGS_LP);
+   flags = SetFlag(flags, FLAGS_IOPL, 3);
+   flags = SetFlag(flags, FLAGS_F1, true);
+   flags = SetFlag(flags, FLAGS_F0, false);
+   flags = flags & ~((u64)1 << FLAGS_PF);
+-  flags |= GetLazyParityBool(flags) << FLAGS_PF;
++  flags |= parity << FLAGS_PF;
+   return flags;
+ }
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -559,14 +559,13 @@
+     }
+   }
+   for (retries = 0; retries < (int)BLINK_GEM_MAX_SHADOW_PAGES + 1; ++retries) {
+-    if (!g->batched_run || !g->batched_continuation || retries)
++    if (!g->batched_run || !g->batched_continuation || retries) {
+       import_state(m, in);
+-    else
+-      ImportFlags(m, ExportFlags(m->flags));
+-    memcpy(g->ymm_upper, in->ymm_upper, sizeof(g->ymm_upper));
+-    g->xcr0 = in->xcr0;
+-    memcpy(m->ymm_upper, g->ymm_upper, sizeof(m->ymm_upper));
+-    m->xcr0 = g->xcr0;
++      memcpy(g->ymm_upper, in->ymm_upper, sizeof(g->ymm_upper));
++      g->xcr0 = in->xcr0;
++      memcpy(m->ymm_upper, g->ymm_upper, sizeof(m->ymm_upper));
++      m->xcr0 = g->xcr0;
++    }
+     m->gem_access_segment = 0;
+     m->gem_access_offset = 0;
+     m->readaddr = m->writeaddr = 0;

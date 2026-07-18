@@ -1,0 +1,122 @@
+--- a/blink/avx.c
++++ b/blink/avx.c
+@@ -4,6 +4,7 @@
+  */
+ #include "blink/avx.h"
+ 
++#include <math.h>
+ #include <string.h>
+ 
+ #include "blink/endian.h"
+@@ -295,6 +296,16 @@
+   }
+ }
+ 
++static bool SupportsFma(u64 rde) {
++  unsigned op;
++  if (Opmap(rde) != XED_ILD_MAP2 || Prefix(rde) != 1) return false;
++  op = Opcode(rde);
++  if ((op >> 4) < 9 || (op >> 4) > 11) return false;
++  if ((op & 15) < 6) return false;
++  if ((op & 15) >= 8 && (op & 1)) return !Ymm(rde);
++  return true;
++}
++
+ bool IsAvxFoundationOp(struct Machine* m, u64 rde) {
+   unsigned map, op, pp;
+   if (!IsVex(m)) return false;
+@@ -317,6 +328,7 @@
+   if (SupportsStore(rde)) return true;
+   if (SupportsMaskMove(rde)) return true;
+   if (SupportsSpecial(rde)) return true;
++  if (SupportsFma(rde)) return true;
+   if (SupportsMisc(rde)) return true;
+   if (map == XED_ILD_MAP1 && op == 0x2a && !Ymm(rde) && !Rexw(rde)) {
+     return pp == 2 || pp == 3;
+@@ -992,6 +1004,75 @@
+   }
+ }
+ 
++static void RunAvxFma(P) {
++  u8 destination[32], vsource[32], operand[32], result[32];
++  size_t elements, i, size, width;
++  unsigned low, order;
++  bool negate_product, scalar, subtract_addend;
++  low = Opcode(rde) & 15;
++  order = Opcode(rde) >> 4;
++  scalar = low >= 8 && (Opcode(rde) & 1);
++  width = Rexw(rde) ? 8 : 4;
++  size = scalar ? 16 : (Ymm(rde) ? 32 : 16);
++  elements = scalar ? 1 : size / width;
++  ReadRegisterVector(m, RexrReg(rde), size, destination);
++  ReadRegisterVector(m, Vreg(rde), size, vsource);
++  ReadOperandVector(A, scalar ? width : size, operand);
++  memcpy(result, destination, size);
++  negate_product = low == 0x0c || low == 0x0d || low == 0x0e || low == 0x0f;
++  for (i = 0; i < elements; ++i) {
++    subtract_addend = low == 0x0a || low == 0x0b || low == 0x0e || low == 0x0f;
++    if (low == 6) subtract_addend = !(i & 1);
++    if (low == 7) subtract_addend = i & 1;
++    if (width == 4) {
++      float d, v, o, product_left, product_right, addend, value;
++      memcpy(&d, destination + 4 * i, 4);
++      memcpy(&v, vsource + 4 * i, 4);
++      memcpy(&o, operand + 4 * i, 4);
++      if (order == 9) {
++        product_left = d;
++        product_right = o;
++        addend = v;
++      } else if (order == 10) {
++        product_left = d;
++        product_right = v;
++        addend = o;
++      } else {
++        product_left = v;
++        product_right = o;
++        addend = d;
++      }
++      if (negate_product) product_left = -product_left;
++      if (subtract_addend) addend = -addend;
++      value = fmaf(product_left, product_right, addend);
++      memcpy(result + 4 * i, &value, 4);
++    } else {
++      double d, v, o, product_left, product_right, addend, value;
++      memcpy(&d, destination + 8 * i, 8);
++      memcpy(&v, vsource + 8 * i, 8);
++      memcpy(&o, operand + 8 * i, 8);
++      if (order == 9) {
++        product_left = d;
++        product_right = o;
++        addend = v;
++      } else if (order == 10) {
++        product_left = d;
++        product_right = v;
++        addend = o;
++      } else {
++        product_left = v;
++        product_right = o;
++        addend = d;
++      }
++      if (negate_product) product_left = -product_left;
++      if (subtract_addend) addend = -addend;
++      value = fma(product_left, product_right, addend);
++      memcpy(result + 8 * i, &value, 8);
++    }
++  }
++  WriteRegisterVector(m, RexrReg(rde), size, result);
++}
++
+ static void RunAvxInsertf128(P) {
+   u8 first[32], second[32];
+   ReadRegisterVector(m, Vreg(rde), 32, first);
+@@ -1314,6 +1395,10 @@
+     RunAvxStore(A);
+     return;
+   }
++  if (SupportsFma(rde)) {
++    RunAvxFma(A);
++    return;
++  }
+   if (SupportsRegisterMove(rde)) {
+     RunAvxRegisterMove(A);
+     return;

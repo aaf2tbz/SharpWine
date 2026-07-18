@@ -1,0 +1,13 @@
+--- a/blink/cpuid.c
++++ b/blink/cpuid.c
+@@ -189,7 +189,8 @@
+       switch (Get32(m->cx)) {
+         case 0:
+           if (legacy) {
+-            bx = (1u << 3) | (1u << 8) | (1u << 9);  // bmi1, bmi2, erms
++            bx = (1u << 3) | (1u << 5) | (1u << 8) |
++                 (1u << 9);  // bmi1, avx2, bmi2, erms
+             break;
+           }
+           bx |= 1 << 0;   // fsgsbase
+

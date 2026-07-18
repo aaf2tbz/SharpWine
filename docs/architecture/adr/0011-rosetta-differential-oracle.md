@@ -157,6 +157,17 @@ alias state where the carrier FXSAVE view is insufficient. Complete category
 totals, precision policy, source hashes, fixture hash, patch hash, and evidence
 hash are recorded in `i386-phase4-evidence.json`.
 
+The Phase 6 full-space requalification uses the native Windows 11 ARM64 WoW64
+baseline. Its Prism x87 carrier is observational rather than authoritative for
+templates 300 (`FLD1`) and 301 (`FLDZ`): on a full masked stack it omits Intel's
+stack-overflow result, exposes the FXSAVE register file in logical order, and
+does not retain FOP. Those two template families therefore retain the Windows
+records as explicit non-authoritative observations while acceptance requires
+bit-identical interpreter/JIT results plus the in-process Intel-SDM assertions
+for status, TOP, tag, indefinite value, and FOP. No defined-state mask changes;
+all other templates remain exact three-way comparisons, and only those exact
+cases contribute to the native-comparison count.
+
 Phase 5 promotes the accepted prefix into a 162,536-byte golden corpus containing
 one compatibility hash for every accepted identity. Normal CI replays all 20,313
 cases independently through the native interpreter and JIT without an external

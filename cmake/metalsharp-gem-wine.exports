@@ -16,6 +16,7 @@ _gem_wine_process_unmap
 _gem_wine_process_protect
 _gem_wine_process_bind_kuser
 _gem_wine_process_invalidate_code
+_gem_wine_process_notify_memory_dirty
 _gem_wine_thread_create
 _gem_wine_i386_thread_create
 _gem_wine_thread_destroy
@@ -24,4 +25,5 @@ _gem_wine_thread_get_native_upper_simd
 _gem_wine_thread_request_async_stop
 _gem_wine_thread_run
 _gem_wine_i386_thread_run
+_gem_wine_i386_thread_diagnostics
 _pipe2

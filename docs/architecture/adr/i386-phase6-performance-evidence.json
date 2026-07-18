@@ -1,0 +1,131 @@
+{
+  "schema": "sharpwine.i386.phase6.performance.v1",
+  "capturedAt": "2026-07-18",
+  "baseRevision": "07a7a0a",
+  "host": {
+    "architecture": "arm64",
+    "product": "macOS",
+    "version": "27.0",
+    "build": "26A5378n",
+    "compiler": "Apple clang 21.0.0"
+  },
+  "build": {
+    "type": "Release",
+    "directory": "sharpwine-phase-6-w9-refresh-final2",
+    "blinkPatch0046Sha256": "2ab1e6b231b2e132898a5cc983df5d0565fff02a4a87f642f2e9e6bbdd34a579",
+    "blinkGemEmbedCSha256": "5880d08128b08aac307ac03678030d51a697f08be8f274f7b4d8d1a759c132ca",
+    "blinkGemEmbedHSha256": "f3a941309e84904910df26a3650883a58d487ca9932834cb224a241fbc1ad8f0"
+  },
+  "samples": [
+    {"stepMedianNs": 40181000, "runMedianNs": 4004000, "speedup": 10.035, "instructionsPerSecond": 16367632},
+    {"stepMedianNs": 37388000, "runMedianNs": 3871000, "speedup": 9.658, "instructionsPerSecond": 16929992},
+    {"stepMedianNs": 36850000, "runMedianNs": 3829000, "speedup": 9.624, "instructionsPerSecond": 17115696},
+    {"stepMedianNs": 37148000, "runMedianNs": 3751000, "speedup": 9.903, "instructionsPerSecond": 17471608},
+    {"stepMedianNs": 37413000, "runMedianNs": 3880000, "speedup": 9.643, "instructionsPerSecond": 16890722}
+  ],
+  "medians": {
+    "stepNs": 37388000,
+    "runNs": 3871000,
+    "speedup": 9.658,
+    "instructionsPerSecond": 16929992,
+    "requiredSpeedup": 3.0
+  },
+  "checkedRun": {
+    "retiredInstructions": 360576,
+    "quanta": 336,
+    "formerCeilingQuanta": 1536,
+    "maximumQuantumInstructions": 4096,
+    "retries": 0,
+    "pageSnapshots": 261,
+    "bytesCopied": 1069056,
+    "bytesCommitted": 0,
+    "stateImports": 336,
+    "stateExports": 336,
+    "decodeResets": 336,
+    "representativeLockWaitNs": 41000
+  },
+  "jitEqualityLane": {
+    "retiredInstructions": 32896,
+    "compilations": 8,
+    "executions": 32896,
+    "cacheHits": 32888,
+    "failures": 0,
+    "codeInvalidations": 0,
+    "blocksCreated": 8,
+    "blockLookups": 32640,
+    "blockCacheHits": 32633,
+    "directLinkHits": 32633
+  },
+  "callReturnProbe": {
+    "calls": 64,
+    "returns": 64,
+    "predictionHits": 64,
+    "predictionMisses": 0,
+    "blockInvalidations": 4
+  },
+  "applicationEvidence": {
+    "notepad": {
+      "guestArchitecture": "i386",
+      "engine": "GEM/Blink production JIT",
+      "hostArchitecture": "arm64",
+      "hostPresentation": "native macOS winemac window",
+      "windowTitle": "Untitled - Notepad",
+      "frontmost": true,
+      "visible": true,
+      "survivedSeconds": 30,
+      "wineDebug": "-all",
+      "rosetta": false,
+      "completionRevision": "07a7a0a"
+    },
+    "notepadPlusPlus": {
+      "version": "8.9.7",
+      "distribution": "official 32-bit portable",
+      "archiveSha256": "ce0690fac91c1fc5d61dcdf5b09733ff0d143a61d0a27c6cb9f4003ea92765bb",
+      "guestPath": "C:\\npp-8.9.7\\notepad++.exe",
+      "guestArchitecture": "i386",
+      "engines": ["GEM/Blink interpreter", "GEM/Blink production JIT"],
+      "hostArchitecture": "arm64",
+      "hostPresentation": "native macOS winemac window",
+      "windowTitle": "new 1 - Notepad++ [Administrator]",
+      "windowSize": [1016, 705],
+      "visible": true,
+      "interactive": true,
+      "jitTimeToWindowUpperBoundSeconds": 267,
+      "xmlResourcesValidAfterRun": ["stylers.xml", "langs.xml"],
+      "wineDebug": "-all",
+      "rosetta": false,
+      "acceptance": "W10 real guest-program loading gate passed",
+      "persistentWindowCheckpoint": {
+        "capturedAt": "2026-07-18T17:07:32-0600",
+        "distribution": "official 32-bit minimalist portable",
+        "archiveSha256": "6700cafa0ade7d79f0c51edc881d3af83f79110c3cb4a1b54cb1248454aa501e",
+        "executableSha256": "f54d67663a6356f69c1be302f2dfb82c6b7a66f72e4d86c1e3fe3a6ac413d6e9",
+        "runtimeDylibSha256": "5ee0d37d4f075b3562587765aecb9d006a02ff5932e5f3c20eb8fad5223959b3",
+        "arguments": ["-noPlugin", "-nosession"],
+        "timeToQualifyingCaptureSeconds": 139.752,
+        "persistentRecapture": true,
+        "completeFrameVisible": true,
+        "visibleComponents": ["title bar", "menu row", "toolbar", "document tab", "editor surface", "status bar"],
+        "typedGlyphUsedAsWindowProof": false,
+        "closesW11StartupTarget": false
+      },
+      "w11OpenObservations": [
+        "typed input can take about five seconds to appear",
+        "menus and overlay pages can remain blank until pointer-hover invalidation"
+      ]
+    }
+  },
+  "verification": {
+    "freshConfiguredTestsPassed": 37,
+    "freshConfiguredTestsFailed": 0,
+    "broaderConfiguredTestsPassed": 42,
+    "broaderConfiguredTestsFailed": 0,
+    "authenticArm64xRoundtripPassed": true,
+    "externalHostMutationRefreshPassed": true,
+    "nativeGemBoundaryReentryPassed": true,
+    "notepadVisibleDistributionComplete": true,
+    "notepadPlusPlusInterpreterWindowLoaded": true,
+    "notepadPlusPlusJitWindowLoaded": true,
+    "notepadPlusPlusXmlRoundtripValid": true
+  }
+}

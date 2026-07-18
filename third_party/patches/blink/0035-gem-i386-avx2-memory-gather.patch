@@ -1,0 +1,547 @@
+--- a/blink/avx.c
++++ b/blink/avx.c
+@@ -12,7 +12,7 @@
+ #include "blink/modrm.h"
+ #include "blink/rde.h"
+ 
+-static bool IsVex(const struct Machine *m) {
++static bool IsVex(const struct Machine* m) {
+   return m->xedd->bytes[0] == 0xc5 || m->xedd->bytes[0] == 0xc4;
+ }
+ 
+@@ -63,11 +63,11 @@
+     default:
+       if (pp == 1) {
+         return (op >= 0x60 && op <= 0x6d) || op == 0x70 ||
+-               (op >= 0x74 && op <= 0x76) ||
+-               (op >= 0xd1 && op <= 0xd5) || (op >= 0xd8 && op <= 0xdf) ||
+-               op == 0xe0 || op == 0xe1 || op == 0xe2 ||
+-               (op >= 0xe3 && op <= 0xe5) || (op >= 0xe8 && op <= 0xef) ||
+-               (op >= 0xf1 && op <= 0xf6) || (op >= 0xf8 && op <= 0xfe);
++               (op >= 0x74 && op <= 0x76) || (op >= 0xd1 && op <= 0xd5) ||
++               (op >= 0xd8 && op <= 0xdf) || op == 0xe0 || op == 0xe1 ||
++               op == 0xe2 || (op >= 0xe3 && op <= 0xe5) ||
++               (op >= 0xe8 && op <= 0xef) || (op >= 0xf1 && op <= 0xf6) ||
++               (op >= 0xf8 && op <= 0xfe);
+       }
+       return op == 0x70 && (pp == 2 || pp == 3);
+   }
+@@ -75,8 +75,8 @@
+ 
+ static bool Supports256Map2(unsigned op, unsigned pp) {
+   if (pp != 1) return false;
+-  return op <= 0x0b || (op >= 0x1c && op <= 0x1e) || op == 0x28 ||
+-         op == 0x29 || op == 0x2b || (op >= 0x20 && op <= 0x25) ||
++  return op <= 0x0b || (op >= 0x1c && op <= 0x1e) || op == 0x28 || op == 0x29 ||
++         op == 0x2b || (op >= 0x20 && op <= 0x25) ||
+          (op >= 0x30 && op <= 0x35) || (op >= 0x37 && op <= 0x40);
+ }
+ 
+@@ -84,14 +84,14 @@
+   if (map == XED_ILD_MAP1) {
+     if (pp == 0) {
+       return op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 ||
+-             op == 0x16 || op == 0x28 || (op >= 0x51 && op <= 0x5f) || op == 0xc2 ||
+-             op == 0xc6;
++             op == 0x16 || op == 0x28 || (op >= 0x51 && op <= 0x5f) ||
++             op == 0xc2 || op == 0xc6;
+     }
+     if (pp == 1) {
+       return op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 ||
+-             op == 0x16 || op == 0x28 || (op >= 0x51 && op <= 0x6d) || op == 0x6f ||
+-             op == 0x70 || (op >= 0x74 && op <= 0x76) || op == 0x7c ||
+-             op == 0x7d || op == 0xc2 || op == 0xc6 ||
++             op == 0x16 || op == 0x28 || (op >= 0x51 && op <= 0x6d) ||
++             op == 0x6f || op == 0x70 || (op >= 0x74 && op <= 0x76) ||
++             op == 0x7c || op == 0x7d || op == 0xc2 || op == 0xc6 ||
+              (op >= 0xd0 && op <= 0xd5) || (op >= 0xd8 && op <= 0xef) ||
+              (op >= 0xf4 && op <= 0xf6) || (op >= 0xf8 && op <= 0xfe);
+     }
+@@ -128,8 +128,7 @@
+     if ((op == 0x2c || op == 0x2d) && pp >= 2)
+       return !Ymm(rde) && Vreg(rde) == 0;
+     if (op == 0x50 && pp <= 1) return Vreg(rde) == 0;
+-    if (op == 0x6e && pp == 1)
+-      return !Ymm(rde) && !Rexw(rde) && Vreg(rde) == 0;
++    if (op == 0x6e && pp == 1) return !Ymm(rde) && !Rexw(rde) && Vreg(rde) == 0;
+     if (op == 0x7e && !Ymm(rde) && Vreg(rde) == 0)
+       return (pp == 1 && !Rexw(rde)) || pp == 2;
+     if (op == 0xae && pp == 0)
+@@ -193,29 +192,41 @@
+ static bool SupportsMaskMove(u64 rde) {
+   unsigned map = Opmap(rde);
+   unsigned op = Opcode(rde);
+-  if (Prefix(rde) != 1 || Rexw(rde)) return false;
++  if (Prefix(rde) != 1) return false;
++  if (map == XED_ILD_MAP2 && (op == 0x8c || op == 0x8e)) {
++    return !IsModrmRegister(rde);
++  }
++  if (Rexw(rde)) return false;
+   if (map == XED_ILD_MAP2 && op >= 0x2c && op <= 0x2f) {
+     return !IsModrmRegister(rde);
+   }
+-  return map == XED_ILD_MAP1 && op == 0xf7 && !Ymm(rde) &&
+-         Vreg(rde) == 0 && IsModrmRegister(rde);
++  return map == XED_ILD_MAP1 && op == 0xf7 && !Ymm(rde) && Vreg(rde) == 0 &&
++         IsModrmRegister(rde);
+ }
+ 
+ static bool SupportsSpecial(u64 rde) {
+   unsigned map = Opmap(rde);
+   unsigned op = Opcode(rde);
++  unsigned index;
+   if (Prefix(rde) != 1) return false;
+   if (map == XED_ILD_MAP1) {
+-    if (op == 0x71) return ModrmReg(rde) == 2 || ModrmReg(rde) == 4 ||
+-                           ModrmReg(rde) == 6;
+-    if (op == 0x72) return ModrmReg(rde) == 2 || ModrmReg(rde) == 4 ||
+-                           ModrmReg(rde) == 6;
+-    if (op == 0x73) return ModrmReg(rde) == 2 || ModrmReg(rde) == 3 ||
+-                           ModrmReg(rde) == 6 || ModrmReg(rde) == 7;
++    if (op == 0x71)
++      return ModrmReg(rde) == 2 || ModrmReg(rde) == 4 || ModrmReg(rde) == 6;
++    if (op == 0x72)
++      return ModrmReg(rde) == 2 || ModrmReg(rde) == 4 || ModrmReg(rde) == 6;
++    if (op == 0x73)
++      return ModrmReg(rde) == 2 || ModrmReg(rde) == 3 || ModrmReg(rde) == 6 ||
++             ModrmReg(rde) == 7;
+   }
+   if (map == XED_ILD_MAP2) {
+-    if ((op == 0x18 || op == 0x19 || op == 0x1a || op == 0x58 ||
+-         op == 0x59 || op == 0x5a || op == 0x78 || op == 0x79) &&
++    if (op >= 0x90 && op <= 0x93) {
++      index = Rexx(rde) << 3 | SibIndex(rde);
++      return !IsModrmRegister(rde) && SibExists(rde) && !Rexx(rde) &&
++             RexrReg(rde) != Vreg(rde) && RexrReg(rde) != index &&
++             Vreg(rde) != index;
++    }
++    if ((op == 0x18 || op == 0x19 || op == 0x1a || op == 0x58 || op == 0x59 ||
++         op == 0x5a || op == 0x78 || op == 0x79) &&
+         Vreg(rde) != 0) {
+       return false;
+     }
+@@ -234,6 +245,13 @@
+         return true;
+       case 0x19:
+         return Ymm(rde);
++      case 0x2a:
++        return Ymm(rde) && Vreg(rde) == 0 && !IsModrmRegister(rde);
++      case 0x45:
++      case 0x47:
++        return true;
++      case 0x46:
++        return !Rexw(rde);
+       case 0x1a:
+         return Ymm(rde) && !IsModrmRegister(rde);
+       case 0x58:
+@@ -277,7 +295,7 @@
+   }
+ }
+ 
+-bool IsAvxFoundationOp(struct Machine *m, u64 rde) {
++bool IsAvxFoundationOp(struct Machine* m, u64 rde) {
+   unsigned map, op, pp;
+   if (!IsVex(m)) return false;
+   map = Opmap(rde);
+@@ -310,8 +328,8 @@
+     if (map == XED_ILD_MAP1) return Supports256(op, pp);
+     if (map == XED_ILD_MAP2 && Supports256Map2(op, pp)) return true;
+     if (map == XED_ILD_MAP3 && pp == 1 &&
+-        (op == 0x08 || op == 0x09 || op == 0x0c || op == 0x0d ||
+-         op == 0x0e || op == 0x0f || op == 0x40 || op == 0x42)) {
++        (op == 0x08 || op == 0x09 || op == 0x0c || op == 0x0d || op == 0x0e ||
++         op == 0x0f || op == 0x40 || op == 0x42)) {
+       return GetOp(Mopcode(rde)) != OpUd;
+     }
+     return false;
+@@ -544,14 +562,14 @@
+   if (m->stashaddr) CommitStash(m);
+ }
+ 
+-static void ReadRegisterVector(struct Machine *m, unsigned reg, size_t size,
++static void ReadRegisterVector(struct Machine* m, unsigned reg, size_t size,
+                                u8 out[32]) {
+   memcpy(out, m->xmm[reg], 16);
+   if (size == 32) memcpy(out + 16, m->ymm_upper[reg], 16);
+ }
+ 
+ static void ReadOperandVector(P, size_t size, u8 out[32]) {
+-  const u8 *source;
++  const u8* source;
+   if (IsModrmRegister(rde)) {
+     ReadRegisterVector(m, RexbRm(rde), size, out);
+   } else {
+@@ -642,7 +660,7 @@
+   memcpy(m->ymm_upper[RexrReg(rde)], result + 16, 16);
+ }
+ 
+-static void WriteRegisterVector(struct Machine *m, unsigned reg, size_t size,
++static void WriteRegisterVector(struct Machine* m, unsigned reg, size_t size,
+                                 const u8 in[32]) {
+   memcpy(m->xmm[reg], in, 16);
+   if (size == 32)
+@@ -693,7 +711,7 @@
+   }
+ }
+ 
+-static void PreflightMaskedStore(struct Machine *m, i64 address,
++static void PreflightMaskedStore(struct Machine* m, i64 address,
+                                  const u8 mask[32], size_t size,
+                                  size_t stride) {
+   size_t i;
+@@ -705,9 +723,9 @@
+   }
+ }
+ 
+-static void RunMaskedStore(struct Machine *m, i64 address, const u8 source[32],
++static void RunMaskedStore(struct Machine* m, i64 address, const u8 source[32],
+                            const u8 mask[32], size_t size, size_t stride) {
+-  u8 *destination;
++  u8* destination;
+   size_t first = size, i, last = 0;
+   PreflightMaskedStore(m, address, mask, size, stride);
+   for (i = 0; i < size; i += stride) {
+@@ -736,9 +754,13 @@
+   }
+   address = ComputeAddress(A);
+   size = Ymm(rde) ? 32 : 16;
+-  stride = (op & 1) ? 8 : 4;
+-  ReadRegisterVector(m, Vreg(rde), size, mask);
+-  if (op < 0x2e) {
++  stride =
++      (op == 0x8c || op == 0x8e) ? (Rexw(rde) ? 8 : 4) : ((op & 1) ? 8 : 4);
++  if (op == 0x8e)
++    ReadRegisterVector(m, RexrReg(rde), size, mask);
++  else
++    ReadRegisterVector(m, Vreg(rde), size, mask);
++  if (op == 0x8c || op < 0x2e) {
+     first = size;
+     last = 0;
+     for (i = 0; i < size; i += stride) {
+@@ -752,7 +774,7 @@
+     if (first != size) SetReadAddr(m, address + first, last - first + stride);
+     WriteRegisterVector(m, RexrReg(rde), size, result);
+   } else {
+-    ReadRegisterVector(m, RexrReg(rde), size, source);
++    ReadRegisterVector(m, op == 0x8e ? Vreg(rde) : RexrReg(rde), size, source);
+     RunMaskedStore(m, address, source, mask, size, stride);
+   }
+ }
+@@ -829,8 +851,8 @@
+   if (uimm0 & 8)
+     memset(result, 0, 16);
+   else
+-    memcpy(result, select < 2 ? first + 16 * select : second + 16 * (select - 2),
+-           16);
++    memcpy(result,
++           select < 2 ? first + 16 * select : second + 16 * (select - 2), 16);
+   select = (uimm0 >> 4) & 3;
+   if (uimm0 & 0x80)
+     memset(result + 16, 0, 16);
+@@ -870,10 +892,106 @@
+   for (i = 0; i < size / 4; ++i) {
+     memcpy(result + 4 * i, (uimm0 & (1u << i)) ? second + 4 * i : first + 4 * i,
+            4);
++  }
++  WriteRegisterVector(m, RexrReg(rde), size, result);
++}
++
++static void RunAvxVariableShift(P) {
++  u8 data[32], counts[32], result[32];
++  size_t i, size, width;
++  u64 count, value;
++  unsigned op = Opcode(rde);
++  size = Ymm(rde) ? 32 : 16;
++  width = Rexw(rde) ? 8 : 4;
++  ReadRegisterVector(m, Vreg(rde), size, data);
++  ReadOperandVector(A, size, counts);
++  for (i = 0; i < size; i += width) {
++    count = width == 8 ? Get64(counts + i) : Get32(counts + i);
++    value = width == 8 ? Get64(data + i) : Get32(data + i);
++    if (op == 0x47) {
++      value = count < width * 8 ? value << count : 0;
++    } else if (op == 0x46) {
++      value = (i32)value >> (count < 32 ? count : 31);
++    } else {
++      value = count < width * 8 ? value >> count : 0;
++    }
++    if (width == 8)
++      Put64(result + i, value);
++    else
++      Put32(result + i, value);
+   }
+   WriteRegisterVector(m, RexrReg(rde), size, result);
+ }
+ 
++static void RunAvxMovntdqa(P) {
++  u8 result[32];
++  const u8* source;
++  i64 address = ComputeAddress(A);
++  if (address & 31) {
++    SetReadAddr(m, address, 32);
++    ThrowSegmentationFault(m, address);
++  }
++  source = ReserveAddress(m, address, 32, false);
++  memcpy(result, source, 32);
++  WriteRegisterVector(m, RexrReg(rde), 32, result);
++}
++
++static u8* GetVectorByte(struct Machine* m, unsigned reg, size_t offset) {
++  if (offset < 16) return m->xmm[reg] + offset;
++  return m->ymm_upper[reg] + offset - 16;
++}
++
++static i64 ComputeGatherAddress(P, i64 index) {
++  u64 offset = disp;
++  u64 segment = m->ds.base;
++  unsigned base;
++  if (SibHasBase(rde)) {
++    base = RexbBase(rde);
++    offset += Get32(m->weg[base]);
++    if (base == 4 || base == 5) segment = m->ss.base;
++  }
++  offset += (u64)index << SibScale(rde);
++  if (Eamode(rde) != XED_MODE_LONG) offset &= UINT32_MAX;
++  return AddSegment(A, offset, segment);
++}
++
++static void RunAvxGather(P) {
++  u8 indices[32];
++  const u8* source;
++  u8 *destination, *mask_element;
++  i64 address, index;
++  size_t count, data_width, dest_bytes, i, index_bytes, index_width;
++  unsigned dest = RexrReg(rde);
++  unsigned index_reg = Rexx(rde) << 3 | SibIndex(rde);
++  unsigned mask = Vreg(rde);
++  data_width = Rexw(rde) ? 8 : 4;
++  index_width = Opcode(rde) & 1 ? 8 : 4;
++  count = (Ymm(rde) ? 32 : 16) /
++          (data_width > index_width ? data_width : index_width);
++  dest_bytes = count * data_width;
++  index_bytes = count * index_width;
++  ReadRegisterVector(m, index_reg, index_bytes > 16 ? 32 : 16, indices);
++  if (dest_bytes <= 16) {
++    memset(m->xmm[dest] + dest_bytes, 0, 16 - dest_bytes);
++    memset(m->xmm[mask] + dest_bytes, 0, 16 - dest_bytes);
++    memset(m->ymm_upper[dest], 0, 16);
++    memset(m->ymm_upper[mask], 0, 16);
++  }
++  for (i = 0; i < count; ++i) {
++    mask_element = GetVectorByte(m, mask, i * data_width);
++    if (!(mask_element[data_width - 1] & 0x80)) continue;
++    index = index_width == 8 ? (i64)Get64(indices + i * index_width)
++                             : (i32)Get32(indices + i * index_width);
++    address = ComputeGatherAddress(A, index);
++    CheckLegacySegmentAccess(m, m->gem_access_segment, m->gem_access_offset,
++                             data_width, false, false);
++    source = ReserveAddress(m, address, data_width, false);
++    destination = GetVectorByte(m, dest, i * data_width);
++    memcpy(destination, source, data_width);
++    memset(mask_element, 0, data_width);
++  }
++}
++
+ static void RunAvxInsertf128(P) {
+   u8 first[32], second[32];
+   ReadRegisterVector(m, Vreg(rde), 32, first);
+@@ -894,7 +1012,7 @@
+   }
+ }
+ 
+-static void SetTestFlags(struct Machine *m, bool zero, bool carry) {
++static void SetTestFlags(struct Machine* m, bool zero, bool carry) {
+   m->flags = SetFlag(m->flags, FLAGS_ZF, zero);
+   m->flags = SetFlag(m->flags, FLAGS_CF, carry);
+   m->flags = SetFlag(m->flags, FLAGS_AF, false);
+@@ -941,8 +1059,8 @@
+ static void RunAvxImmediateShift(P) {
+   u8 source[32], result[32] = {0};
+   unsigned count, group, i, lane, op, size;
+-  u8 *lane_result;
+-  const u8 *lane_source;
++  u8* lane_result;
++  const u8* lane_source;
+   op = Opcode(rde);
+   group = ModrmReg(rde);
+   count = uimm0;
+@@ -999,6 +1117,12 @@
+   unsigned op = Opcode(rde);
+   if (map == XED_ILD_MAP1) {
+     RunAvxImmediateShift(A);
++  } else if (map == XED_ILD_MAP2 && op >= 0x45 && op <= 0x47) {
++    RunAvxVariableShift(A);
++  } else if (map == XED_ILD_MAP2 && op == 0x2a) {
++    RunAvxMovntdqa(A);
++  } else if (map == XED_ILD_MAP2 && op >= 0x90 && op <= 0x93) {
++    RunAvxGather(A);
+   } else if (map == XED_ILD_MAP2 && (op == 0x16 || op == 0x36)) {
+     RunAvxPermuteDwordVariable(A);
+   } else if (map == XED_ILD_MAP2 &&
+@@ -1032,9 +1156,11 @@
+ }
+ 
+ static u64 ReadScalarOperand(P, size_t size) {
+-  const u8 *source;
+-  if (IsModrmRegister(rde)) source = RegRexbRm(m, rde);
+-  else source = ComputeReserveAddressRead(A, size);
++  const u8* source;
++  if (IsModrmRegister(rde))
++    source = RegRexbRm(m, rde);
++  else
++    source = ComputeReserveAddressRead(A, size);
+   if (size == 1) return Get8(source);
+   if (size == 2) return Get16(source);
+   if (size == 4) return Get32(source);
+@@ -1056,16 +1182,20 @@
+ }
+ 
+ static void WriteScalarDestination(P, size_t size, u64 value) {
+-  u8 *destination;
++  u8* destination;
+   if (IsModrmRegister(rde)) {
+     Put32(RegRexbRm(m, rde), value);
+     return;
+   }
+   destination = ComputeReserveAddressWrite(A, size);
+-  if (size == 1) Put8(destination, value);
+-  else if (size == 2) Put16(destination, value);
+-  else if (size == 4) Put32(destination, value);
+-  else Put64(destination, value);
++  if (size == 1)
++    Put8(destination, value);
++  else if (size == 2)
++    Put16(destination, value);
++  else if (size == 4)
++    Put32(destination, value);
++  else
++    Put64(destination, value);
+   if (m->stashaddr) CommitStash(m);
+ }
+ 
+@@ -1121,9 +1251,12 @@
+     return;
+   }
+   size = op == 0x14 ? 1 : op == 0x15 ? 2 : 4;
+-  if (size == 1) value = Get8(m->xmm[RexrReg(rde)] + (uimm0 & 15));
+-  else if (size == 2) value = Get16(m->xmm[RexrReg(rde)] + 2 * (uimm0 & 7));
+-  else value = Get32(m->xmm[RexrReg(rde)] + 4 * (uimm0 & 3));
++  if (size == 1)
++    value = Get8(m->xmm[RexrReg(rde)] + (uimm0 & 15));
++  else if (size == 2)
++    value = Get16(m->xmm[RexrReg(rde)] + 2 * (uimm0 & 7));
++  else
++    value = Get32(m->xmm[RexrReg(rde)] + 4 * (uimm0 & 3));
+   WriteScalarDestination(A, size, value);
+ }
+ 
+@@ -1134,9 +1267,12 @@
+   unsigned op = Opcode(rde);
+   size = map == XED_ILD_MAP1 ? 2 : op == 0x20 ? 1 : 4;
+   ReadRegisterVector(m, Vreg(rde), 16, result);
+-  if (size == 1) Put8(result + (uimm0 & 15), ReadScalarOperand(A, 1));
+-  else if (size == 2) Put16(result + 2 * (uimm0 & 7), ReadScalarOperand(A, 2));
+-  else Put32(result + 4 * (uimm0 & 3), ReadScalarOperand(A, 4));
++  if (size == 1)
++    Put8(result + (uimm0 & 15), ReadScalarOperand(A, 1));
++  else if (size == 2)
++    Put16(result + 2 * (uimm0 & 7), ReadScalarOperand(A, 2));
++  else
++    Put32(result + 4 * (uimm0 & 3), ReadScalarOperand(A, 4));
+   WriteRegisterVector(m, RexrReg(rde), 16, result);
+ }
+ 
+@@ -1152,8 +1288,10 @@
+ static void RunAvxMisc(P) {
+   unsigned map = Opmap(rde);
+   unsigned op = Opcode(rde);
+-  if (map == XED_ILD_MAP1 && op == 0x50) RunAvxMovMask(A);
+-  else if (map == XED_ILD_MAP1 && op == 0xd7) RunAvxPmovmskb(A);
++  if (map == XED_ILD_MAP1 && op == 0x50)
++    RunAvxMovMask(A);
++  else if (map == XED_ILD_MAP1 && op == 0xd7)
++    RunAvxPmovmskb(A);
+   else if (map == XED_ILD_MAP1 && (op == 0x6e || op == 0x7e || op == 0xd6))
+     RunAvxMoveScalar(A);
+   else if ((map == XED_ILD_MAP1 && op == 0xc5) ||
+@@ -1168,7 +1306,7 @@
+ 
+ static void RunAvxFoundation(P) {
+   u8 initial[2][16], source[2][16], result[2][16];
+-  const u8 *memory_source;
++  const u8* memory_source;
+   size_t source_size;
+   unsigned dst, lanes;
+ 
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -530,6 +530,7 @@
+   uint32_t error = 0;
+   int rc, retries, handler_id = 0, mmx = 0;
+   volatile int restartable_rep = 0;
++  volatile int restartable_gather = 0;
+   volatile int fetching;
+   uint64_t fetch_address = 0, fetch_size = 0, commit_fault = 0;
+   if (!g || !in || !out || in->abi_version != BLINK_GEM_STATE_ABI_VERSION ||
+@@ -654,6 +655,9 @@
+                           Mopcode(m->xedd->op.rde) <= 0x0a7) ||
+                          (Mopcode(m->xedd->op.rde) >= 0x0aa &&
+                           Mopcode(m->xedd->op.rde) <= 0x0af));
++      restartable_gather = Opmap(m->xedd->op.rde) == XED_ILD_MAP2 &&
++                               Opcode(m->xedd->op.rde) >= 0x90 &&
++                               Opcode(m->xedd->op.rde) <= 0x93;
+       if (mmx) {
+         memcpy(saved_xmm, m->xmm, sizeof(saved_xmm));
+         import_mmx_alias(m);
+@@ -792,6 +796,10 @@
+         m->ip = in->rip;
+         export_state(m, in, out);
+         r.engine_status = BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP;
++      } else if (restartable_gather) {
++        m->ip = in->rip;
++        export_state(m, in, out);
++        r.engine_status = BLINK_GEM_ENGINE_STATUS_RESTARTABLE_GATHER;
+       }
+       return r;
+     }
+@@ -975,7 +983,8 @@
+   r = blink_gem_machine_step(g, &current, &next);
+   if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
+     g->batched_run = false;
+-    if (r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP)
++    if (r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP ||
++        r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_GATHER)
+       *out = next;
+     else
+       *out = current;
+@@ -1020,7 +1029,8 @@
+       r = blink_gem_machine_step(g, &current, &next);
+       if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
+         g->batched_run = false;
+-        if (r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP)
++        if (r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP ||
++            r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_GATHER)
+           *out = next;
+         else
+           *out = current;
+@@ -1043,7 +1053,8 @@
+     r = blink_gem_machine_step(g, &current, &next);
+     if (r.outcome != BLINK_GEM_RETIRED || r.retired != 1) {
+       g->batched_run = false;
+-      if (r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP)
++      if (r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP ||
++          r.engine_status == BLINK_GEM_ENGINE_STATUS_RESTARTABLE_GATHER)
+         *out = next;
+       else
+         *out = current;
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -120,6 +120,7 @@
+   BLINK_GEM_ENGINE_JIT = 2
+ };
+ #define BLINK_GEM_ENGINE_STATUS_RESTARTABLE_REP 0x100u
++#define BLINK_GEM_ENGINE_STATUS_RESTARTABLE_GATHER 0x101u
+ enum blink_gem_guest_mode {
+   BLINK_GEM_GUEST_LONG = 1,
+   BLINK_GEM_GUEST_LEGACY_32 = 2
+

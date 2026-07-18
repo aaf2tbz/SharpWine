@@ -92,7 +92,8 @@ int main(int argc, char **argv) {
                "\"semanticHash\":\"0x%016llx\","
                "\"compatibilityHash\":\"0x%016llx\",\"eax\":%u,\"ecx\":%u,"
                "\"esiDelta\":%u,\"ediDelta\":%u,\"eflags\":%u,\"fsw\":%u,\"ftw\":%u,"
-               "\"fop\":%u,\"x87_0_lo\":\"0x%016llx\",\"x87_7_lo\":\"0x%016llx\"}\n",
+               "\"fop\":%u,\"sdmExpectation\":%s,\"x87_0_lo\":\"0x%016llx\","
+               "\"x87_7_lo\":\"0x%016llx\"}\n",
                I386_PHASE4_SCHEMA, I386_PHASE4_GENERATOR_VERSION, I386_PHASE4_TEMPLATE_REVISION,
                test.template_id, test.shard, test.ordinal, (unsigned long long)test.seed,
                i386_phase4_category_name(test.category),
@@ -105,7 +106,8 @@ int main(int argc, char **argv) {
                record.final.gpr[GEM_I386_ESI] - record.initial.gpr[GEM_I386_ESI],
                record.final.gpr[GEM_I386_EDI] - record.initial.gpr[GEM_I386_EDI],
                record.final.eflags & record.defined.eflags_mask, record.final.fsw, record.final.ftw,
-               record.final.fop, (unsigned long long)record.final.x87[0].lo,
+               record.final.fop, i386_phase4_sdm_expectation_met(&test, &record) ? "true" : "false",
+               (unsigned long long)record.final.x87[0].lo,
                (unsigned long long)record.final.x87[7].lo);
     }
     return record.classification == I386_PHASE4_PASS ? 0 : 1;

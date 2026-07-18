@@ -1,0 +1,117 @@
+From 0000000000000000000000000000000000000031 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: close i386 avx inventory gaps
+
+Close the remaining gaps found by the pinned Intel XED AVX inventory audit:
+store-direction register moves, scalar register merge moves, 256-bit duplicate
+and unaligned loads, and lane-local 0F3A round/blend/dot-product forms.
+
+---
+diff -ruN --exclude=*.orig a/blink/avx.c b/blink/avx.c
+--- a/blink/avx.c
++++ b/blink/avx.c
+@@ -25,6 +25,10 @@
+ 
+ static bool Supports256(unsigned op, unsigned pp) {
+   switch (op) {
++    case 0x12:
++      return pp == 2 || pp == 3;
++    case 0x16:
++      return pp == 2;
+     case 0x14:
+     case 0x15:
+     case 0x51:
+@@ -45,10 +49,14 @@
+     case 0x52:
+     case 0x53:
+       return pp == 0;
++    case 0x6f:
++      return pp == 1 || pp == 2;
+     case 0x7c:
+     case 0x7d:
+     case 0xd0:
+       return pp == 1 || pp == 3;
++    case 0xf0:
++      return pp == 3;
+     default:
+       return false;
+   }
+@@ -151,6 +159,19 @@
+   }
+ }
+ 
++static bool SupportsRegisterMove(u64 rde) {
++  unsigned op, pp;
++  if (Opmap(rde) != XED_ILD_MAP1 || !IsModrmRegister(rde)) return false;
++  op = Opcode(rde);
++  pp = Prefix(rde);
++  if (op == 0x11) {
++    if (pp >= 2) return !Ymm(rde);
++    return Vreg(rde) == 0;
++  }
++  if (Vreg(rde) != 0) return false;
++  return (op == 0x29 && pp <= 1) || (op == 0x7f && (pp == 1 || pp == 2));
++}
++
+ static bool SupportsMaskMove(u64 rde) {
+   unsigned map = Opmap(rde);
+   unsigned op = Opcode(rde);
+@@ -225,6 +246,7 @@
+     return false;
+   }
+   if (map == XED_ILD_MAP1 && op == 0x77) return pp == 0;
++  if (SupportsRegisterMove(rde)) return true;
+   if (SupportsStore(rde)) return true;
+   if (SupportsMaskMove(rde)) return true;
+   if (SupportsSpecial(rde)) return true;
+@@ -235,7 +257,14 @@
+   if (Ymm(rde) && map == XED_ILD_MAP1 && (op == 0x5a || op == 0xe6)) {
+     return (op == 0x5a && pp <= 1) || (op == 0xe6 && pp >= 1);
+   }
+-  if (Ymm(rde)) return map == XED_ILD_MAP1 && Supports256(op, pp);
++  if (Ymm(rde)) {
++    if (map == XED_ILD_MAP1) return Supports256(op, pp);
++    if (map == XED_ILD_MAP3 && pp == 1 &&
++        (op == 0x08 || op == 0x09 || op == 0x0c || op == 0x0d || op == 0x40)) {
++      return GetOp(Mopcode(rde)) != OpUd;
++    }
++    return false;
++  }
+   if (SupportsPromoted128(map, op, pp)) {
+     return GetOp(Mopcode(rde)) != OpUd;
+   }
+@@ -484,6 +513,22 @@
+     memset(m->ymm_upper[reg], 0, 16);
+ }
+ 
++static void RunAvxRegisterMove(P) {
++  u8 merge[32], result[32], source[32];
++  size_t size = Ymm(rde) ? 32 : 16;
++  unsigned destination = RexbRm(rde);
++  ReadRegisterVector(m, RexrReg(rde), size, source);
++  if (Opcode(rde) == 0x11 && Prefix(rde) >= 2) {
++    size_t scalar_size = Prefix(rde) == 2 ? 4 : 8;
++    ReadRegisterVector(m, Vreg(rde), 16, merge);
++    memcpy(result, merge, 16);
++    memcpy(result, source, scalar_size);
++    WriteRegisterVector(m, destination, 16, result);
++  } else {
++    WriteRegisterVector(m, destination, size, source);
++  }
++}
++
+ static void RunAvxWideConversion(P) {
+   u8 initial[16] = {0}, lane[2][16], result[2][16], source[32];
+   unsigned op = Opcode(rde);
+@@ -929,6 +974,10 @@
+     RunAvxStore(A);
+     return;
+   }
++  if (SupportsRegisterMove(rde)) {
++    RunAvxRegisterMove(A);
++    return;
++  }
+   if (SupportsMaskMove(rde)) {
+     RunAvxMaskMove(A);
+     return;

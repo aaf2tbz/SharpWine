@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "generatorVersion": 1,
+  "generatorVersion": 2,
   "templateRevision": 1,
   "masterSeed": "0x534841525057494e",
   "acceptedQualification": {
-    "shardsComplete": 4,
-    "finalShard": 4,
-    "finalOrdinal": 3928,
-    "caseCount": 20313,
-    "baselineRecords": 20313,
-    "nativeToBaselineComparisons": 40626,
-    "interpreterJitParityChecks": 20313,
+    "shardsComplete": 16,
+    "finalShard": 15,
+    "finalOrdinal": 4095,
+    "caseCount": 65536,
+    "baselineRecords": 65523,
+    "nativeToBaselineComparisons": 125634,
+    "interpreterJitParityChecks": 65536,
     "classifications": {
-      "pass": 20313,
+      "pass": 65536,
       "semanticMismatch": 0,
       "unsupportedAdvertised": 0,
       "jitFallback": 0,
@@ -23,14 +23,14 @@
       "infrastructureFailure": 0
     },
     "categoryTotals": {
-      "scalar": 5120,
-      "memory": 3840,
-      "x87Mmx": 2560,
-      "simd": 3840,
-      "system": 3840,
-      "negative": 1113
+      "scalar": 16384,
+      "memory": 12288,
+      "x87Mmx": 8192,
+      "simd": 12288,
+      "system": 12288,
+      "negative": 4096
     },
-    "resultsSha256": "799de284a2aebc46a4745d403742af968169ba737cfffe3ea4b7556ad0d5c36b"
+    "resultsSha256": "ea8598184fdca93c47ed75b8f2d44f7612f473faf95fd2897e68075734096ba7"
   },
   "smokeShard": {
     "caseCount": 4096,
@@ -42,18 +42,18 @@
     "resultsSha256": "e04e154bd288f745379efcf959b90f28d024b1e8646e528973ac0f450f8b1fdb"
   },
   "retainedDeterministicComparisons": 5184,
-  "totalNativeCompatibilityComparisons": 45810,
+  "totalNativeCompatibilityComparisons": 130818,
   "phase5CiCorpus": {
     "path": "tests/fixtures/i386_phase5_golden.bin",
     "schemaVersion": 1,
-    "caseCount": 20313,
-    "finalShard": 4,
-    "finalOrdinal": 3928,
-    "goldenSha256": "179ed278a8382fa4b3066b73b2aecf5c791880492505c1b93ba6e6922d67755b",
+    "caseCount": 65536,
+    "finalShard": 15,
+    "finalOrdinal": 4095,
+    "goldenSha256": "63d5efd18c1b2d0f28878767fc4b01a1691f40c9273f959d85c515df1c4491bb",
     "replayModes": ["interpreter", "jit"],
     "externalRuntimeRequired": false,
     "coverage": {
-      "templateCount": 36,
+      "templateCount": 87,
       "operandForms": ["register", "memory", "implicit-string", "invalid-encoding"],
       "addressingForms": ["register", "esi-indirect", "edi-indirect", "implicit-esi-edi"],
       "widths": [8, 32, 64, 80, 128],
@@ -62,18 +62,22 @@
     "prioritizationInputs": ["32-bit Wine startup", "interactive Notepad", "Steam bootstrap"]
   },
   "sourceSha256": {
-    "generatorAndTemplates": "feb4c009015e4cfe23c0c55536ef386780561d4d480aafb93613ebb005297791",
+    "generatorAndTemplates": "e349b56414012340a12da4c78d386129b7c60d9a570ff85f9e111b1d13172a98",
     "recordSchema": "e3bb1fe0148811b8bae8685994849ad953d8f137498421c6b7d9b13fc2e80bde",
     "baselineWorker": "53190c30d366ce45ad9577d4954835207c109b62a0f892cb1977e1e242919eb7",
     "baselineAssembly": "750e5cb3962ba9223fc5aa29e877bd2009b64d9a19432692c934f55735838ae2",
-    "baselineFixture": "a29596126745c2e885665afd9780df6fbfb8a52f19f32cbd97ddf197cc540f9b",
-    "blinkCorrectionsPatch": "2e72280627b4c56d4594a862420d8fd6e8c86f847cf4fca547e673382c74970a"
+    "baselineFixture": "d8093c61fecc60cadbaf976686d11886f7106200c0593302c627e75045db966f",
+    "blinkCorrectionsPatch": "18910ef86f5031d8f244061d5e713c211d7a3b655a2df10f5d7b57712d2fa465"
   },
   "precisionPolicy": {
     "integerAndRawState": "exact",
     "x87Arithmetic": "binary64 normalized with exact signed-zero, infinity, and NaN class",
     "simdFloatingPoint": "one ULP only for templates declaring rounding sensitivity",
-    "undefinedState": "explicitly masked"
+    "undefinedState": "explicitly masked",
+    "windowsBaselineAuthority": "exact except templates 300 and 301 (Prism x87 deviations), templates 132 through 137 (the VM exposes no i386 BMI1), and templates 138 through 145 (the VM exposes no i386 BMI2); non-authoritative cases require exact interpreter/JIT parity plus the SDM expectation",
+    "bmi1Qualification": "Windows rejected templates 132 through 136 and decoded template 137 as legacy BSF; all six attempted results are retained, independent SDM checks and exact interpreter/JIT parity pass, and SharpWine advertises BMI1 for macOS ARM64 compatibility",
+    "bmi2Qualification": "Windows exited 255 for all eight directly attempted BMI2 templates 138 through 145; SharpWine's BZHI, PDEP, PEXT, MULX, SHLX, SHRX, SARX, and RORX pass independent semantic checks, exact interpreter/JIT parity, precise state and cross-page fault tests, a loaded multi-instruction guest-program witness, and the complete 65536-case replay, so BMI2 is advertised for macOS ARM64 compatibility",
+    "rdtscpQualification": "Windows executes RDTSCP and returned TSC_AUX zero, but its host-derived timestamp is non-authoritative for SharpWine's deterministic policy; the GEM adapter returns the epoch-zero committed-retired counter with TSC_AUX zero, and prefixed-length, one-step, whole/split quantum, interpreter/JIT, CPUID, and both 65536-case golden replay gates pass"
   },
   "promotedRegressions": [
     {
@@ -85,5 +89,5 @@
       "defect": "SCAS subtraction operand order produced reversed arithmetic flags"
     }
   ],
-  "qualificationBoundary": "The accepted development evidence ends after shard 4 ordinal 3928. The remaining generated cases were intentionally not executed and are not claimed by this record."
+  "qualificationBoundary": "The accepted development evidence covers all 16 shards through shard 15 ordinal 4095."
 }

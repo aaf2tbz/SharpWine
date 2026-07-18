@@ -1,0 +1,286 @@
+From 0000000000000000000000000000000000000026 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: execute native i386 avx cross-lane forms
+
+Implement AVX broadcasts, immediate and variable in-lane permutations,
+128-bit lane permutation/insertion/extraction, VTEST/VPTEST flag semantics,
+and four-operand variable blends in the portable GEM helper. Snapshot every
+source before committing overlapping destinations and preserve exact memory
+widths and YMM upper-lane behavior in both interpreter and JIT execution.
+
+---
+diff -ruN --exclude=*.orig a/blink/avx.c b/blink/avx.c
+--- a/blink/avx.c	2026-07-18 01:32:17
++++ b/blink/avx.c	2026-07-18 01:33:37
+@@ -6,6 +6,7 @@
+ 
+ #include <string.h>
+ 
++#include "blink/flags.h"
+ #include "blink/jit.h"
+ #include "blink/modrm.h"
+ #include "blink/rde.h"
+@@ -111,6 +112,48 @@
+       return !Ymm(rde) && pp == 1;
+     case 0xe7:
+       return pp == 1;
++    default:
++      return false;
++  }
++}
++
++static bool SupportsSpecial(u64 rde) {
++  unsigned map = Opmap(rde);
++  unsigned op = Opcode(rde);
++  if (Prefix(rde) != 1) return false;
++  if (map == XED_ILD_MAP2) {
++    switch (op) {
++      case 0x0c:
++      case 0x0d:
++        return true;
++      case 0x0e:
++      case 0x0f:
++      case 0x17:
++        return Vreg(rde) == 0;
++      case 0x18:
++        return !IsModrmRegister(rde);
++      case 0x19:
++      case 0x1a:
++        return Ymm(rde) && !IsModrmRegister(rde);
++      default:
++        return false;
++    }
++  }
++  if (map != XED_ILD_MAP3) return false;
++  switch (op) {
++    case 0x04:
++    case 0x05:
++      return Vreg(rde) == 0;
++    case 0x06:
++    case 0x18:
++      return Ymm(rde);
++    case 0x19:
++      return Ymm(rde) && Vreg(rde) == 0;
++    case 0x4a:
++    case 0x4b:
++      return true;
++    case 0x4c:
++      return !Ymm(rde);
+     default:
+       return false;
+   }
+@@ -124,6 +167,7 @@
+   pp = Prefix(rde);
+   if (map == XED_ILD_MAP1 && op == 0x77) return pp == 0;
+   if (SupportsStore(rde)) return true;
++  if (SupportsSpecial(rde)) return true;
+   if (Ymm(rde)) return map == XED_ILD_MAP1 && Supports256(op, pp);
+   if (SupportsPromoted128(map, op, pp)) {
+     return GetOp(Mopcode(rde)) != OpUd;
+@@ -343,8 +387,193 @@
+     memcpy(destination, source, size);
+   }
+   if (m->stashaddr) CommitStash(m);
++}
++
++static void ReadRegisterVector(struct Machine *m, unsigned reg, size_t size,
++                               u8 out[32]) {
++  memcpy(out, m->xmm[reg], 16);
++  if (size == 32) memcpy(out + 16, m->ymm_upper[reg], 16);
++}
++
++static void ReadOperandVector(P, size_t size, u8 out[32]) {
++  const u8 *source;
++  if (IsModrmRegister(rde)) {
++    ReadRegisterVector(m, RexbRm(rde), size, out);
++  } else {
++    source = ComputeReserveAddressRead(A, size);
++    memcpy(out, source, size);
++  }
+ }
+ 
++static void WriteRegisterVector(struct Machine *m, unsigned reg, size_t size,
++                                const u8 in[32]) {
++  memcpy(m->xmm[reg], in, 16);
++  if (size == 32)
++    memcpy(m->ymm_upper[reg], in + 16, 16);
++  else
++    memset(m->ymm_upper[reg], 0, 16);
++}
++
++static void RunAvxBroadcast(P) {
++  u8 result[32];
++  const u8 *source;
++  size_t lane_size, size;
++  unsigned i, op;
++  op = Opcode(rde);
++  size = Ymm(rde) ? 32 : 16;
++  lane_size = op == 0x18 ? 4 : op == 0x19 ? 8 : 16;
++  source = ComputeReserveAddressRead(A, lane_size);
++  for (i = 0; i < size; i += lane_size) {
++    memcpy(result + i, source, lane_size);
++  }
++  WriteRegisterVector(m, RexrReg(rde), size, result);
++}
++
++static void RunAvxPermil(P) {
++  u8 data[32], control[32], result[32];
++  size_t size;
++  unsigned i, lane, op, select;
++  size = Ymm(rde) ? 32 : 16;
++  op = Opcode(rde);
++  if (Opmap(rde) == XED_ILD_MAP2) {
++    ReadRegisterVector(m, Vreg(rde), size, data);
++    ReadOperandVector(A, size, control);
++    if (op == 0x0c) {
++      for (i = 0; i < size / 4; ++i) {
++        lane = i & ~3u;
++        memcpy(result + 4 * i, data + 4 * (lane + (control[4 * i] & 3)), 4);
++      }
++    } else {
++      for (i = 0; i < size / 8; ++i) {
++        lane = i & ~1u;
++        select = (control[8 * i] >> 1) & 1;
++        memcpy(result + 8 * i, data + 8 * (lane + select), 8);
++      }
++    }
++  } else {
++    ReadOperandVector(A, size, data);
++    if (op == 0x04) {
++      for (i = 0; i < size / 4; ++i) {
++        lane = i & ~3u;
++        select = (uimm0 >> (2 * (i & 3))) & 3;
++        memcpy(result + 4 * i, data + 4 * (lane + select), 4);
++      }
++    } else {
++      for (i = 0; i < size / 8; ++i) {
++        lane = i & ~1u;
++        select = (uimm0 >> i) & 1;
++        memcpy(result + 8 * i, data + 8 * (lane + select), 8);
++      }
++    }
++  }
++  WriteRegisterVector(m, RexrReg(rde), size, result);
++}
++
++static void RunAvxPerm2f128(P) {
++  u8 first[32], second[32], result[32];
++  unsigned select;
++  ReadRegisterVector(m, Vreg(rde), 32, first);
++  ReadOperandVector(A, 32, second);
++  select = uimm0 & 3;
++  if (uimm0 & 8)
++    memset(result, 0, 16);
++  else
++    memcpy(result, select < 2 ? first + 16 * select : second + 16 * (select - 2),
++           16);
++  select = (uimm0 >> 4) & 3;
++  if (uimm0 & 0x80)
++    memset(result + 16, 0, 16);
++  else
++    memcpy(result + 16,
++           select < 2 ? first + 16 * select : second + 16 * (select - 2), 16);
++  WriteRegisterVector(m, RexrReg(rde), 32, result);
++}
++
++static void RunAvxInsertf128(P) {
++  u8 first[32], second[32];
++  ReadRegisterVector(m, Vreg(rde), 32, first);
++  ReadOperandVector(A, 16, second);
++  memcpy(first + 16 * (uimm0 & 1), second, 16);
++  WriteRegisterVector(m, RexrReg(rde), 32, first);
++}
++
++static void RunAvxExtractf128(P) {
++  u8 source[32], *destination;
++  ReadRegisterVector(m, RexrReg(rde), 32, source);
++  if (IsModrmRegister(rde)) {
++    WriteRegisterVector(m, RexbRm(rde), 16, source + 16 * (uimm0 & 1));
++  } else {
++    destination = ComputeReserveAddressWrite(A, 16);
++    memcpy(destination, source + 16 * (uimm0 & 1), 16);
++    if (m->stashaddr) CommitStash(m);
++  }
++}
++
++static void SetTestFlags(struct Machine *m, bool zero, bool carry) {
++  m->flags = SetFlag(m->flags, FLAGS_ZF, zero);
++  m->flags = SetFlag(m->flags, FLAGS_CF, carry);
++  m->flags = SetFlag(m->flags, FLAGS_AF, false);
++  m->flags = SetFlag(m->flags, FLAGS_OF, false);
++  m->flags = SetFlag(m->flags, FLAGS_PF, false);
++  m->flags = SetFlag(m->flags, FLAGS_SF, false);
++}
++
++static void RunAvxTest(P) {
++  u8 first[32], second[32];
++  size_t size;
++  unsigned i, mask, stride;
++  bool andv, andnv;
++  size = Ymm(rde) ? 32 : 16;
++  ReadRegisterVector(m, RexrReg(rde), size, first);
++  ReadOperandVector(A, size, second);
++  andv = false;
++  andnv = false;
++  stride = Opcode(rde) == 0x0e ? 4 : Opcode(rde) == 0x0f ? 8 : 1;
++  mask = stride == 1 ? 0xff : 0x80;
++  for (i = stride - 1; i < size; i += stride) {
++    andv |= (first[i] & second[i] & mask) != 0;
++    andnv |= ((~first[i]) & second[i] & mask) != 0;
++  }
++  SetTestFlags(m, !andv, !andnv);
++}
++
++static void RunAvxBlendVariable(P) {
++  u8 first[32], second[32], mask[32], result[32];
++  size_t size;
++  unsigned i, stride;
++  size = Ymm(rde) ? 32 : 16;
++  ReadRegisterVector(m, Vreg(rde), size, first);
++  ReadOperandVector(A, size, second);
++  ReadRegisterVector(m, (uimm0 >> 4) & 7, size, mask);
++  stride = Opcode(rde) == 0x4a ? 4 : Opcode(rde) == 0x4b ? 8 : 1;
++  for (i = 0; i < size; i += stride) {
++    memcpy(result + i, (mask[i + stride - 1] & 0x80) ? second + i : first + i,
++           stride);
++  }
++  WriteRegisterVector(m, RexrReg(rde), size, result);
++}
++
++static void RunAvxSpecial(P) {
++  unsigned map = Opmap(rde);
++  unsigned op = Opcode(rde);
++  if (map == XED_ILD_MAP2 && op >= 0x18 && op <= 0x1a) {
++    RunAvxBroadcast(A);
++  } else if ((map == XED_ILD_MAP2 && (op == 0x0c || op == 0x0d)) ||
++             (map == XED_ILD_MAP3 && (op == 0x04 || op == 0x05))) {
++    RunAvxPermil(A);
++  } else if (map == XED_ILD_MAP3 && op == 0x06) {
++    RunAvxPerm2f128(A);
++  } else if (map == XED_ILD_MAP3 && op == 0x18) {
++    RunAvxInsertf128(A);
++  } else if (map == XED_ILD_MAP3 && op == 0x19) {
++    RunAvxExtractf128(A);
++  } else if (map == XED_ILD_MAP2 && (op == 0x0e || op == 0x0f || op == 0x17)) {
++    RunAvxTest(A);
++  } else {
++    RunAvxBlendVariable(A);
++  }
++}
++
+ static void RunAvxFoundation(P) {
+   u8 initial[2][16], source[2][16], result[2][16];
+   const u8 *memory_source;
+@@ -355,6 +584,10 @@
+     RunAvxStore(A);
+     return;
+   }
++  if (SupportsSpecial(rde)) {
++    RunAvxSpecial(A);
++    return;
++  }
+ 
+   if (Opcode(rde) == 0x77) {
+     unsigned i;
+

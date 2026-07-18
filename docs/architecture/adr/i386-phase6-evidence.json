@@ -1,0 +1,85 @@
+{
+  "schema": "sharpwine.i386.phase6.evidence.v1",
+  "capturedAt": "2026-07-18",
+  "w10ImplementationRevision": "489f7d6",
+  "host": "macOS-arm64",
+  "guest": "i386-legacy32",
+  "engine": "SharpWine GEM/Blink interpreter and native ARM64 JIT",
+  "capabilityPolicy": {
+    "authority": "SharpWine semantic, state, fault, interpreter/JIT, corpus, and guest-program loading evidence",
+    "oracle": "comparison only; never a ceiling or veto",
+    "missingHandler": "attempt deliberate native implementation before masking",
+    "provenFamily": "retain and advertise",
+    "silentFallback": false,
+    "rosetta": false
+  },
+  "lockedEvidence": {
+    "capabilities": {
+      "path": "docs/architecture/adr/i386-phase6-capabilities.json",
+      "sha256": "c1cf10dd4b0bc9704b7ea751b958c3a2a568e3f0cb3d5af2bfeca6f3329b5984"
+    },
+    "performanceAndApplications": {
+      "path": "docs/architecture/adr/i386-phase6-performance-evidence.json",
+      "sha256": "5923c75d0cd00c1bf79e14ab24ef6fc91c9e3fbb9c17b94717229082c91b7299"
+    },
+    "blinkProvenance": {
+      "path": "docs/architecture/adr/0008-blink-embedding.provenance.json",
+      "sha256": "68d22b03875b7b11aad05e2ac46f2a1bc9bfd8715cefdfe75ea5586f74d6e93a"
+    },
+    "w10BlinkPatch": {
+      "path": "third_party/patches/blink/0047-gem-i386-aligned-simd-stores.patch",
+      "sha256": "efbd0eb8a558db2403cc09d427cadd019d9346e41a5d1eec374e423aca89126d"
+    }
+  },
+  "w10ProgramLoading": {
+    "application": "Notepad++ 8.9.7 32-bit portable",
+    "archiveSha256": "ce0690fac91c1fc5d61dcdf5b09733ff0d143a61d0a27c6cb9f4003ea92765bb",
+    "guestPath": "C:\\npp-8.9.7\\notepad++.exe",
+    "interpreterWindowLoaded": true,
+    "productionJitWindowLoaded": true,
+    "nativeWindowTitle": "new 1 - Notepad++ [Administrator]",
+    "nativeWindowSize": [1016, 705],
+    "xmlResourcesValid": ["stylers.xml", "langs.xml"],
+    "unsupportedInstruction": false,
+    "cpuidMaskAdded": false,
+    "silentFallback": false,
+    "accepted": true,
+    "persistentWindowCheckpoint": {
+      "capturedAt": "2026-07-18T17:07:32-0600",
+      "distribution": "official 32-bit minimalist portable",
+      "archiveSha256": "6700cafa0ade7d79f0c51edc881d3af83f79110c3cb4a1b54cb1248454aa501e",
+      "executableSha256": "f54d67663a6356f69c1be302f2dfb82c6b7a66f72e4d86c1e3fe3a6ac413d6e9",
+      "runtimeDylibSha256": "5ee0d37d4f075b3562587765aecb9d006a02ff5932e5f3c20eb8fad5223959b3",
+      "arguments": ["-noPlugin", "-nosession"],
+      "timeToQualifyingCaptureSeconds": 139.752,
+      "persistentRecapture": true,
+      "completeFrameVisible": true,
+      "typedGlyphUsedAsWindowProof": false,
+      "w11StartupTargetStillOpen": true
+    }
+  },
+  "freshVerification": {
+    "buildType": "Release",
+    "configuredTestsPassed": 37,
+    "configuredTestsFailed": 0,
+    "gemI386JitBridgePassed": true,
+    "gemI386InterpreterBridgePassed": true,
+    "formatPassed": true,
+    "repositoryPolicyPassed": true,
+    "winePatchValidationPassed": true,
+    "blinkProvenanceAuditPassed": true,
+    "zeroRosettaPassed": true
+  },
+  "w11FinalGate": {
+    "status": "open",
+    "launchTargetSeconds": 15,
+    "observedJitUpperBoundSeconds": 267,
+    "observedInputLatencySeconds": 5,
+    "openWork": [
+      "consistent clean Notepad++ launch within 15 seconds",
+      "responsive typing",
+      "complete menu and overlay repaint without pointer-hover exposure",
+      "final CI and release readiness"
+    ]
+  }
+}

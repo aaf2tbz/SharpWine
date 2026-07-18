@@ -12,6 +12,10 @@ MAGIC = b"SWP5GLD1"
 SCHEMA = 1
 MASTER_SEED = 0x534841525057494E
 CASES_PER_SHARD = 4096
+NON_AUTHORITATIVE_BASELINE_TEMPLATES = frozenset(
+    {132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 300, 301})
+BASELINE_UNAVAILABLE_TEMPLATES = frozenset(
+    {132, 133, 134, 135, 136, 138, 139, 140, 141, 142, 143, 144, 145})
 
 
 def main() -> int:
@@ -34,11 +38,35 @@ def main() -> int:
                 raise ValueError(f"non-canonical identity at result {index}")
             if row.get("classification") != "pass":
                 raise ValueError(f"non-passing result at {shard}/{ordinal}")
-            records = [row.get(name, {}).get("record") for name in
-                       ("baseline", "interpreter", "jit")]
-            if any(not record for record in records):
-                raise ValueError(f"missing record at {shard}/{ordinal}")
-            values = {record.get("compatibilityHash") for record in records}
+            baseline = row.get("baseline", {}).get("record")
+            interpreter = row.get("interpreter", {}).get("record")
+            jit = row.get("jit", {}).get("record")
+            if not interpreter or not jit:
+                raise ValueError(f"missing engine record at {shard}/{ordinal}")
+            template_ids = {record.get("templateId") for record in (interpreter, jit)}
+            if len(template_ids) != 1 or None in template_ids:
+                raise ValueError(f"template mismatch at {shard}/{ordinal}")
+            template_id = int(template_ids.pop())
+            if template_id in NON_AUTHORITATIVE_BASELINE_TEMPLATES:
+                if not baseline and template_id not in BASELINE_UNAVAILABLE_TEMPLATES:
+                    raise ValueError(f"missing non-authoritative baseline at {shard}/{ordinal}")
+                if row.get("baselineAuthoritative") is not False or \
+                   row.get("comparisonPolicy") != "interpreter-jit-sdm":
+                    raise ValueError(f"missing non-authoritative policy at {shard}/{ordinal}")
+                if interpreter.get("sdmExpectation") is not True or \
+                   jit.get("sdmExpectation") is not True:
+                    raise ValueError(f"SDM expectation failed at {shard}/{ordinal}")
+                values = {interpreter.get("compatibilityHash"), jit.get("compatibilityHash")}
+            else:
+                if not baseline:
+                    raise ValueError(f"missing baseline record at {shard}/{ordinal}")
+                if row.get("baselineAuthoritative") is not True or \
+                   row.get("comparisonPolicy") != "three-way-exact":
+                    raise ValueError(f"missing authoritative policy at {shard}/{ordinal}")
+                if baseline.get("templateId") != template_id:
+                    raise ValueError(f"baseline template mismatch at {shard}/{ordinal}")
+                values = {record.get("compatibilityHash") for record in
+                          (baseline, interpreter, jit)}
             if len(values) != 1 or None in values:
                 raise ValueError(f"compatibility mismatch at {shard}/{ordinal}")
             hashes.append(int(values.pop(), 16))

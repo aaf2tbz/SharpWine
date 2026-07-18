@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000022 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@users.noreply.github.com>
+Date: Sat, 18 Jul 2026 06:50:00 -0600
+Subject: [PATCH 22/22] ntdll: handle native GEM boundary reentry
+
+---
+ dlls/ntdll/unix/loader.c       |  6 ++++++
+ dlls/ntdll/unix/signal_arm64.c | 35 +++++++++++++++++++++++++++++++++++
+ dlls/ntdll/unix/unix_private.h |  4 ++++
+ 3 files changed, 45 insertions(+)
+
+diff --git a/dlls/ntdll/unix/loader.c b/dlls/ntdll/unix/loader.c
+index fb33b115f5..6d6be4003a 100644
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -106,6 +106,10 @@ void *pLdrInitializeThunk = NULL;
+ void *pRtlUserThreadStart = NULL;
+ void *p__wine_ctrl_routine = NULL;
+ SYSTEM_DLL_INIT_BLOCK *pLdrSystemDllInitBlock = NULL;
++#ifdef __APPLE__
++void *pGemSyscallDispatcher = NULL;
++void *pGemUnixCallDispatcher = NULL;
++#endif
+ 
+ #ifdef __GNUC__
+ static void fatal_error( const char *err, ... ) __attribute__((noreturn, format(printf,1,2)));
+@@ -1683,6 +1687,8 @@ static void load_ntdll_functions( HMODULE module )
+             module, redirect_arm64ec_rva( module,
+                 (char *)p__wine_gem_unix_call_dispatcher - (char *)module, metadata ));
+     }
++    pGemSyscallDispatcher = p__wine_gem_syscall_dispatcher;
++    pGemUnixCallDispatcher = p__wine_gem_unix_call_dispatcher;
+     if (!set_named_export_pointers( module, exports, "__wine_syscall_dispatcher",
+                                     p__wine_gem_syscall_dispatcher ))
+         ERR( "__wine_syscall_dispatcher not found\n" );
+diff --git a/dlls/ntdll/unix/signal_arm64.c b/dlls/ntdll/unix/signal_arm64.c
+index 0c95256449..3baee760ff 100644
+--- a/dlls/ntdll/unix/signal_arm64.c
++++ b/dlls/ntdll/unix/signal_arm64.c
+@@ -1856,6 +1856,37 @@ static BOOL handle_syscall_fault( struct thread_data *data, ucontext_t *context,
+  *
+  * Handler for SIGSEGV and related errors.
+  */
++#ifdef __APPLE__
++static BOOL handle_native_gem_boundary( ucontext_t *sigcontext )
++{
++    struct gem_thread_context context = {0};
++    const unixlib_entry_t *table;
++    ULONG_PTR result;
++    unsigned int i;
++
++    if ((void *)PC_sig(sigcontext) == pGemSyscallDispatcher)
++    {
++        for (i = 0; i < 31; ++i) context.x[i] = REGn_sig(i, sigcontext);
++        context.sp = SP_sig(sigcontext);
++        result = gem_call_syscall( &context );
++        REGn_sig(0, sigcontext) = result;
++        PC_sig(sigcontext) = context.x[30];
++        LR_sig(sigcontext) = context.x[9];
++        return TRUE;
++    }
++    if ((void *)PC_sig(sigcontext) == pGemUnixCallDispatcher)
++    {
++        table = (const unixlib_entry_t *)(uintptr_t)REGn_sig(0, sigcontext);
++        result = table[REGn_sig(1, sigcontext)](
++            (void *)(uintptr_t)REGn_sig(2, sigcontext) );
++        REGn_sig(0, sigcontext) = result;
++        PC_sig(sigcontext) = LR_sig(sigcontext);
++        return TRUE;
++    }
++    return FALSE;
++}
++#endif
++
+ static void segv_handler( int signal, siginfo_t *siginfo, void *_sigcontext )
+ {
+     ucontext_t *sigcontext = _sigcontext;
+@@ -1864,6 +1895,10 @@ static void segv_handler( int signal, siginfo_t *siginfo, void *_sigcontext )
+     EXCEPTION_RECORD rec = { .ExceptionAddress = (void *)PC_sig(sigcontext) };
+     DWORD64 esr = get_fault_esr( sigcontext );
+ 
++#ifdef __APPLE__
++    if (handle_native_gem_boundary( sigcontext )) return;
++#endif
++
+     switch (ESR_ELx_EC(esr))
+     {
+     case ESR_ELx_EC_IABT_LOW:
+diff --git a/dlls/ntdll/unix/unix_private.h b/dlls/ntdll/unix/unix_private.h
+index e00ddb74b7..8a60c95ee4 100644
+--- a/dlls/ntdll/unix/unix_private.h
++++ b/dlls/ntdll/unix/unix_private.h
+@@ -204,6 +204,10 @@ extern void *pLdrInitializeThunk;
+ extern void *pRtlUserThreadStart;
+ extern void *p__wine_ctrl_routine;
+ extern SYSTEM_DLL_INIT_BLOCK *pLdrSystemDllInitBlock;
++#ifdef __APPLE__
++extern void *pGemSyscallDispatcher;
++extern void *pGemUnixCallDispatcher;
++#endif
+ 
+ struct _FILE_FS_DEVICE_INFORMATION;
+ 
+-- 
+2.50.1

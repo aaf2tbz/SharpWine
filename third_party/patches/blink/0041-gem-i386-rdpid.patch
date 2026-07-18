@@ -1,0 +1,12 @@
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2307,7 +2307,8 @@
+    * Keep their decoded forms outside the Blink execution boundary. */
+   if (legacy32 &&
+       (Mopcode(rde) == 0x131 ||
+-       (Mopcode(rde) == 0x1c7 && ModrmReg(rde) >= 6) ||
++       (Mopcode(rde) == 0x1c7 &&
++        (ModrmReg(rde) == 6 || (ModrmReg(rde) == 7 && Rep(rde) != 3))) ||
+        (Mopcode(rde) == 0x1ae && Rep(rde) && ModrmReg(rde) <= 3) ||
+        (Mopcode(rde) == 0x1ae && !Rep(rde) && !IsModrmRegister(rde) &&
+         ModrmReg(rde) == 6) ||

@@ -4,7 +4,7 @@
 
 #include "metalsharp/gem/i386_engine.h"
 
-#define GEM_I386_ENGINE_OPS_ABI_VERSION UINT32_C(1)
+#define GEM_I386_ENGINE_OPS_ABI_VERSION UINT32_C(3)
 
 struct gem_i386_runtime;
 
@@ -26,7 +26,9 @@ struct gem_i386_engine_ops {
     enum gem_stop_reason (*run)(struct gem_i386_runtime *runtime, const struct gem_i386_context *in,
                                 struct gem_i386_context *out, uint32_t budget, uint32_t *retired);
     bool (*engine_info)(const struct gem_i386_runtime *runtime, struct gem_i386_engine_info *out);
+    bool (*block_info)(const struct gem_i386_runtime *runtime, struct gem_i386_block_info *out);
     bool (*invalidate_code)(struct gem_i386_runtime *runtime, uint32_t address, uint64_t size);
+    bool (*invalidate_memory)(struct gem_i386_runtime *runtime, uint32_t address, uint64_t size);
 };
 
 extern const struct gem_i386_engine_ops gem_i386_blink_jit_ops;

@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000021 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: advertise deterministic i386 rdtscp
+
+Advertise RDTSCP only in the legacy-32 profile after GEM takes ownership of
+its deterministic virtual timestamp and fixed-zero TSC_AUX result. The host
+counter implementation remains excluded at the adapter boundary.
+
+---
+ blink/cpuid.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+--- a/blink/cpuid.c
++++ b/blink/cpuid.c
+@@ -187,8 +187,8 @@ void OpCpuid(P) {
+       break;
+     case 0x80000001:
+       if (legacy) {
+-        dx = (1u << 0) | (1u << 8) | (1u << 15) | (1u << 23) |
+-             (1u << 24);
++        dx = (1u << 0) | (1u << 8) | (1u << 15) | (1u << 23) |
++             (1u << 24) | (1u << 27);
+         break;
+       }
+       jit = !IsJitDisabled(&m->system->jit);

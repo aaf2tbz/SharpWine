@@ -557,7 +557,8 @@ enum gem_wine_status gem_wine_process_prepare_i386(struct gem_wine_process *proc
     enum gem_wine_status status = GEM_WINE_OK;
     if (process == NULL || config == NULL || config->version != GEM_WINE_I386_CONFIG_VERSION ||
         config->struct_size != sizeof(*config) ||
-        (config->flags & ~GEM_WINE_I386_FLAG_INTERPRETER_ORACLE) != 0U ||
+        (config->flags &
+         ~(GEM_WINE_I386_FLAG_INTERPRETER_ORACLE | GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY)) != 0U ||
         !zero_dwords(config->reserved, sizeof(config->reserved) / sizeof(config->reserved[0])) ||
         !validate_i386_ntdll(process, config))
         return GEM_WINE_INVALID_ARGUMENT;
@@ -679,18 +680,44 @@ enum gem_wine_status gem_wine_process_commit_i386_host(struct gem_wine_process *
         gem_i386_memory_commit_host(process->memory, address, host, size, protection));
 }
 
+static enum gem_wine_status invalidate_precise_i386_pages(struct gem_wine_process *process,
+                                                          uint64_t address, uint64_t size) {
+    struct gem_wine_thread *thread;
+    if (!atomic_load_explicit(&process->i386_routing_enabled, memory_order_acquire) ||
+        (process->i386_config.flags & GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY) == 0U)
+        return GEM_WINE_OK;
+    if (pthread_mutex_lock(&process->threads_lock) != 0)
+        return GEM_WINE_ENGINE_ERROR;
+    for (thread = process->threads; thread != NULL; thread = thread->next) {
+        if (thread->i386_runtime == NULL)
+            continue;
+        if (pthread_mutex_lock(&thread->runtime_lock) != 0) {
+            (void)pthread_mutex_unlock(&process->threads_lock);
+            return GEM_WINE_ENGINE_ERROR;
+        }
+        gem_i386_runtime_invalidate_memory(thread->i386_runtime, (uint32_t)address, size);
+        (void)pthread_mutex_unlock(&thread->runtime_lock);
+    }
+    (void)pthread_mutex_unlock(&process->threads_lock);
+    return GEM_WINE_OK;
+}
+
 enum gem_wine_status gem_wine_process_decommit(struct gem_wine_process *process, uint64_t address,
                                                uint64_t size) {
+    enum gem_wine_status status;
     if (process == NULL || !process_guest_range_valid(process, address, size))
         return GEM_WINE_INVALID_ARGUMENT;
-    return memory_status(gem_memory_decommit(process->memory, address, size));
+    status = memory_status(gem_memory_decommit(process->memory, address, size));
+    return status == GEM_WINE_OK ? invalidate_precise_i386_pages(process, address, size) : status;
 }
 
 enum gem_wine_status gem_wine_process_release(struct gem_wine_process *process, uint64_t address,
                                               uint64_t size) {
+    enum gem_wine_status status;
     if (process == NULL || !process_guest_range_valid(process, address, size))
         return GEM_WINE_INVALID_ARGUMENT;
-    return memory_status(gem_memory_release(process->memory, address, size));
+    status = memory_status(gem_memory_release(process->memory, address, size));
+    return status == GEM_WINE_OK ? invalidate_precise_i386_pages(process, address, size) : status;
 }
 
 enum gem_wine_status gem_wine_process_map_identity(struct gem_wine_process *process,
@@ -703,18 +730,22 @@ enum gem_wine_status gem_wine_process_map_identity(struct gem_wine_process *proc
 
 enum gem_wine_status gem_wine_process_unmap(struct gem_wine_process *process, uint64_t address,
                                             uint64_t size) {
+    enum gem_wine_status status;
     if (process == NULL || !process_guest_range_valid(process, address, size))
         return GEM_WINE_INVALID_ARGUMENT;
-    return memory_status(gem_memory_unmap(process->memory, address, size));
+    status = memory_status(gem_memory_unmap(process->memory, address, size));
+    return status == GEM_WINE_OK ? invalidate_precise_i386_pages(process, address, size) : status;
 }
 
 enum gem_wine_status gem_wine_process_protect(struct gem_wine_process *process, uint64_t address,
                                               uint64_t size, uint32_t protection,
                                               uint32_t *old_protection) {
+    enum gem_wine_status status;
     if (process == NULL || !process_guest_range_valid(process, address, size))
         return GEM_WINE_INVALID_ARGUMENT;
-    return memory_status(
+    status = memory_status(
         gem_memory_protect(process->memory, address, size, protection, old_protection));
+    return status == GEM_WINE_OK ? invalidate_precise_i386_pages(process, address, size) : status;
 }
 
 enum gem_wine_status gem_wine_process_bind_kuser(struct gem_wine_process *process,
@@ -748,6 +779,15 @@ enum gem_wine_status gem_wine_process_invalidate_code(struct gem_wine_process *p
     }
     (void)pthread_mutex_unlock(&process->threads_lock);
     return GEM_WINE_OK;
+}
+
+enum gem_wine_status gem_wine_process_notify_memory_dirty(struct gem_wine_process *process,
+                                                          uint64_t address, uint64_t size) {
+    if (process == NULL || !process_guest_range_valid(process, address, size) ||
+        !atomic_load_explicit(&process->i386_routing_enabled, memory_order_acquire) ||
+        (process->i386_config.flags & GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY) == 0U)
+        return GEM_WINE_INVALID_ARGUMENT;
+    return invalidate_precise_i386_pages(process, address, size);
 }
 
 static bool ensure_x86_64_runtime(struct gem_wine_thread *thread) {
@@ -886,6 +926,15 @@ enum gem_wine_status gem_wine_i386_thread_create(struct gem_wine_process *proces
             : GEM_I386_ENGINE_JIT;
     thread->i386_runtime = gem_i386_runtime_create(process->memory, &runtime_config);
     if (thread->i386_runtime == NULL) {
+        (void)pthread_mutex_destroy(&thread->runtime_lock);
+        (void)pthread_mutex_destroy(&thread->run_lock);
+        free(thread);
+        return GEM_WINE_ENGINE_ERROR;
+    }
+    if (!gem_i386_runtime_set_precise_host_dirty(
+            thread->i386_runtime,
+            (process->i386_config.flags & GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY) != 0U)) {
+        gem_i386_runtime_destroy(thread->i386_runtime);
         (void)pthread_mutex_destroy(&thread->runtime_lock);
         (void)pthread_mutex_destroy(&thread->run_lock);
         free(thread);
@@ -1350,21 +1399,25 @@ enum gem_wine_status gem_wine_i386_thread_run(struct gem_wine_thread *thread,
             struct gem_wine_i386_boundary_response response;
             enum gem_wine_status callback_status;
             memset(&request, 0, sizeof(request));
-            request.version = GEM_WINE_BOUNDARY_ABI_VERSION;
+            request.version = GEM_WINE_I386_BOUNDARY_ABI_VERSION;
             request.struct_size = (uint32_t)sizeof(request);
             request.event = run_result.last_event;
             request.context = context;
             request.stop = stop;
             memset(&response, 0, sizeof(response));
-            response.version = GEM_WINE_BOUNDARY_ABI_VERSION;
+            response.version = GEM_WINE_I386_BOUNDARY_ABI_VERSION;
             response.struct_size = (uint32_t)sizeof(response);
             response.context = context;
             ++run_result.boundary_callbacks;
             callback_status =
                 thread->i386_config.boundary(thread->i386_config.opaque, &request, &response);
             if (callback_status != GEM_WINE_OK ||
-                response.version != GEM_WINE_BOUNDARY_ABI_VERSION ||
-                response.struct_size != sizeof(response)) {
+                !((response.version == GEM_WINE_I386_BOUNDARY_ABI_VERSION &&
+                   response.struct_size == sizeof(response)) ||
+                  (response.version == GEM_WINE_I386_BOUNDARY_ABI_VERSION_V1 &&
+                   response.struct_size == GEM_WINE_I386_BOUNDARY_RESPONSE_SIZE_V1 &&
+                   response.context.layout_version <= GEM_I386_CONTEXT_LAYOUT_VERSION_V2 &&
+                   response.context.context_size == GEM_I386_CONTEXT_SIZE_V2))) {
                 run_result.outcome = GEM_WINE_RUN_FAILED;
                 status = GEM_WINE_CALLBACK_ERROR;
                 break;
@@ -1393,5 +1446,20 @@ enum gem_wine_status gem_wine_i386_thread_run(struct gem_wine_thread *thread,
     *out_context = context;
     *result = run_result;
     pthread_cleanup_pop(1);
+    return status;
+}
+
+enum gem_wine_status gem_wine_i386_thread_diagnostics(struct gem_wine_thread *thread,
+                                                      struct gem_i386_diagnostics *diagnostics) {
+    enum gem_wine_status status = GEM_WINE_ENGINE_ERROR;
+    if (thread == NULL || !thread->i386_thread || diagnostics == NULL ||
+        diagnostics->abi_version != GEM_I386_DIAGNOSTICS_ABI_VERSION ||
+        diagnostics->size != sizeof(*diagnostics))
+        return GEM_WINE_INVALID_ARGUMENT;
+    if (pthread_mutex_trylock(&thread->runtime_lock) != 0)
+        return GEM_WINE_CONFLICT;
+    if (gem_i386_runtime_diagnostics(thread->i386_runtime, diagnostics))
+        status = GEM_WINE_OK;
+    (void)pthread_mutex_unlock(&thread->runtime_lock);
     return status;
 }

@@ -69,6 +69,7 @@ add_library(metalsharp_gem STATIC
     src/gem/context_conversion.c
     src/gem/context_serialization.c
     src/gem/i386_context.c
+    src/gem/i386_context_serialization.c
     src/gem/i386_memory.c
     src/gem/memory.c
     src/gem/pe_arm64x.c
@@ -172,6 +173,41 @@ if(MSWR_ENABLE_X64_ENGINE OR MSWR_ENABLE_I386_ENGINE)
         --phase55-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0012-gem-bounded-multi-instruction-run.patch"
         --phase55-optimization-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0013-gem-concurrent-quantum-optimization.patch"
         --phase55-concurrency-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0014-gem-concurrent-host-page-registry.patch"
+        --cmpxchg-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0015-gem-cmpxchg-flag-order.patch"
+        --state-abi-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0016-gem-state-abi-ymm-xcr0.patch"
+        --xsave-foundation-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0017-gem-i386-vex-xsave-foundation.patch"
+        --virtual-tsc-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0018-gem-i386-virtual-tsc-admission.patch"
+        --bmi1-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0019-gem-i386-bmi1.patch"
+        --bmi2-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0020-gem-i386-bmi2.patch"
+        --rdtscp-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0021-gem-i386-rdtscp.patch"
+        --avx-foundation-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0022-gem-i386-avx-foundation.patch"
+        --avx-packed-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0023-gem-i386-avx-packed-lanes.patch"
+        --avx-promoted-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0024-gem-i386-avx-promoted-128.patch"
+        --avx-store-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0025-gem-i386-avx-stores.patch"
+        --avx-cross-lane-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0026-gem-i386-avx-cross-lane.patch"
+        --avx-shift-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0027-gem-i386-avx-immediate-shifts.patch"
+        --avx-misc-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0028-gem-i386-avx-misc-destinations.patch"
+        --avx-mask-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0029-gem-i386-avx-mask-moves.patch"
+        --avx-conversion-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0030-gem-i386-avx-conversions.patch"
+        --avx-inventory-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0031-gem-i386-avx-inventory-closures.patch"
+        --avx-cpuid-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0032-gem-i386-avx-cpuid.patch"
+        --avx2-packed-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0033-gem-i386-avx2-packed-lanes.patch"
+        --avx2-data-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0034-gem-i386-avx2-data-movement.patch"
+        --avx2-memory-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0035-gem-i386-avx2-memory-gather.patch"
+        --avx2-cpuid-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0036-gem-i386-avx2-cpuid.patch"
+        --fma-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0037-gem-i386-fma.patch"
+        --fma-cpuid-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0038-gem-i386-fma-cpuid.patch"
+        --adx-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0039-gem-i386-adx.patch"
+        --adx-cpuid-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0040-gem-i386-adx-cpuid.patch"
+        --rdpid-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0041-gem-i386-rdpid.patch"
+        --rdpid-cpuid-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0042-gem-i386-rdpid-cpuid.patch"
+        --random-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0043-gem-i386-random.patch"
+        --random-cpuid-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0044-gem-i386-random-cpuid.patch"
+        --resident-state-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0045-gem-i386-resident-quantum-state.patch"
+        --block-linking-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0046-gem-i386-block-linking.patch"
+        --aligned-simd-store-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0047-gem-i386-aligned-simd-stores.patch"
+        --precise-host-dirty-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0048-gem-i386-precise-host-dirty.patch"
+        --tiered-resident-fastpath-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0049-gem-i386-tiered-resident-fastpath.patch"
         --capability-manifest "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/i386-phase3-capabilities.json"
         --phase3-corpus "${CMAKE_CURRENT_SOURCE_DIR}/tests/i386_phase3_conformance.c"
         --provenance "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/0008-blink-embedding.provenance.json"
@@ -291,7 +327,7 @@ if(BUILD_TESTING)
         add_test(NAME gem.${test_name} COMMAND ${test_name})
     endforeach()
 
-    foreach(test_name i386_context_test i386_memory_test)
+    foreach(test_name i386_context_test i386_memory_test i386_context_serialization_test)
         add_executable(${test_name} tests/${test_name}.c)
         target_link_libraries(${test_name} PRIVATE metalsharp_gem)
         mswr_enable_warnings(${test_name})
@@ -359,6 +395,17 @@ if(BUILD_TESTING)
         add_test(NAME gem.wine_i386_bridge_conformance COMMAND wine_i386_bridge_conformance)
         set_tests_properties(gem.wine_i386_bridge_conformance PROPERTIES
             LABELS "i386;zero-rosetta;wine-bridge;production-jit")
+
+        add_executable(wine_i386_bridge_interpreter_conformance
+            tests/wine_i386_bridge_conformance.c)
+        target_compile_definitions(wine_i386_bridge_interpreter_conformance PRIVATE
+            GEM_WINE_I386_TEST_INTERPRETER=1)
+        target_link_libraries(wine_i386_bridge_interpreter_conformance PRIVATE metalsharp_gem_wine)
+        mswr_enable_warnings(wine_i386_bridge_interpreter_conformance)
+        add_test(NAME gem.wine_i386_bridge_interpreter_conformance
+            COMMAND wine_i386_bridge_interpreter_conformance)
+        set_tests_properties(gem.wine_i386_bridge_interpreter_conformance PROPERTIES
+            LABELS "i386;zero-rosetta;wine-bridge;interpreter-oracle")
     endif()
 
     if(MSWR_X64_ENGINE_CONFORMANCE)
@@ -397,6 +444,47 @@ if(BUILD_TESTING)
         add_test(NAME gem.i386_engine_ops_conformance COMMAND i386_engine_ops_conformance)
         set_tests_properties(gem.i386_engine_ops_conformance PROPERTIES
             LABELS "i386;zero-rosetta")
+
+        add_executable(i386_handler_trace_conformance tests/i386_handler_trace_conformance.c)
+        target_link_libraries(i386_handler_trace_conformance PRIVATE metalsharp_gem)
+        target_include_directories(i386_handler_trace_conformance PRIVATE
+            "${blink_gem_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+        mswr_enable_warnings(i386_handler_trace_conformance)
+        add_test(NAME gem.i386_handler_trace_conformance COMMAND i386_handler_trace_conformance)
+        set_tests_properties(gem.i386_handler_trace_conformance PROPERTIES
+            LABELS "i386;zero-rosetta")
+
+        add_executable(i386_cmpxchg_flags_test tests/i386_cmpxchg_flags_test.c)
+        target_link_libraries(i386_cmpxchg_flags_test PRIVATE metalsharp_gem)
+        mswr_enable_warnings(i386_cmpxchg_flags_test)
+        add_test(NAME gem.i386_cmpxchg_flags COMMAND i386_cmpxchg_flags_test)
+        set_tests_properties(gem.i386_cmpxchg_flags PROPERTIES LABELS "i386;zero-rosetta")
+
+        add_executable(i386_state_transfer_test tests/i386_state_transfer_test.c)
+        target_link_libraries(i386_state_transfer_test PRIVATE metalsharp_gem)
+        target_include_directories(i386_state_transfer_test PRIVATE
+            "${blink_gem_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+        mswr_enable_warnings(i386_state_transfer_test)
+        add_test(NAME gem.i386_state_transfer COMMAND i386_state_transfer_test)
+        set_tests_properties(gem.i386_state_transfer PROPERTIES LABELS "i386;zero-rosetta")
+
+        add_executable(i386_xsave_foundation_test tests/i386_xsave_foundation_test.c)
+        target_link_libraries(i386_xsave_foundation_test PRIVATE metalsharp_gem)
+        target_include_directories(i386_xsave_foundation_test PRIVATE
+            "${blink_gem_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+        mswr_enable_warnings(i386_xsave_foundation_test)
+        add_test(NAME gem.i386_xsave_foundation COMMAND i386_xsave_foundation_test)
+        set_tests_properties(gem.i386_xsave_foundation PROPERTIES
+            LABELS "faults;i386;page-boundary;zero-rosetta")
+
+        add_executable(i386_virtual_tsc_test tests/i386_virtual_tsc_test.c)
+        target_link_libraries(i386_virtual_tsc_test PRIVATE metalsharp_gem)
+        target_include_directories(i386_virtual_tsc_test PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+        mswr_enable_warnings(i386_virtual_tsc_test)
+        add_test(NAME gem.i386_virtual_tsc COMMAND i386_virtual_tsc_test)
+        set_tests_properties(gem.i386_virtual_tsc PROPERTIES
+            LABELS "i386;zero-rosetta;production-jit;interpreter-oracle")
 
         add_executable(i386_phase55_performance tests/i386_phase55_performance.c)
         target_link_libraries(i386_phase55_performance PRIVATE metalsharp_gem)
@@ -470,6 +558,18 @@ if(BUILD_TESTING)
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/test-phase4-tools.py")
         set_tests_properties(tools.i386_phase4_harness PROPERTIES
             LABELS "i386;randomized-differential;harness")
+
+        add_executable(i386_handler_map_probe tools/i386/i386_handler_map_probe.c)
+        target_link_libraries(i386_handler_map_probe PRIVATE metalsharp_gem)
+        target_include_directories(i386_handler_map_probe PRIVATE
+            "${blink_gem_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src/gem")
+        mswr_enable_warnings(i386_handler_map_probe)
+
+        add_test(NAME tools.i386_trace_coverage
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/test-trace-coverage-tools.py")
+        set_tests_properties(tools.i386_trace_coverage PROPERTIES
+            LABELS "i386;harness"
+            ENVIRONMENT "MSWR_I386_MAP_PROBE=$<TARGET_FILE:i386_handler_map_probe>")
     endif()
 
     if(MSWR_ARM64X_ROUNDTRIP_ARTIFACT_DIR)
@@ -540,11 +640,15 @@ if(BUILD_TESTING)
     set(mswr_assert_test_targets
         context_test context_layout_test gem_headers_cxx_test
         context_conversion_test context_serialization_test memory_test
-        i386_context_test i386_memory_test i386_engine_conformance i386_engine_ops_conformance
+        i386_context_test i386_memory_test i386_context_serialization_test
+        i386_engine_conformance i386_engine_ops_conformance
+        i386_handler_trace_conformance i386_cmpxchg_flags_test i386_state_transfer_test
+        i386_xsave_foundation_test i386_virtual_tsc_test
         i386_phase2_conformance
         i386_phase3_conformance i386_phase4_conformance i386_phase5_ci
         memory_page_isolation_test macos_tso_api_probe
         arm64ec_engine_conformance wine_bridge_conformance wine_i386_bridge_conformance
+        wine_i386_bridge_interpreter_conformance
         x64_engine_conformance
         x86_64_jit_conformance wine_x86_64_bridge_conformance
         arm64x_roundtrip_conformance wine_arm64x_conformance

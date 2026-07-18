@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000027 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: execute native i386 avx immediate shifts
+
+Implement the VEX.128 packed logical, arithmetic, and byte-lane immediate
+shift groups. Decode the opcode-extension field separately from the VEX
+destination, retain architectural over-wide-count behavior, and zero the
+destination YMM upper half through the shared interpreter/JIT helper.
+
+---
+diff -ruN --exclude=*.orig a/blink/avx.c b/blink/avx.c
+--- a/blink/avx.c	2026-07-18 01:39:11
++++ b/blink/avx.c	2026-07-18 01:39:37
+@@ -6,6 +6,7 @@
+ 
+ #include <string.h>
+ 
++#include "blink/endian.h"
+ #include "blink/flags.h"
+ #include "blink/jit.h"
+ #include "blink/modrm.h"
+@@ -121,6 +122,14 @@
+   unsigned map = Opmap(rde);
+   unsigned op = Opcode(rde);
+   if (Prefix(rde) != 1) return false;
++  if (map == XED_ILD_MAP1 && !Ymm(rde)) {
++    if (op == 0x71) return ModrmReg(rde) == 2 || ModrmReg(rde) == 4 ||
++                           ModrmReg(rde) == 6;
++    if (op == 0x72) return ModrmReg(rde) == 2 || ModrmReg(rde) == 4 ||
++                           ModrmReg(rde) == 6;
++    if (op == 0x73) return ModrmReg(rde) == 2 || ModrmReg(rde) == 3 ||
++                           ModrmReg(rde) == 6 || ModrmReg(rde) == 7;
++  }
+   if (map == XED_ILD_MAP2) {
+     switch (op) {
+       case 0x0c:
+@@ -551,12 +560,63 @@
+            stride);
+   }
+   WriteRegisterVector(m, RexrReg(rde), size, result);
++}
++
++static void RunAvxImmediateShift(P) {
++  u8 source[32], result[32] = {0};
++  unsigned count, group, i, op;
++  op = Opcode(rde);
++  group = ModrmReg(rde);
++  count = uimm0;
++  ReadOperandVector(A, 16, source);
++  if (op == 0x71) {
++    for (i = 0; i < 8; ++i) {
++      u16 value = Get16(source + 2 * i);
++      if (group == 2)
++        value = count < 16 ? value >> count : 0;
++      else if (group == 4)
++        value = (i16)value >> (count < 16 ? count : 15);
++      else
++        value = count < 16 ? value << count : 0;
++      Put16(result + 2 * i, value);
++    }
++  } else if (op == 0x72) {
++    for (i = 0; i < 4; ++i) {
++      u32 value = Get32(source + 4 * i);
++      if (group == 2)
++        value = count < 32 ? value >> count : 0;
++      else if (group == 4)
++        value = (i32)value >> (count < 32 ? count : 31);
++      else
++        value = count < 32 ? value << count : 0;
++      Put32(result + 4 * i, value);
++    }
++  } else if (group == 3 || group == 7) {
++    if (count < 16) {
++      if (group == 3)
++        memcpy(result, source + count, 16 - count);
++      else
++        memcpy(result + count, source, 16 - count);
++    }
++  } else {
++    for (i = 0; i < 2; ++i) {
++      u64 value = Get64(source + 8 * i);
++      if (group == 2)
++        value = count < 64 ? value >> count : 0;
++      else
++        value = count < 64 ? value << count : 0;
++      Put64(result + 8 * i, value);
++    }
++  }
++  WriteRegisterVector(m, Vreg(rde), 16, result);
+ }
+ 
+ static void RunAvxSpecial(P) {
+   unsigned map = Opmap(rde);
+   unsigned op = Opcode(rde);
+-  if (map == XED_ILD_MAP2 && op >= 0x18 && op <= 0x1a) {
++  if (map == XED_ILD_MAP1) {
++    RunAvxImmediateShift(A);
++  } else if (map == XED_ILD_MAP2 && op >= 0x18 && op <= 0x1a) {
+     RunAvxBroadcast(A);
+   } else if ((map == XED_ILD_MAP2 && (op == 0x0c || op == 0x0d)) ||
+              (map == XED_ILD_MAP3 && (op == 0x04 || op == 0x05))) {
+

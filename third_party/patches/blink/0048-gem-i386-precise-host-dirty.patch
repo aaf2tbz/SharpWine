@@ -1,0 +1,50 @@
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -343,11 +343,12 @@
+ }
+ static void drop_page(struct blink_gem_machine* g, size_t index) {
++  uint32_t protection = g->pages[index].protection;
+   FreeVirtual(g->system, g->pages[index].address, 4096);
+   memmove(g->pages + index, g->pages + index + 1,
+           (g->page_count - index - 1) * sizeof(g->pages[0]));
+   --g->page_count;
+   ResetTlb(g->machine);
+-  ResetInstructionCache(g->machine);
++  if (protection & 4) ResetInstructionCache(g->machine);
+ }
+ static int rollback_shadow_pages(struct blink_gem_machine* g) {
+   size_t i;
+@@ -1400,6 +1401,22 @@
+   }
+   return true;
+ }
++bool blink_gem_machine_invalidate_memory(struct blink_gem_machine* g,
++                                         uint64_t address, uint64_t size) {
++  uint64_t end;
++  size_t i;
++  if (!g || !size || !canonical(address) ||
++      __builtin_add_overflow(address, size - 1, &end) || !canonical(end))
++    return false;
++  for (i = 0; i < g->page_count;) {
++    if (g->pages[i].address >= (address & UINT64_C(0xfffffffffffff000)) &&
++        g->pages[i].address <= (end & UINT64_C(0xfffffffffffff000)))
++      drop_page(g, i);
++    else
++      ++i;
++  }
++  return true;
++}
+ void blink_gem_machine_trace_reset(struct blink_gem_machine* g) {
+   if (g) {
+     g->trace_count = 0;
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -233,6 +233,8 @@
+                                   struct blink_gem_block_info*);
+ bool blink_gem_machine_invalidate_code(struct blink_gem_machine*, uint64_t,
+                                        uint64_t);
++bool blink_gem_machine_invalidate_memory(struct blink_gem_machine*, uint64_t,
++                                         uint64_t);
+ const char* blink_gem_embedding_version(void);
+ /*
+  * Bounded, machine-owned, decode-order handler trace.  Storage is fixed at

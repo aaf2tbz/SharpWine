@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000021 Mon Sep 17 00:00:00 2001
+From: SharpWine contributors <noreply@sharpwine.dev>
+Date: Sat, 18 Jul 2026 04:29:57 -0600
+Subject: [PATCH 21/21] xtajit: trace GEM i386 execution diagnostics
+
+---
+ dlls/xtajit/unixlib.c | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/dlls/xtajit/unixlib.c b/dlls/xtajit/unixlib.c
+index 7ffc094247..d1e5081a25 100644
+--- a/dlls/xtajit/unixlib.c
++++ b/dlls/xtajit/unixlib.c
+@@ -545,6 +545,7 @@ static NTSTATUS run( void *args )
+     struct gem_wine_thread *thread = NULL;
+     struct thread_entry *entry;
+     struct gem_i386_context input, output;
++    struct gem_i386_diagnostics diagnostics;
+     struct gem_wine_run_result result;
+     enum gem_wine_status status;
+     unsigned int retry;
+@@ -578,6 +579,40 @@ static NTSTATUS run( void *args )
+     TRACE("run status=%u outcome=%u event=%u eip=%08x fault=%08llx access=%u\n",
+           status, result.outcome, result.last_event, output.eip,
+           (unsigned long long)result.stop.fault_address, result.stop.access);
++    memset( &diagnostics, 0, sizeof(diagnostics) );
++    diagnostics.abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION;
++    diagnostics.size = sizeof(diagnostics);
++    if (gem_wine_i386_thread_diagnostics( thread, &diagnostics ) == GEM_WINE_OK)
++        TRACE("diagnostics engine=%s version=%s mode=%u host=%u "
++              "jit_compilations=%llu jit_executions=%llu cache_hits=%llu jit_failures=%llu "
++              "invalidations=%llu fallbacks=%llu unsupported=%llu "
++              "blocks=%llu block_hits=%llu direct_links=%llu call_predictions=%llu "
++              "return_predictions=%llu return_hits=%llu block_invalidations=%llu "
++              "last_eip=%08x last_mopcode=%u last_length=%u last_name=%s "
++              "cpuid_1_ecx=%08x cpuid_1_edx=%08x cpuid_7_ebx=%08x cpuid_7_ecx=%08x "
++              "cpuid_80000001_edx=%08x\n",
++              diagnostics.engine_name, diagnostics.engine_version, diagnostics.engine_mode,
++              diagnostics.host_arch, (unsigned long long)diagnostics.jit_compilations,
++              (unsigned long long)diagnostics.jit_executions,
++              (unsigned long long)diagnostics.jit_cache_hits,
++              (unsigned long long)diagnostics.jit_failures,
++              (unsigned long long)diagnostics.code_invalidations,
++              (unsigned long long)diagnostics.interpreter_fallbacks,
++              (unsigned long long)diagnostics.unsupported_instructions,
++              (unsigned long long)diagnostics.blocks_created,
++              (unsigned long long)diagnostics.block_cache_hits,
++              (unsigned long long)diagnostics.direct_link_hits,
++              (unsigned long long)diagnostics.call_predictions,
++              (unsigned long long)diagnostics.return_predictions,
++              (unsigned long long)diagnostics.return_prediction_hits,
++              (unsigned long long)diagnostics.block_invalidations,
++              diagnostics.last_unsupported_eip, diagnostics.last_unsupported_mopcode,
++              diagnostics.last_unsupported_length, diagnostics.last_unsupported_name,
++              diagnostics.cpuid_leaf1_ecx, diagnostics.cpuid_leaf1_edx,
++              diagnostics.cpuid_leaf7_ebx, diagnostics.cpuid_leaf7_ecx,
++              diagnostics.cpuid_extended1_edx);
++    else
++        TRACE("diagnostics unavailable\n");
+     context_from_gem( &params->context, &output );
+     params->status = status == GEM_WINE_OK || status == GEM_WINE_STOPPED ? STATUS_SUCCESS :
+                      status == GEM_WINE_BUDGET_EXPIRED ? STATUS_TIMEOUT : STATUS_UNSUCCESSFUL;
+-- 
+2.54.0 (Apple Git-157)

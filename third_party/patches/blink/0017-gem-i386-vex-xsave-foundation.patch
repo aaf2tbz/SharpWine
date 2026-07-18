@@ -1,0 +1,269 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Fri, 17 Jul 2026 23:45:00 -0600
+Subject: [PATCH] gem: add i386 vex and xsave foundations
+
+Implement ADR 0013's protected-mode VEX decode foundation, standard-format
+XSAVE/XRSTOR, XGETBV, and general-protection delivery.  The GEM adapter keeps
+all VEX instruction families rejected after decode until their W5 gates, and
+keeps XSAVEOPT rejected rather than inheriting Blink's incorrect MFENCE
+dispatch.  CPUID remains unchanged and masked.
+---
+ blink/gem_embed.c | 11 +++++++
+ blink/gem_embed.h |  3 +-
+ blink/machine.c   | 120 +++++++++++++++++++++++++++++++++++++++++++++++++---
+ blink/machine.h   |  2 +
+ blink/op101.c     |  9 ++++
+ blink/x86.c       |  6 ++-
+ 6 files changed, 144 insertions(+), 7 deletions(-)
+
+--- a/blink/machine.h
++++ b/blink/machine.h
+@@ -401,6 +401,8 @@
+     };  //
+   };  //
+   _Alignas(16) u8 xmm[16][16];      // 128-BIT VECTOR REGISTER FILE
++  _Alignas(16) u8 ymm_upper[8][16]; // GEM LEGACY32 YMM UPPER HALVES
++  u64 xcr0;                         // GEM LEGACY32 EXTENDED-STATE MASK
+   struct XedDecodedInst *xedd;      // ->opcache->icache if non-jit
+   i64 readaddr;                     // so tui can show memory reads
+   i64 writeaddr;                    // so tui can show memory write
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -1302,9 +1302,114 @@
+   m->fpu.ds = Load16(buf + 20);
+ #endif
+   m->mxcsr = Load32(buf + 24);
++}
++
++static u64 GetXsaveMask(struct Machine *m) {
++  u64 mask = (u64)Read32(m->dx) << 32 | Read32(m->ax);
++  if (mask & ~UINT64_C(7)) ThrowProtectionFault(m);
++  return mask & m->xcr0;
++}
++
++static void SerializeX87(struct Machine *m, u8 buf[512]) {
++  int i;
++  Write16(buf + 0, m->fpu.cw);
++#ifndef DISABLE_X87
++  Write16(buf + 2, m->fpu.sw);
++  Write8(buf + 4, m->fpu.tw);
++  Write16(buf + 6, m->fpu.op);
++  Write32(buf + 8, m->fpu.ip);
++  Write16(buf + 12, m->fpu.cs);
++  Write32(buf + 16, m->fpu.dp);
++  Write16(buf + 20, m->fpu.ds);
++  for (i = 0; i < 8; ++i) {
++    if (!memcmp(&m->fpu.st[i], &m->fpu.imported_st[i], sizeof(double)))
++      memcpy(buf + 32 + i * 16, m->fpu.raw_st[i], 10);
++    else
++      SerializeLdbl(buf + 32 + i * 16, m->fpu.st[i]);
++  }
++#else
++  (void)i;
++#endif
++}
++
++static void RestoreX87(struct Machine *m, const u8 buf[512]) {
++  int i;
++  m->fpu.cw = Load16(buf + 0);
++#ifndef DISABLE_X87
++  m->fpu.sw = Load16(buf + 2);
++  m->fpu.tw = Load8(buf + 4);
++  m->fpu.op = Load16(buf + 6);
++  m->fpu.ip = Load32(buf + 8);
++  m->fpu.cs = Load16(buf + 12);
++  m->fpu.dp = Load32(buf + 16);
++  m->fpu.ds = Load16(buf + 20);
++  for (i = 0; i < 8; ++i) {
++    memcpy(m->fpu.raw_st[i], buf + 32 + i * 16, 16);
++    m->fpu.st[i] = DeserializeLdbl(m->fpu.raw_st[i]);
++    m->fpu.imported_st[i] = m->fpu.st[i];
++  }
++#else
++  (void)i;
++#endif
+ }
+ 
+ static void OpXsave(P) {
++  i64 v;
++  u64 mask;
++  void *pages[2];
++  u8 *target;
++  u8 buf[832];
++  mask = GetXsaveMask(m);
++  v = ComputeAddress(A);
++  if (v & 63) ThrowProtectionFault(m);
++  memset(buf, 0, sizeof(buf));
++  if (mask & 1) SerializeX87(m, buf);
++  if (mask & 2) {
++    Write32(buf + 24, m->mxcsr);
++    Write32(buf + 28, 0x0000ffff);
++    memcpy(buf + 160, m->xmm, 128);
++  }
++  Write64(buf + 512, mask);
++  if (mask & 4) memcpy(buf + 576, m->ymm_upper, sizeof(m->ymm_upper));
++  target = BeginStore(m, v, sizeof(buf), pages, buf);
++  if (target != buf) memcpy(target, buf, sizeof(buf));
++  EndStore(m, v, sizeof(buf), pages, buf);
++}
++
++static void OpXrstor(P) {
++  i64 v;
++  u64 mask, present;
++  u8 buf[832];
++  mask = GetXsaveMask(m);
++  v = ComputeAddress(A);
++  if (v & 63) ThrowProtectionFault(m);
++  {
++    u8 *source = Load(m, v, sizeof(buf), buf);
++    if (source != buf) memcpy(buf, source, sizeof(buf));
++  }
++  present = Load64(buf + 512);
++  if ((present & ~m->xcr0) || Load64(buf + 520)) ThrowProtectionFault(m);
++  if (mask & 1) {
++    if (present & 1)
++      RestoreX87(m, buf);
++    else
++      m->fpu.cw = 0x037f;
++  }
++  if (mask & 2) {
++    if (present & 2) {
++      m->mxcsr = Load32(buf + 24);
++      memcpy(m->xmm, buf + 160, 128);
++    } else {
++      m->mxcsr = 0x1f80;
++      memset(m->xmm, 0, 128);
++    }
++  }
++  if (mask & 4) {
++    if (present & 4)
++      memcpy(m->ymm_upper, buf + 576, sizeof(m->ymm_upper));
++    else
++      memset(m->ymm_upper, 0, sizeof(m->ymm_upper));
++  }
+ }
+ 
+ static void OpLdmxcsr(P) {
+@@ -1391,10 +1496,18 @@
+       }
+       break;
+     case 5:
+-      OpLfence(A);
++      if (ismem) {
++        OpXrstor(A);
++      } else {
++        OpLfence(A);
++      }
+       break;
+     case 6:
+-      OpMfence(A);
++      if (ismem) {
++        OpUdImpl(m);
++      } else {
++        OpMfence(A);
++      }
+       break;
+     case 7:
+       if (ismem) {
+@@ -2185,8 +2298,9 @@
+   if (legacy32 &&
+       ((Mopcode(rde) == 0x1c7 && ModrmReg(rde) >= 6) ||
+        (Mopcode(rde) == 0x1ae && Rep(rde) && ModrmReg(rde) <= 3) ||
+-       (Mopcode(rde) == 0x101 &&
+-        (Modrm(rde) == 0xd0 || Modrm(rde) == 0xf9)) ||
++       (Mopcode(rde) == 0x1ae && !Rep(rde) && !IsModrmRegister(rde) &&
++        ModrmReg(rde) == 6) ||
++       (Mopcode(rde) == 0x101 && Modrm(rde) == 0xf9) ||
+        (Mopcode(rde) >= 0x2f2 && Mopcode(rde) <= 0x2f7) ||
+        Mopcode(rde) == 0x3f0))
+     return 0;
+--- a/blink/op101.c
++++ b/blink/op101.c
+@@ -154,6 +154,15 @@
+ void Op101(P) {
+   bool ismem;
+   ismem = !IsModrmRegister(rde);
++  if (!ismem && Modrm(rde) == 0xd0) {
++    if (Read32(m->cx)) ThrowProtectionFault(m);
++    Write32(m->ax, m->xcr0);
++    Write32(m->dx, m->xcr0 >> 32);
++    return;
++  }
++  if (!ismem && Modrm(rde) == 0xd1) {
++    ThrowProtectionFault(m);
++  }
+   switch (ModrmReg(rde)) {
+ #ifndef DISABLE_METAL
+     case 0:
+--- a/blink/x86.c
++++ b/blink/x86.c
+@@ -493,7 +493,11 @@
+ 
+ static int xed_vex_scanner(struct XedDecodedInst *x, int *imm_width,
+                            int *vexvalid) {
+-  if (Mode(x->op.rde) != XED_MODE_LONG) return 0;
++  if (Mode(x->op.rde) == XED_MODE_REAL) return 0;
++  if (Mode(x->op.rde) != XED_MODE_LONG &&
++      (x->length + 1 >= x->op.max_bytes ||
++       (x->bytes[x->length + 1] & 0xc0) != 0xc0))
++    return 0;
+   switch (x->bytes[x->length]) {
+     case 0xC5:
+       return xed_vex_c5_scanner(x, vexvalid);
+--- a/blink/gem_embed.h
++++ b/blink/gem_embed.h
+@@ -111,7 +111,8 @@
+   BLINK_GEM_EXCEPTION_NONE = 0,
+   BLINK_GEM_EXCEPTION_ILLEGAL_INSTRUCTION = 1,
+   BLINK_GEM_EXCEPTION_DIVIDE = 2,
+-  BLINK_GEM_EXCEPTION_OVERFLOW = 3
++  BLINK_GEM_EXCEPTION_OVERFLOW = 3,
++  BLINK_GEM_EXCEPTION_PROTECTION = 4
+ };
+ enum blink_gem_engine {
+   BLINK_GEM_ENGINE_INTERPRETER = 1,
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -541,6 +541,8 @@
+       ImportFlags(m, ExportFlags(m->flags));
+     memcpy(g->ymm_upper, in->ymm_upper, sizeof(g->ymm_upper));
+     g->xcr0 = in->xcr0;
++    memcpy(m->ymm_upper, g->ymm_upper, sizeof(m->ymm_upper));
++    m->xcr0 = g->xcr0;
+     m->gem_access_segment = 0;
+     m->gem_access_offset = 0;
+     m->readaddr = m->writeaddr = 0;
+@@ -663,6 +665,8 @@
+             }
+           }
+           import_state(m, in);
++          memcpy(m->ymm_upper, in->ymm_upper, sizeof(m->ymm_upper));
++          m->xcr0 = in->xcr0;
+           if (mmx) import_mmx_alias(m);
+           m->readaddr = m->writeaddr = 0;
+           m->readsize = m->writesize = 0;
+@@ -710,6 +714,11 @@
+           r.engine_status = BLINK_GEM_EXCEPTION_OVERFLOW;
+           return r;
+         }
++        if (rc == kMachineProtectionFault) {
++          r = result(BLINK_GEM_EXCEPTION);
++          r.engine_status = BLINK_GEM_EXCEPTION_PROTECTION;
++          return r;
++        }
+         if (rc == kMachineDecodeError || rc == kMachineUndefinedInstruction) {
+           r = result(BLINK_GEM_EXCEPTION);
+           r.engine_status = BLINK_GEM_EXCEPTION_ILLEGAL_INSTRUCTION;
+@@ -881,6 +890,8 @@
+       export_integer_state(m, in, out);
+     else
+       export_state(m, in, out);
++    memcpy(g->ymm_upper, m->ymm_upper, sizeof(g->ymm_upper));
++    g->xcr0 = m->xcr0;
+     memcpy(out->ymm_upper, g->ymm_upper, sizeof(out->ymm_upper));
+     out->xcr0 = g->xcr0;
+     if (g->trace_count < BLINK_GEM_MAX_TRACE_ENTRIES) {
+
+-- 
+2.54.0 (Apple Git-157)

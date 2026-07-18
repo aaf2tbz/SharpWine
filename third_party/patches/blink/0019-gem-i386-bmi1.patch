@@ -1,0 +1,210 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Avery Felts <averyfelts@Averys-MacBook-Air.local>
+Date: Sat, 18 Jul 2026 03:10:00 -0600
+Subject: [PATCH] gem: implement i386 bmi1
+
+Implement the 32-bit BMI1 integer family with portable scalar operations,
+retain exact VEX admission for every later family, and advertise BMI1 in the
+deterministic legacy CPUID profile after SDM and interpreter/JIT qualification.
+---
+ blink/bmi2.c     | 92 ++++++++++++++++++++++++++++++++++++++++++++++++
+ blink/cpuid.c    |  2 +-
+ blink/gem_embed.c| 10 ++++--
+ blink/machine.c  |  7 ++--
+ blink/name.c     |  3 ++
+ blink/machine.h  |  3 ++
+ 6 files changed, 111 insertions(+), 6 deletions(-)
+
+--- a/blink/bmi2.c
++++ b/blink/bmi2.c
+@@ -24,6 +24,98 @@
+ #include "blink/modrm.h"
+ #include "blink/rde.h"
+
++#ifndef DISABLE_BMI1
++
++// BMI1
++// ANDN bitwise and with inverted first source
++// BEXTR bit field extract
++// BLSI isolate lowest set bit
++// BLSMSK mask through lowest set bit
++// BLSR reset lowest set bit
++
++static void SetBmi1Flags(struct Machine *m, u32 x, bool cf) {
++  m->flags = SetFlag(m->flags, FLAGS_CF, cf);
++  m->flags = SetFlag(m->flags, FLAGS_ZF, !x);
++  m->flags = SetFlag(m->flags, FLAGS_SF, (i32)x < 0);
++  m->flags = SetFlag(m->flags, FLAGS_OF, false);
++}
++
++void OpAndn(P) {
++  u32 x;
++#ifndef TINY
++  if (Ymm(rde) || Osz(rde) || Rep(rde)) OpUdImpl(m);
++#endif
++  x = ~Get32(RegVreg(m, rde)) &
++      Load32(GetModrmRegisterWordPointerRead4(A));
++  Put32(RegRexrReg(m, rde), x);
++  SetBmi1Flags(m, x, false);
++}
++
++static void OpBextr(P) {
++  u32 x, control, start, length;
++#ifndef TINY
++  if (Ymm(rde)) OpUdImpl(m);
++#endif
++  control = Get32(RegVreg(m, rde));
++  start = control & 255;
++  length = (control >> 8) & 255;
++  x = Load32(GetModrmRegisterWordPointerRead4(A));
++  if (start >= 32) {
++    x = 0;
++  } else {
++    x >>= start;
++    if (length < 32 - start) x &= ((u64)1 << length) - 1;
++  }
++  Put32(RegRexrReg(m, rde), x);
++  m->flags = SetFlag(m->flags, FLAGS_CF, false);
++  m->flags = SetFlag(m->flags, FLAGS_PF, false);
++  m->flags = SetFlag(m->flags, FLAGS_AF, false);
++  m->flags = SetFlag(m->flags, FLAGS_ZF, !x);
++  m->flags = SetFlag(m->flags, FLAGS_SF, false);
++  m->flags = SetFlag(m->flags, FLAGS_OF, false);
++}
++
++void OpBls(P) {
++  u32 x, z = 0;
++#ifndef TINY
++  if (Ymm(rde) || Osz(rde) || Rep(rde)) OpUdImpl(m);
++#endif
++  x = Load32(GetModrmRegisterWordPointerRead4(A));
++  switch (ModrmReg(rde)) {
++    case 1:
++      z = x & (x - 1);
++      SetBmi1Flags(m, z, !x);
++      break;
++    case 2:
++      z = x ^ (x - 1);
++      SetBmi1Flags(m, z, !x);
++      break;
++    case 3:
++      z = x & -x;
++      SetBmi1Flags(m, z, !!x);
++      break;
++    default:
++      OpUdImpl(m);
++  }
++  Put32(RegVreg(m, rde), z);
++}
++
++#endif /* DISABLE_BMI1 */
++
++void Op2f7(P) {
++#ifndef DISABLE_BMI1
++  if (!Osz(rde) && !Rep(rde)) {
++    OpBextr(A);
++    return;
++  }
++#endif
++#ifndef DISABLE_BMI2
++  OpShx(A);
++#else
++  OpUdImpl(m);
++#endif
++}
++
+ #ifndef DISABLE_BMI2
+
+ // BMI2
+--- a/blink/cpuid.c
++++ b/blink/cpuid.c
+@@ -171,7 +171,7 @@ void OpCpuid(P) {
+       switch (Get32(m->cx)) {
+         case 0:
+           if (legacy) {
+-            bx = 1u << 9;  // erms
++            bx = (1u << 3) | (1u << 9);  // bmi1, erms
+             break;
+           }
+           bx |= 1 << 0;   // fsgsbase
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -121,7 +121,8 @@ static int guarded_range(struct blink_gem_machine* g, uint64_t address,
+     page += 4096;
+   }
+ }
+-static int masked_legacy_vex(const struct blink_gem_machine* g, uint64_t address) {
++static int masked_legacy_vex(const struct blink_gem_machine* g,
++                             uint64_t address, long rde) {
+   const struct shadow_page *first = 0, *second = 0;
+   size_t i;
+   u8 lead, payload;
+@@ -132,7 +133,10 @@ static int masked_legacy_vex(const struct blink_gem_machine* g, uint64_t address
+   if (!first || !second) return 0;
+   lead = first->host[address & 4095];
+   payload = second->host[(address + 1) & 4095];
+-  return (lead == 0xc4 || lead == 0xc5) && (payload & 0xc0) == 0xc0;
++  if ((lead != 0xc4 && lead != 0xc5) || (payload & 0xc0) != 0xc0) return 0;
++  return !((Mopcode(rde) == 0x2f2 || Mopcode(rde) == 0x2f3 ||
++            Mopcode(rde) == 0x2f7) &&
++           !Ymm(rde) && !Osz(rde) && !Rep(rde));
+ }
+ static int refresh_page(struct blink_gem_machine* g, struct shadow_page* p,
+                         uint32_t* error) {
+@@ -617,7 +621,7 @@ struct blink_gem_result blink_gem_machine_step(struct blink_gem_machine* g,
+         g->last_decode.name[i] = '\0';
+       }
+       if (g->guest_mode == BLINK_GEM_GUEST_LEGACY_32 &&
+-          masked_legacy_vex(g, fetch_address)) {
++          masked_legacy_vex(g, fetch_address, m->xedd->op.rde)) {
+         m->canhalt = false;
+         return result(BLINK_GEM_UNSUPPORTED);
+       }
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2252,9 +2252,11 @@ nexgen32e_f GetOp(long op) {
+       XLAT(0x241, OpSse4);
+       XLAT(0x2f0, Op2f01);
+       XLAT(0x2f1, Op2f01);
++      XLAT(0x2f2, OpAndn);
++      XLAT(0x2f3, OpBls);
+       XLAT(0x2f5, Op2f5);
+       XLAT(0x2f6, Op2f6);
+-      XLAT(0x2f7, OpShx);
++      XLAT(0x2f7, Op2f7);
+       XLAT(0x2db, OpAesimc);
+       XLAT(0x2dc, OpAesenc);
+       XLAT(0x2dd, OpAesenclast);
+@@ -2302,7 +2304,8 @@ int GemHandlerId(nexgen32e_f handler, long rde, bool legacy32) {
+        (Mopcode(rde) == 0x1ae && !Rep(rde) && !IsModrmRegister(rde) &&
+         ModrmReg(rde) == 6) ||
+        (Mopcode(rde) == 0x101 && Modrm(rde) == 0xf9) ||
+-       (Mopcode(rde) >= 0x2f2 && Mopcode(rde) <= 0x2f7) ||
++       (Mopcode(rde) >= 0x2f4 && Mopcode(rde) <= 0x2f6) ||
++       (Mopcode(rde) == 0x2f7 && (Osz(rde) || Rep(rde))) ||
+        Mopcode(rde) == 0x3f0))
+     return 0;
+   if (handler == OpNop) return 1;
+--- a/blink/name.c
++++ b/blink/name.c
+@@ -579,6 +579,9 @@ const char *DescribeMopcode(int x) {
+     XLAT(0x235, "OpSse4");
+     XLAT(0x237, "OpSse4");
+     XLAT(0x241, "OpSse4");
++    XLAT(0x2f2, "OpAndn");
++    XLAT(0x2f3, "OpBls");
++    XLAT(0x2f7, "Op2f7");
+     XLAT(0x2db, "OpAesimc");
+     XLAT(0x2dc, "OpAesenc");
+     XLAT(0x2dd, "OpAesenclast");
+--- a/blink/machine.h
++++ b/blink/machine.h
+@@ -689,6 +689,9 @@ void OpXchgGbEb(P);
+ void OpXchgGvqpEvqp(P);
+ void Op2f5(P);
+ void Op2f6(P);
++void Op2f7(P);
++void OpAndn(P);
++void OpBls(P);
+ void OpShx(P);
+ void OpRorx(P);

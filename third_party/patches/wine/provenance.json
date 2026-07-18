@@ -139,6 +139,27 @@
       "sha256": "f4cbd77e6f913988bf04b5ded829c5ad87b8289348d756c14f01753a6c7a4271",
       "authoringCommit": "0000000000000000000000000000000000000019",
       "purpose": "Preserve complete fixed-size i386 v2 x87, XMM, flags, and segment metadata across WoW64 callback, syscall, exception, suspend, resume, and context-set transitions."
+    },
+    {
+      "order": 20,
+      "path": "third_party/patches/wine/0020-xtajit-map-i386-avx-xstate.patch",
+      "sha256": "3cdd44940fe0116ba21730b3b73a5597d84462353b4b42d794177b3eab32ea8a",
+      "authoringCommit": "0000000000000000000000000000000000000020",
+      "purpose": "Map standard-format WoW64 CONTEXT_EX AVX state to the GEM i386 ABI-v3 YMM-upper and XCR0 fields while rejecting compacted or undersized layouts, and translate normalized general-protection stops to Windows privileged-instruction exceptions."
+    },
+    {
+      "order": 21,
+      "path": "third_party/patches/wine/0021-xtajit-trace-i386-diagnostics.patch",
+      "sha256": "789c734cf5e1e795dd5730f099cc6698438a30406cf2609aed75354ce652f15d",
+      "authoringCommit": "0000000000000000000000000000000000000021",
+      "purpose": "Trace stable GEM i386 engine identity, JIT/cache/failure/invalidation/zero-fallback counters, genuinely unsupported opcode evidence, and the deterministic CPUID capability profile after every xtajit run."
+    },
+    {
+      "order": 22,
+      "path": "third_party/patches/wine/0022-ntdll-handle-native-gem-boundary-reentry.patch",
+      "sha256": "f5e443560ddc1beba5d6b3830de1b094cb662af84b1072a60de122e67706c7a5",
+      "authoringCommit": "0000000000000000000000000000000000000022",
+      "purpose": "Service native Darwin ARM64 reentry into guest-resident GEM syscall and Unix-call boundaries, preserving Wine service-table execution and ARM64 syscall-stub continuation instead of raising an access violation."
     }
   ],
   "researchEvidence": {

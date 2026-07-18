@@ -222,3 +222,20 @@ int i386_phase4_records_match(const struct i386_phase4_record *left,
         return 0;
     return contexts_match(left, right);
 }
+
+int i386_phase4_sdm_expectation_met(const struct i386_phase4_case *test,
+                                    const struct i386_phase4_record *record) {
+    uint16_t expected_fop;
+    if (!test || !record || test->template_id != record->template_id)
+        return 0;
+    if (test->template_id != 300U && test->template_id != 301U)
+        return 1;
+    expected_fop = test->template_id == 300U ? UINT16_C(0x01e8) : UINT16_C(0x01ee);
+    return record->classification == I386_PHASE4_PASS &&
+           record->stop_reason == GEM_STOP_HOST_RETURN && record->retired_count == 1U &&
+           (record->final.fsw & UINT16_C(0x0241)) == UINT16_C(0x0241) &&
+           (record->final.fsw & UINT16_C(0x3800)) == UINT16_C(0x3800) &&
+           ((record->final.ftw >> 14U) & 3U) == 2U && record->final.fop == expected_fop &&
+           record->final.x87[7].lo == UINT64_C(0xc000000000000000) &&
+           (record->final.x87[7].hi & UINT64_C(0xffff)) == UINT64_C(0xffff);
+}

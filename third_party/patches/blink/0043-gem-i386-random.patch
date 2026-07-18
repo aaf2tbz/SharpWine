@@ -1,0 +1,24 @@
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2308,7 +2308,8 @@
+   if (legacy32 &&
+       (Mopcode(rde) == 0x131 ||
+        (Mopcode(rde) == 0x1c7 &&
+-        (ModrmReg(rde) == 6 || (ModrmReg(rde) == 7 && Rep(rde) != 3))) ||
++        ((ModrmReg(rde) == 6 && Rep(rde)) ||
++         (ModrmReg(rde) == 7 && Rep(rde) != 0 && Rep(rde) != 3))) ||
+        (Mopcode(rde) == 0x1ae && Rep(rde) && ModrmReg(rde) <= 3) ||
+        (Mopcode(rde) == 0x1ae && !Rep(rde) && !IsModrmRegister(rde) &&
+         ModrmReg(rde) == 6) ||
+--- a/blink/rdrand.c
++++ b/blink/rdrand.c
+@@ -39,4 +39,9 @@
+ static void OpRand(P, u64 x) {
+   WriteRegister(rde, RegRexbRm(m, rde), x);
+   m->flags = SetFlag(m->flags, FLAGS_CF, true);
++  m->flags = SetFlag(m->flags, FLAGS_PF, false);
++  m->flags = SetFlag(m->flags, FLAGS_AF, false);
++  m->flags = SetFlag(m->flags, FLAGS_ZF, false);
++  m->flags = SetFlag(m->flags, FLAGS_SF, false);
++  m->flags = SetFlag(m->flags, FLAGS_OF, false);
+ }

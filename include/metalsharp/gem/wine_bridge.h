@@ -4,6 +4,7 @@
 
 #include "metalsharp/gem/context.h"
 #include "metalsharp/gem/i386_context.h"
+#include "metalsharp/gem/i386_engine.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -26,6 +27,11 @@ extern "C" {
 #define GEM_WINE_PROCESS_CONFIG_VERSION UINT32_C(1)
 #define GEM_WINE_THREAD_CONFIG_VERSION UINT32_C(1)
 #define GEM_WINE_BOUNDARY_ABI_VERSION UINT32_C(1)
+#define GEM_WINE_I386_BOUNDARY_ABI_VERSION_V1 UINT32_C(1)
+#define GEM_WINE_I386_BOUNDARY_ABI_VERSION_V2 UINT32_C(2)
+#define GEM_WINE_I386_BOUNDARY_ABI_VERSION GEM_WINE_I386_BOUNDARY_ABI_VERSION_V2
+#define GEM_WINE_I386_BOUNDARY_REQUEST_SIZE_V1 UINT32_C(504)
+#define GEM_WINE_I386_BOUNDARY_RESPONSE_SIZE_V1 UINT32_C(464)
 #define GEM_WINE_RUN_RESULT_VERSION UINT32_C(1)
 #define GEM_WINE_ARM64X_CONFIG_VERSION UINT32_C(1)
 #define GEM_WINE_X86_64_CONFIG_VERSION UINT32_C(1)
@@ -37,6 +43,7 @@ extern "C" {
 #define GEM_WINE_ARM64X_BOUNDARY_SVC UINT32_C(0x474d)
 #define GEM_WINE_X86_64_FLAG_INTERPRETER_ORACLE UINT64_C(0x0000000000000001)
 #define GEM_WINE_I386_FLAG_INTERPRETER_ORACLE UINT32_C(0x00000001)
+#define GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY UINT32_C(0x00000002)
 #define GEM_WINE_X86_64_BOUNDARY_WINDOWS_SYSCALL UINT32_C(1)
 #define GEM_WINE_X86_64_BOUNDARY_UNIX_CALL UINT32_C(2)
 #define GEM_WINE_GUEST_PAGE_SIZE UINT64_C(4096)
@@ -290,9 +297,13 @@ GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_boundary_response) == 736U,
                        "gem_wine_boundary_response ABI changed");
 GEM_WINE_STATIC_ASSERT(offsetof(struct gem_wine_boundary_response, context) == 16U,
                        "gem_wine_boundary_response context offset changed");
-GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_request) == 504U,
+/* The i386 boundary structs embed gem_i386_context by value, so the ABI v3
+ * growth (ADR 0013, context 448 -> 592) grows them to 648 and 608.  The
+ * boundary wire-version bump that publishes this to the packaged bridge is a
+ * deliberate later slice; until then both sides are built together. */
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_request) == 648U,
                        "gem_wine_i386_boundary_request ABI changed");
-GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_response) == 464U,
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_boundary_response) == 608U,
                        "gem_wine_i386_boundary_response ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_thread_config) == 64U,
                        "gem_wine_thread_config ABI changed");
@@ -300,6 +311,8 @@ GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_i386_thread_config) == 64U,
                        "gem_wine_i386_thread_config ABI changed");
 GEM_WINE_STATIC_ASSERT(sizeof(struct gem_wine_run_result) == 88U,
                        "gem_wine_run_result ABI changed");
+GEM_WINE_STATIC_ASSERT(sizeof(struct gem_i386_diagnostics) == 256U,
+                       "gem_i386_diagnostics ABI changed");
 GEM_WINE_STATIC_ASSERT(offsetof(struct gem_wine_run_result, stop) == 48U,
                        "gem_wine_run_result stop offset changed");
 
@@ -351,6 +364,12 @@ GEM_WINE_API enum gem_wine_status gem_wine_process_bind_kuser(struct gem_wine_pr
                                                               void *host_page);
 GEM_WINE_API enum gem_wine_status gem_wine_process_invalidate_code(struct gem_wine_process *process,
                                                                    uint64_t address, uint64_t size);
+/* Publish a host-written guest range before resuming an i386 thread prepared
+ * with GEM_WINE_I386_FLAG_PRECISE_HOST_DIRTY. The precise contract replaces
+ * whole-cache refresh at every native boundary with bounded page invalidation. */
+GEM_WINE_API enum gem_wine_status
+gem_wine_process_notify_memory_dirty(struct gem_wine_process *process, uint64_t address,
+                                     uint64_t size);
 GEM_WINE_API enum gem_wine_status
 gem_wine_thread_create(struct gem_wine_process *process,
                        const struct gem_wine_thread_config *config,
@@ -379,6 +398,9 @@ GEM_WINE_API enum gem_wine_status gem_wine_i386_thread_run(struct gem_wine_threa
                                                            const struct gem_i386_context *input,
                                                            struct gem_i386_context *out_context,
                                                            struct gem_wine_run_result *result);
+GEM_WINE_API enum gem_wine_status
+gem_wine_i386_thread_diagnostics(struct gem_wine_thread *thread,
+                                 struct gem_i386_diagnostics *diagnostics);
 
 #ifdef __cplusplus
 }

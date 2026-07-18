@@ -1,0 +1,285 @@
+From 0000000000000000000000000000000000000022 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: add native i386 avx foundation
+
+Add a native VEX.128 execution seam for promoted floating-point operations,
+scalar three-operand forms, VZEROUPPER, and VZEROALL. Correct the C5 vvvv high
+bit decode, zero destination YMM uppers, and emit the same portable semantic
+helper through Blink's real JIT hook. AVX CPUID remains masked until the full
+256-bit and cross-lane family gate is complete.
+
+---
+diff -ruN --exclude=*.orig a/blink/avx.c b/blink/avx.c
+--- a/blink/avx.c	1969-12-31 17:00:00
++++ b/blink/avx.c	2026-07-18 00:54:34
+@@ -0,0 +1,146 @@
++/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-
++ * SPDX-License-Identifier: ISC
++ * Copyright 2026 SharpWine contributors
++ */
++#include "blink/avx.h"
++
++#include <string.h>
++
++#include "blink/jit.h"
++#include "blink/modrm.h"
++#include "blink/rde.h"
++
++static bool IsVex(const struct Machine *m) {
++  return m->xedd->bytes[0] == 0xc5 || m->xedd->bytes[0] == 0xc4;
++}
++
++static unsigned Prefix(u64 rde) {
++  if (Osz(rde)) return 1;
++  if (Rep(rde) == 3) return 2;
++  if (Rep(rde) == 2) return 3;
++  return 0;
++}
++
++bool IsAvxFoundationOp(struct Machine *m, u64 rde) {
++  unsigned op, pp;
++  if (!IsVex(m) || Opmap(rde) != XED_ILD_MAP1) return false;
++  op = Opcode(rde);
++  pp = Prefix(rde);
++  if (op == 0x77) return pp == 0;
++  if (Ymm(rde)) return false;
++  switch (op) {
++    case 0x10:
++      return pp >= 2;
++    case 0x14:
++    case 0x15:
++    case 0x54:
++    case 0x55:
++    case 0x56:
++    case 0x57:
++    case 0xc6:
++      return pp <= 1;
++    case 0x51:
++    case 0x58:
++    case 0x59:
++    case 0x5c:
++    case 0x5d:
++    case 0x5e:
++    case 0x5f:
++    case 0xc2:
++      return true;
++    case 0x52:
++    case 0x53:
++      return pp == 0 || pp == 2;
++    case 0x7c:
++    case 0x7d:
++    case 0xd0:
++      return pp == 1 || pp == 3;
++    default:
++      return false;
++  }
++}
++
++static bool UsesVreg(u64 rde) {
++  switch (Opcode(rde)) {
++    case 0x10:
++      return true;
++    case 0x14:
++    case 0x15:
++    case 0x54:
++    case 0x55:
++    case 0x56:
++    case 0x57:
++    case 0x58:
++    case 0x59:
++    case 0x5c:
++    case 0x5d:
++    case 0x5e:
++    case 0x5f:
++    case 0x7c:
++    case 0x7d:
++    case 0xc2:
++    case 0xc6:
++    case 0xd0:
++      return true;
++    case 0x51:
++    case 0x52:
++    case 0x53:
++      return Rep(rde) != 0;
++    default:
++      return false;
++  }
++}
++
++static u64 RedirectRegisterSource(u64 rde, unsigned reg) {
++  rde &= ~((u64)kRexbRmMask | UINT64_C(000060000000));
++  rde |= (u64)(reg & 7) << 7;
++  rde |= UINT64_C(3) << 22;
++  return rde;
++}
++
++static void RunAvxFoundation(P) {
++  nexgen32e_f legacy;
++  u8 source[16], scratch[16];
++  unsigned dst, tmp;
++
++  if (Opcode(rde) == 0x77) {
++    unsigned i;
++    for (i = 0; i < 8; ++i) {
++      memset(m->ymm_upper[i], 0, 16);
++      if (Ymm(rde)) memset(m->xmm[i], 0, 16);
++    }
++    return;
++  }
++
++  dst = RexrReg(rde);
++  if (UsesVreg(rde)) {
++    memcpy(m->xmm[dst], m->xmm[Vreg(rde)], 16);
++  }
++  if (IsModrmRegister(rde)) {
++    memcpy(source, m->xmm[RexbRm(rde)], 16);
++    tmp = (dst + 1) & 7;
++    memcpy(scratch, m->xmm[tmp], 16);
++    memcpy(m->xmm[tmp], source, 16);
++    rde = RedirectRegisterSource(rde, tmp);
++  } else {
++    tmp = 8;
++  }
++
++  legacy = GetOp(Mopcode(rde));
++  legacy(A);
++  if (tmp < 8 && tmp != dst) memcpy(m->xmm[tmp], scratch, 16);
++  memset(m->ymm_upper[dst], 0, 16);
++}
++
++void OpAvxFoundation(P) {
++  if (IsMakingPath(m)) {
++    Jitter(A,
++           "a3i"
++           "a2i"
++           "a1i"
++           "c",
++           uimm0, disp, rde, RunAvxFoundation);
++  } else {
++    RunAvxFoundation(A);
++  }
++}
+diff -ruN --exclude=*.orig a/blink/avx.h b/blink/avx.h
+--- a/blink/avx.h	1969-12-31 17:00:00
++++ b/blink/avx.h	2026-07-18 00:50:01
+@@ -0,0 +1,8 @@
++#ifndef BLINK_AVX_H_
++#define BLINK_AVX_H_
++#include "blink/machine.h"
++
++bool IsAvxFoundationOp(struct Machine *, u64);
++void OpAvxFoundation(P);
++
++#endif /* BLINK_AVX_H_ */
+diff -ruN --exclude=*.orig a/blink/gem_embed.c b/blink/gem_embed.c
+--- a/blink/gem_embed.c	2026-07-18 00:48:38
++++ b/blink/gem_embed.c	2026-07-18 00:54:34
+@@ -21,6 +21,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#include "blink/avx.h"
+ #include "blink/builtin.h"
+ #include "blink/bus.h"
+ #include "blink/debug.h"
+@@ -377,7 +378,7 @@
+                                      uint64_t pc) {
+   int handler_id;
+   if (LoadInstruction2(g->machine, pc)) return 0;
+-  handler_id = GemHandlerId(GetOp(Mopcode(g->machine->xedd->op.rde)),
++  handler_id = GemHandlerId(GetOpForRde(g->machine, g->machine->xedd->op.rde),
+                             g->machine->xedd->op.rde,
+                             g->guest_mode == BLINK_GEM_GUEST_LEGACY_32);
+   return handler_id == BLINK_GEM_HANDLER_OP_NOP ||
+@@ -619,7 +620,7 @@
+           continue;
+         }
+       }
+-      handler_id = GemHandlerId(GetOp(Mopcode(m->xedd->op.rde)),
++      handler_id = GemHandlerId(GetOpForRde(m, m->xedd->op.rde),
+                                 m->xedd->op.rde,
+                                 g->guest_mode == BLINK_GEM_GUEST_LEGACY_32);
+       /* Capture Blink's own decode dispatch result for the most recent
+@@ -638,7 +639,8 @@
+         g->last_decode.name[i] = '\0';
+       }
+       if (g->guest_mode == BLINK_GEM_GUEST_LEGACY_32 &&
+-          masked_legacy_vex(g, fetch_address, m->xedd->op.rde)) {
++          masked_legacy_vex(g, fetch_address, m->xedd->op.rde) &&
++          !IsAvxFoundationOp(m, m->xedd->op.rde)) {
+         m->canhalt = false;
+         return result(BLINK_GEM_UNSUPPORTED);
+       }
+diff -ruN --exclude=*.orig a/blink/machine.c b/blink/machine.c
+--- a/blink/machine.c	2026-07-18 00:48:38
++++ b/blink/machine.c	2026-07-18 00:57:26
+@@ -2293,6 +2293,14 @@
+   }
+ }
+ 
++bool IsAvxFoundationOp(struct Machine *, u64);
++void OpAvxFoundation(P);
++
++nexgen32e_f GetOpForRde(struct Machine *m, long rde) {
++  if (IsAvxFoundationOp(m, rde)) return OpAvxFoundation;
++  return GetOp(Mopcode(rde));
++}
++
+ int GemHandlerId(nexgen32e_f handler, long rde, bool legacy32) {
+   /* The legacy profile deliberately masks state families which GEM's fixed
+    * i386 context cannot restore and host-state handlers owned by the adapter.
+@@ -2389,7 +2397,7 @@
+   uimm0 = m->xedd->op.uimm0;
+   m->oplen = Oplength(rde);
+   m->ip += Oplength(rde);
+-  GetOp(Mopcode(rde))(A);
++  GetOpForRde(m, rde)(A);
+   if (m->stashaddr) CommitStash(m);
+   m->oplen = 0;
+ }
+@@ -2441,7 +2449,7 @@
+   m->ip += Oplength(rde);
+   // call the c implementation of the opcode
+   m->gemcompilingop = m->gemembed;
+-  GetOp(Mopcode(rde))(A);
++  GetOpForRde(m, rde)(A);
+   m->gemcompilingop = false;
+   // cleanup after ReserveAddress() if a memory access overlapped a page
+   if (m->stashaddr) {
+diff -ruN --exclude=*.orig a/blink/machine.h b/blink/machine.h
+--- a/blink/machine.h	2026-07-18 00:48:38
++++ b/blink/machine.h	2026-07-18 00:50:01
+@@ -489,6 +489,7 @@
+ void CollectGarbage(struct Machine *, size_t);
+ void ResetInstructionCache(struct Machine *);
+ nexgen32e_f GetOp(long);
++nexgen32e_f GetOpForRde(struct Machine *, long);
+ bool GemIsAllowedHandler(nexgen32e_f, long, bool);
+ int GemHandlerId(nexgen32e_f, long, bool);
+ bool GemCompileInstruction(struct Machine *);
+diff -ruN --exclude=*.orig a/blink/path.c b/blink/path.c
+--- a/blink/path.c	2026-07-18 00:48:38
++++ b/blink/path.c	2026-07-18 00:50:01
+@@ -741,7 +741,7 @@
+          "a2i"  // arg2 = disp
+          "a1i"  // arg1 = rde
+          "c",   // call function
+-         uimm0, disp, rde, GetOp(Mopcode(rde)));
++         uimm0, disp, rde, GetOpForRde(m, rde));
+   return true;
+ }
+ 
+diff -ruN --exclude=*.orig a/blink/x86.c b/blink/x86.c
+--- a/blink/x86.c	2026-07-18 00:48:38
++++ b/blink/x86.c	2026-07-18 00:53:44
+@@ -474,7 +474,7 @@
+     // rex.r:         1-bit
+     b = x->bytes[length];
+     rexr = !(b & 128);
+-    vrex = !!(b & 64);
++    vrex = !(b & 64);
+     vexdest210 = (~b >> 3) & 7;
+     ymm = (b >> 2) & 1;
+     xed_set_vex_prefix(x, b & 3);
+

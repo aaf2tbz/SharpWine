@@ -121,6 +121,19 @@ is not a release input.
      guards callbacks until the 32-bit callback table is published;
    - preserves atom-valued properties and converts structured window-message
      pointers so 32-bit applications can create sustained interactive windows.
+18. `0018-xtajit-map-normalized-i386-exceptions.patch`
+   - maps stable GEM i386 exception identities to precise WoW64 exception
+     records while preserving fault address and access class.
+19. `0019-xtajit-preserve-i386-v2-legacy-state.patch`
+   - round-trips x87 environment, XMM, flags, and segment metadata through the
+     fixed-size legacy i386 context boundary.
+20. `0020-xtajit-map-i386-avx-xstate.patch`
+   - maps the standard-format WoW64 CONTEXT_EX AVX component to GEM ABI-v3
+     YMM-upper and XCR0 state;
+   - rejects compacted or undersized xstate layouts by leaving the extension
+     inert instead of reinterpreting them;
+   - maps GEM's normalized i386 general-protection status to the Windows
+     privileged-instruction exception used for XSETBV.
 
 ## Current evidence and limitation
 
@@ -183,3 +196,24 @@ i386 exception identities to Windows exception records. Access violations
 retain exact read/write/execute information and the faulting address;
 breakpoint, divide, overflow, stack, and illegal-instruction stops no longer
 collapse into one fallback exception.
+
+Patches `0019` and `0020` preserve the complete i386 legacy and AVX state
+across the Wine/GEM boundary. Patch `0020` accepts only the standard
+non-compacted xstate layout described by ADR 0013; CPUID advertisement remains
+separately gated by the engine corpus and Windows oracle.
+
+Patch `0021` adds one stable GEM_i386 diagnostic record to every xtajit run
+trace. It identifies the native engine and version, reports JIT compilation,
+execution, cache-hit, failure, precise invalidation, and zero-fallback counts,
+records the last genuinely unsupported decoded opcode, and publishes the exact
+deterministic CPUID profile. These values are observations of SharpWine's
+native implementation; external execution remains comparison evidence rather
+than a capability veto.
+
+Patch `0022` services guest-resident GEM syscall and Unix-call boundaries when
+native Darwin ARM64 Wine code re-enters them during an outer translated call.
+It dispatches the requested service through Wine's native tables and restores
+the ARM64 syscall-stub continuation instead of converting the boundary `svc`
+into an access violation. This keeps alias probing and other native WoW64 GUI
+work inside the implemented GEM/Wine path; it does not mask or discard the
+guest operation.

@@ -80,6 +80,13 @@ retries, page snapshots, bytes copied and committed, state transfers, decode
 resets, and lock wait time. The embedding's single-step entry point remains
 available and is implemented as a one-instruction bounded run.
 
+Phase 6 retains that 88-byte v1 query unchanged and adds the separate
+128-byte `gem_i386_performance_info_v2` query. Its common prefix reports the
+same counters as v1; the extension adds native JIT compilations, executions,
+cache hits (executions reusing an existing compiled hook), failures, and
+explicit code invalidations. Callers must provide ABI version 2 and the exact
+v2 size, so either version fails closed on a mismatched layout.
+
 The Phase 5.5 evidence includes deterministic one-step versus batched equality
 at every budget from 1 through 256, interpreter/JIT golden-corpus parity,
 Wine-boundary conformance, simultaneous reader and disjoint-writer progress,

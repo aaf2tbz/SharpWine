@@ -215,7 +215,21 @@ void assert_stack_oracle(const std::array<std::uint8_t, GEM_GUEST_PAGE_SIZE> &be
 }
 
 void assert_context_oracle(const gem_thread_context &actual, const gem_thread_context &expected) {
-    assert(std::memcmp(&actual, &expected, sizeof(actual)) == 0);
+    if (std::memcmp(&actual, &expected, sizeof(actual)) != 0) {
+        std::array<std::uint64_t, sizeof(actual) / sizeof(std::uint64_t)> actual_words{};
+        std::array<std::uint64_t, sizeof(expected) / sizeof(std::uint64_t)> expected_words{};
+        std::memcpy(actual_words.data(), &actual, sizeof(actual));
+        std::memcpy(expected_words.data(), &expected, sizeof(expected));
+        for (std::size_t offset = 0; offset < sizeof(actual); offset += sizeof(std::uint64_t)) {
+            const auto index = offset / sizeof(std::uint64_t);
+            if (actual_words[index] != expected_words[index])
+                std::fprintf(stderr,
+                             "context mismatch offset=%zu actual=%016llx expected=%016llx\n",
+                             offset, static_cast<unsigned long long>(actual_words[index]),
+                             static_cast<unsigned long long>(expected_words[index]));
+        }
+        assert(false && "context oracle mismatch");
+    }
 }
 /* Authentic ARM64X first-boundary transitions captured against the validated
  * issue14-5 evidence build. The expected stop RVA per entry prevents the
@@ -826,7 +840,7 @@ int main(int argc, char **argv) {
                 expected_context.x[12] = test.target;
                 expected_context.pc = kHostReturn;
                 expected_context.x64_rflags =
-                    test.mode == GEM_HYBRID_RETURN_NORMAL ? UINT64_C(0x100100A) : UINT64_C(0x100E);
+                    test.mode == GEM_HYBRID_RETURN_NORMAL ? UINT64_C(0x100A) : UINT64_C(0x100E);
                 expected_context.isa = GEM_ISA_ARM64EC;
                 expected_context.stop_reason = GEM_STOP_HOST_RETURN;
                 assert_context_oracle(context, expected_context);
@@ -961,7 +975,7 @@ int main(int argc, char **argv) {
             expected_context.x[12] = control.inner_x64_target_va;
             expected_context.x[16] = kDispatchRet;
             expected_context.pc = kHostReturn;
-            expected_context.x64_rflags = UINT64_C(0x100100A);
+            expected_context.x64_rflags = UINT64_C(0x100A);
             expected_context.isa = GEM_ISA_ARM64EC;
             expected_context.stop_reason = GEM_STOP_HOST_RETURN;
             assert_context_oracle(context, expected_context);
@@ -1441,7 +1455,7 @@ int main(int argc, char **argv) {
         oracle_context.x[16] = kDispatchRet;
         oracle_context.x[17] = initial.sp - UINT64_C(0x10);
         oracle_context.pc = kHostReturn;
-        oracle_context.x64_rflags = UINT64_C(0x100101A);
+        oracle_context.x64_rflags = UINT64_C(0x101A);
         oracle_context.isa = GEM_ISA_ARM64EC;
         oracle_context.stop_reason = GEM_STOP_HOST_RETURN;
         assert_context_oracle(context, oracle_context);

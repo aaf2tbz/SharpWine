@@ -112,3 +112,256 @@ a lightweight integer-state export between safe resident instructions.
 preallocates and serializes the embedding-only host-page registry so separate
 Blink machines can fault in shadow pages concurrently without racing a global
 registry reallocation.
+
+`0017-gem-i386-vex-xsave-foundation.patch` (SHA-256
+`6599e93fc0dd951e45eb124a24677f28d482871f133bbaf5f4d3cf6ff9b267e0`)
+adds protected-mode VEX disambiguation while retaining the per-family gate,
+implements standard-format XSAVE/XRSTOR and XGETBV over the ABI-v3 YMM/XCR0
+state, maps protection faults into a stable embedding exception, and rejects
+XSAVEOPT instead of inheriting Blink's incorrect fence dispatch. CPUID remains
+masked until the corresponding Phase 6 family gates pass.
+
+`0018-gem-i386-virtual-tsc-admission.patch` (SHA-256
+`a780c433970b9fb7b2b07f1a3f58fb8055117bc39a527c53e4ccd6d2977eb5b9`)
+keeps legacy-32 RDTSC out of Blink's host-backed handler. The GEM adapter
+supplies an epoch-zero, one-tick-per-retired-instruction virtual counter only
+after a transaction commits, so interpreter and JIT execution are identical
+and memory-conflict retries reproduce the same timestamp. Blink's decoded
+instruction length crosses in the reserved decode-attempt sidecar byte so
+prefixed encodings advance EIP without a second decoder.
+
+`0019-gem-i386-bmi1.patch` (SHA-256
+`2258dcb91a84b534a4cf2d9efd9845b892e323bc5dfba692a0d33dc82e1ba88f`)
+implements portable legacy-32 ANDN, BEXTR, BLSI, BLSMSK, and BLSR handlers,
+admits only their exact VEX map/prefix forms while later VEX families remain
+masked, and adds BMI1 to the deterministic legacy CPUID profile. The native
+Windows ARM64 qualification VM does not expose BMI1 to its i386 process, so
+semantic authority comes from the SDM checks and exact interpreter/JIT parity.
+TZCNT reuses Blink's existing reviewed scalar handler.
+
+`0020-gem-i386-bmi2.patch` (SHA-256
+`18910ef86f5031d8f244061d5e713c211d7a3b655a2df10f5d7b57712d2fa465`)
+admits the portable BZHI, PDEP, PEXT, MULX, SHLX, SHRX, SARX, and RORX
+implementations in the legacy-32 interpreter and JIT. Exact VEX map/prefix
+checks keep ADX, 256-bit encodings, and legacy aliases fail-closed. BMI2 is
+advertised from SharpWine's deterministic CPUID profile after native semantic,
+state, fault, corpus, and program-loading qualification; an external runtime
+that lacks BMI2 is retained only as non-authoritative comparison evidence.
+
+`0021-gem-i386-rdtscp.patch` (SHA-256
+`b85442976c2b6cc12e0ba3674793822d9e0791da8b7dfe60154517d61eb8fd87`)
+advertises RDTSCP after the GEM adapter qualifies its deterministic virtual
+timestamp implementation. The host-backed Blink handler remains excluded;
+SharpWine returns the committed retired-instruction counter in EDX:EAX and a
+fixed guest TSC_AUX of zero in ECX in both interpreter and JIT modes.
+
+`0022-gem-i386-avx-foundation.patch` (SHA-256
+`edbe07e90ab3648311d09a5eef2789a94b98dc1b10ef0917bf7006013b6166ec`)
+starts the deliberate native AVX implementation without advertising AVX yet.
+It corrects C5 `vvvv` decoding, adds VZEROUPPER/VZEROALL and reviewed
+VEX.128 floating-point/scalar three-operand forms, enforces architectural
+upper-lane zeroing, and emits the portable semantic helper through Blink's
+real JIT hook. The complete AVX CPUID gate remains closed until 256-bit and
+cross-lane coverage is implemented and qualified.
+
+`0023-gem-i386-avx-packed-lanes.patch` (SHA-256
+`b785875a9d54f3d0953cd37e173922ebad16da4c1520e49db728dca540d6932f`)
+extends the native implementation across promoted 256-bit AVX floating-point
+operations. It executes both architectural 128-bit lanes in one checked GEM
+transaction, snapshots the complete memory source before changing destination
+state, preserves precise cross-page faults, and commits both YMM halves
+together through the same interpreter/JIT semantic helper.
+
+`0024-gem-i386-avx-promoted-128.patch` (SHA-256
+`859f5cd44ae2a4224c353589c13b2eaaf83a0b525bccd36c6a0a2c7a1bb2c9c9`)
+executes the native VEX.128 forms promoted from Blink's portable SSE handlers,
+including integer, shuffle, conversion, rounding, AES, and carry-less multiply
+families. It supplies the non-destructive VEX source, preserves exact narrow
+memory access widths, zeros the architectural YMM upper half, and rejects
+256-bit integer forms that belong to AVX2.
+
+`0025-gem-i386-avx-stores.patch` (SHA-256
+`071e91230f038175b30d81d3056de8fb91149bc45de8fc1f9bb1dca2cf3e83e6`)
+implements scalar, packed, aligned, unaligned, low/high-lane, and non-temporal
+AVX stores. Full source snapshots and explicit cross-page stash commits keep
+interpreter and JIT stores atomic and restartable; exact scalar widths avoid
+touching an adjacent uncommitted page, and aligned forms retain their fault
+contract.
+
+`0026-gem-i386-avx-cross-lane.patch` (SHA-256
+`7d996a9f1b2db4c7975340f82c9ec0a659478516e3d1e1f7cdd84cec2b4a9b9c`)
+implements broadcast, immediate and variable in-lane permutation,
+VPERM2F128, VINSERTF128/VEXTRACTF128, VTEST/VPTEST, and four-operand variable
+blend semantics. Sources are snapshotted before overlapping destinations,
+memory widths remain exact at page boundaries, and every form shares the
+portable interpreter/JIT transaction helper.
+
+`0027-gem-i386-avx-immediate-shifts.patch` (SHA-256
+`6a11c3380635dab199df279235854fe484baee4a1970401ceb73409bd8a8324a`)
+implements VEX.128 packed logical, arithmetic, and byte-lane immediate shifts.
+The opcode-extension and VEX destination fields are handled independently,
+over-wide counts follow the architectural zero/sign-fill rules, and every
+result clears its YMM upper half in both execution engines.
+
+`0028-gem-i386-avx-misc-destinations.patch` (SHA-256
+`e84cbf65f831d902f79e5ee4869203dbcd8ec7bb2390626cbb8adb1540952df1`)
+implements AVX compare flags, movemasks, MOVD/MOVQ, scalar insert/extract,
+packed-string comparisons, and LDMXCSR/STMXCSR across their GPR, flags, MXCSR,
+memory, and implicit-vector destination shapes. Exact VEX admission precedes
+reviewed legacy semantics; new portable handlers retain width and upper-lane
+contracts in interpreter and JIT modes.
+
+`0029-gem-i386-avx-mask-moves.patch` (SHA-256
+`ba601314d5f62d4bc4d0ecca51f2ce468bffa4beda2b36a7a4a179af986eb201`)
+implements VMASKMOVPS/PD and VMASKMOVDQU with inactive-element fault
+suppression, zero-filled masked loads, and preflighted restartable stores.
+Selected lanes are coalesced into one GEM transaction span so every write is
+retained, while inactive trailing pages remain untouched; the overlap stash
+is also widened to the 32-byte maximum used by native AVX moves.
+
+`0030-gem-i386-avx-conversions.patch` (SHA-256
+`e0d6cf89d9d494edeb2459a91a68992cdcf473dd2db4283067e449395a0c185b`)
+implements 256-bit packed float/integer conversions, asymmetric widening and
+narrowing forms, and scalar VCVTSI2SS/SD merge semantics. It preserves exact
+source widths, destination/upper-lane contracts, and MXCSR rounding versus
+truncation behavior while rejecting reserved VEX source fields.
+
+`0031-gem-i386-avx-inventory-closures.patch` (SHA-256
+`82d31a2f6ce8a50b6389b1b044e9c570377ee785f90fc92c08e46ebb273ec0e5`)
+closes gaps found by the pinned Intel XED AVX inventory review: register
+destinations for store-direction moves, scalar merge-register moves, 256-bit
+duplicate/unaligned loads, and lane-local packed round, blend, and dot-product
+forms. All retain non-destructive sources and exact upper-lane clearing.
+
+`0032-gem-i386-avx-cpuid.patch` (SHA-256
+`984497649191c8025670816f1fbfaa6d212f0b103b869f8f328e60399c315559`)
+advertises XSAVE, OSXSAVE, and AVX only after interpreter/JIT semantics,
+XSAVE leaf `0x0d`, the pinned XED inventory, and a loaded multi-instruction
+AVX guest program all pass. The program witness also closed native 256-bit
+VMOVUPS/VMOVAPS load admission rather than masking the working AVX family.
+
+`0033-gem-i386-avx2-packed-lanes.patch` (SHA-256
+`718756acae955e46b380d12c57d9098bf67982c6866aa3dd34aacd1ae6ed76a4`)
+starts the deliberate native AVX2 implementation across 256-bit packed
+integer arithmetic, comparisons, packing, unpacking, shuffles, blends,
+movemasks, and immediate/shared-count shifts. Lane-local operations reuse
+reviewed portable 128-bit semantics; count shifts use an exact 128-bit count
+operand for both YMM lanes and preserve precise memory access widths.
+
+`0034-gem-i386-avx2-data-movement.patch` (SHA-256
+`bec443bd36816f37bba0bec99a7205f1adbbc4bacef307cf39c093658fbca676`)
+extends native AVX2 with all twelve signed/unsigned widening conversions,
+register and memory broadcasts, 128-bit lane insertion/extraction, variable
+dword and immediate qword permutation, cross-lane permutation, and dword
+blending. Narrow memory conversions read exactly their architectural operand
+width, including a page-boundary no-overread witness.
+
+`0035-gem-i386-avx2-memory-gather.patch` (SHA-256
+`884021d0fdfc422ce6883ce1f2251324f9c24af055e789de8c639cc1768670c0`)
+closes the remaining pinned AVX2 semantic groups: dword/qword per-element
+variable shifts, integer masked loads/stores, aligned VMOVNTDQA, and all 16
+128/256-bit gather patterns. Gather uses legacy32 VSIB address generation and
+exports architecturally restartable partial destination/mask state on faults.
+
+`0036-gem-i386-avx2-cpuid.patch` (SHA-256
+`ff69c66c0c4124b17cd4548232e05da11ee623e66782a61e3bb91f8e0046d84d`)
+advertises AVX2 only after the 138-class/302-pattern XED inventory, precise
+interpreter/JIT semantics, fault-state tests, both golden corpora, and a loaded
+four-instruction AVX2 guest program pass on macOS ARM64.
+
+`0037-gem-i386-fma.patch` (SHA-256
+`fd27ea34047a97825d7bd19b1a6fe0420f8711c1140bb07421bb2ef7bfe58178`)
+implements all 60 FMA3 instruction classes and 192 register/memory patterns
+from pinned Intel XED: 132/213/231 operand orders, packed/scalar float/double,
+add/sub/addsub/subadd, and negated-product forms using one fused host operation.
+
+`0038-gem-i386-fma-cpuid.patch` (SHA-256
+`265327a3311cff46133a2ff0179c7a62c411cfb5aec8ea847acca495cc9bd5aa`)
+advertises FMA only after the complete pinned inventory, exact fused-rounding
+and fault-width semantics, interpreter/JIT parity, both golden corpora, and a
+loaded five-instruction FMA guest program pass natively on macOS ARM64.
+
+`0039-gem-i386-adx.patch` (SHA-256
+`b9aedaf691f55a2ea51c2dadea03d842dfdc73138aa785eb297ed72279b5f6da`)
+admits legacy32 ADCX and ADOX through their exact mandatory-prefix forms while
+retaining invalid and VEX encodings as unsupported. Blink's portable ARM64
+micro-ops provide the independent carry chains; interpreter/JIT tests cover
+register and memory forms with both carry-in states.
+
+`0040-gem-i386-adx-cpuid.patch` (SHA-256
+`a4e343d4fc5927fe82e02dcf2858ee2bf93518a040ccd60d1fdfd05d0af57c3d`)
+advertises ADX after exact independent-chain semantics, register/memory forms,
+interpreter/JIT parity, invalid-encoding rejection, and a loaded eight-
+instruction guest program all pass on native macOS ARM64.
+
+`0041-gem-i386-rdpid.patch` (SHA-256
+`a1f18dfb18ab3b26198616cb0bce9b33e011f4130703d6095e649211c1407dbc`)
+admits the exact legacy32 `F3 0F C7 /7` RDPID form while RDRAND, RDSEED, and
+invalid prefix forms remain masked. RDPID returns the same deterministic
+TSC_AUX profile value zero as RDTSCP.
+
+`0042-gem-i386-rdpid-cpuid.patch` (SHA-256
+`61b0ab0edf8ee4209594422f485303cee647df7dee2ff99dbf014826f3a57e36`)
+advertises RDPID only after a loaded two-instruction guest program reads and
+stores TSC_AUX in both interpreter and JIT with zero fallback.
+
+`0043-gem-i386-random.patch` (SHA-256
+`818a706e343d97b6df7a05f52b6ccdb3e3d9dd64fff7ab2bef5379a090093424`)
+admits exact legacy16/32 RDRAND and RDSEED forms and fixes Blink's success path
+to clear OF, SF, ZF, AF, and PF while setting CF, as Intel requires. Host
+entropy remains intentionally nondeterministic and invalid prefixes stay
+fail-closed.
+
+`0044-gem-i386-random-cpuid.patch` (SHA-256
+`399d53904eb3b6320683525f44c0daf760ae81f476467a1fee4f5b683a567492`)
+advertises RDRAND and RDSEED after 16/32-bit width, repeated cache-path,
+interpreter/JIT, flag, and loaded four-instruction guest-program gates pass.
+
+`0045-gem-i386-resident-quantum-state.patch` (SHA-256
+`e663cf701e713a181bd378d6ced9cd1cc57ad3435c33d45082476225b7f722e6`)
+keeps Blink's lazy parity representation and YMM/XCR0 state resident between
+instructions in a checked GEM quantum. State is imported on entry and retry,
+then fully exported at every observable boundary. The patch also prevents the
+internal lazy-parity byte from leaking through architectural EFLAGS export.
+
+`0046-gem-i386-block-linking.patch` (SHA-256
+`2ab1e6b231b2e132898a5cc983df5d0565fff02a4a87f642f2e9e6bbdd34a579`)
+adds a bounded, fixed-size i386 block-dispatch cache. Successor blocks are
+linked by exact guest PC and validated tags, cached no-fault classifications
+remove redundant lookahead decode, and a bounded return-address stack predicts
+near CALL/RET pairs. Every instruction still passes the existing transaction,
+budget, stop-PC, async-stop, fault, and export boundaries. Explicit and
+executable-write invalidation remove overlapping blocks and incoming links.
+At host boundaries, writable non-executable external shadow pages are discarded
+and lazily reloaded. Read-only external executable pages retain their reviewed
+decode/JIT state, while writable executable pages are reconciled so host mutations
+refresh bytes and invalidate affected code precisely. Internal data reconciliation
+resets decode/JIT state only when the old or new page protection is executable, so
+ordinary host data writes cannot evict neighboring translated code.
+
+`0047-gem-i386-aligned-simd-stores.patch` (SHA-256
+`efbd0eb8a558db2403cc09d427cadd019d9346e41a5d1eec374e423aca89126d`)
+retains SSE2 while making aligned 128-bit stores complete checked GEM
+transactions. The first store at a newly compiled PC retires through Blink's
+native dispatcher while its host hook remains installed for subsequent loop
+iterations; every aligned memory store supplies its exact 16-byte write range
+for validation and commit. Legacy REP MOVS/STOS/INS also retain their complete
+destination range instead of committing only the final element, so cross-page
+MSVC buffer copies cannot leave rolled-back shadow pages behind. Cold JIT
+rollback checks are restricted to that exact architectural write range and the
+guarded stack range instead of scanning every cached page. This fixes UCRT and
+Notepad++ partial-buffer copies and removes the measured full-cache compile scan
+without a CPUID mask or a global interpreter switch.
+
+`0048-gem-i386-precise-host-dirty.patch` (SHA-256
+`0121ff0947c961097dbec42e506e307e5e88ccda61ec5f418e9e389a7ea5c02c`)
+adds bounded shadow-page invalidation for Wine's explicit host-dirty ranges.
+Dropping writable non-executable data no longer flushes Blink's instruction
+cache; executable pages retain the existing decode/JIT invalidation rules.
+
+`0049-gem-i386-tiered-resident-fastpath.patch` (SHA-256
+`3e8ab6adb40d7c4174737330e5ab499c65093467e38af4f516503c7664f18cf0`)
+folds the W11 resident-state, page-lookup, tiered-JIT, precise dirty-page, and
+deferred mnemonic work into the reproducible patch stack. Safe hot PCs are
+promoted through Blink's checked compiler before the resident fast path uses
+their native hook; interpreter mode remains an explicit fallback.

@@ -71,12 +71,30 @@ static void seed_context(struct gem_i386_context *context, uint32_t seed) {
     }
 }
 
+/* Project the current ABI v3 context into the pinned 448-byte Phase 3 record
+ * layout.  The extension must be inert (zeroed) at this boundary, matching
+ * ADR 0013's zeroed-v3 == v2-projection rule; anything else is a bug in the
+ * state import/export path, not something to reinterpret. */
+static void legacy_context_from_gem(struct i386_phase3_legacy_context *legacy,
+                                    const struct gem_i386_context *context) {
+    size_t i;
+    assert(context->xcr0 == 0U && context->reserved1 == 0U);
+    for (i = 0U; i < 8U; ++i)
+        assert(context->ymm_upper[i].lo == 0U && context->ymm_upper[i].hi == 0U);
+    memset(legacy, 0, sizeof(*legacy));
+    memcpy(legacy, context, sizeof(*legacy));
+    legacy->layout_version = GEM_I386_CONTEXT_LAYOUT_VERSION_V2;
+    legacy->context_size = GEM_I386_CONTEXT_SIZE_V2;
+}
+
 static struct execution execute_case(enum gem_i386_engine_mode mode, uint32_t case_id,
                                      enum i386_phase3_category category, const uint8_t *code,
                                      size_t code_size) {
     struct execution result;
     struct gem_i386_runtime_config config = {0};
     struct gem_i386_stop_info stop = {0};
+    struct gem_i386_context initial;
+    struct gem_i386_context final;
     struct gem_i386_runtime *runtime;
     struct gem_memory *memory = gem_memory_create();
     uint8_t bytes[512];
@@ -104,36 +122,38 @@ static struct execution execute_case(enum gem_i386_engine_mode mode, uint32_t ca
     result.record.category = category;
     memcpy(result.record.instruction, code, code_size);
     result.record.instruction_size = (uint8_t)code_size;
-    seed_context(&result.record.initial, case_id);
-    result.record.initial.gpr[GEM_I386_ESI] = DATA + 64U + (case_id & 31U);
-    result.record.initial.gpr[GEM_I386_EDI] = DATA + 320U + (case_id & 31U);
+    seed_context(&initial, case_id);
+    initial.gpr[GEM_I386_ESI] = DATA + 64U + (case_id & 31U);
+    initial.gpr[GEM_I386_EDI] = DATA + 320U + (case_id & 31U);
     if (category == I386_PHASE3_REP_SEGMENT) {
-        result.record.initial.gpr[GEM_I386_ECX] = case_id & 15U;
+        initial.gpr[GEM_I386_ECX] = case_id & 15U;
         if ((case_id & 1U) != 0U)
-            result.record.initial.eflags |= UINT32_C(0x400);
+            initial.eflags |= UINT32_C(0x400);
     }
     if (category == I386_PHASE3_CPUID_CONTEXT) {
         switch (case_id % 3U) {
         case 0U:
-            result.record.initial.gpr[GEM_I386_EAX] = 1U;
+            initial.gpr[GEM_I386_EAX] = 1U;
             break;
         case 1U:
-            result.record.initial.gpr[GEM_I386_EAX] = 7U;
-            result.record.initial.gpr[GEM_I386_ECX] = 0U;
+            initial.gpr[GEM_I386_EAX] = 7U;
+            initial.gpr[GEM_I386_ECX] = 0U;
             break;
         default:
-            result.record.initial.gpr[GEM_I386_EAX] = UINT32_C(0x80000001);
+            initial.gpr[GEM_I386_EAX] = UINT32_C(0x80000001);
             break;
         }
     }
+    legacy_context_from_gem(&result.record.initial, &initial);
     result.record.memory_hash_before = hash_bytes(bytes, sizeof(bytes));
     config.engine_mode = mode;
     config.host_return_sentinel = CODE + (uint32_t)code_size;
     config.max_budget = 1U;
     runtime = gem_i386_runtime_create(memory, &config);
     assert(runtime != NULL);
-    result.record.final = result.record.initial;
-    result.record.stop_reason = (uint32_t)gem_i386_runtime_run(runtime, &result.record.final, 1U);
+    final = initial;
+    result.record.stop_reason = (uint32_t)gem_i386_runtime_run(runtime, &final, 1U);
+    legacy_context_from_gem(&result.record.final, &final);
     assert(gem_i386_runtime_last_stop_info(runtime, &stop));
     result.record.exception_status = stop.engine_status;
     result.record.fault_address = stop.fault_address;
@@ -197,14 +217,220 @@ static void verify_cpuid_profile(void) {
                                         cpuid, sizeof(cpuid));
     uint32_t ecx = leaf1.record.final.gpr[GEM_I386_ECX];
     uint32_t edx = leaf1.record.final.gpr[GEM_I386_EDX];
-    assert((ecx & ((1U << 0U) | (1U << 1U) | (1U << 9U) | (1U << 19U) | (1U << 20U) | (1U << 23U) |
-                   (1U << 25U))) == ((1U << 0U) | (1U << 1U) | (1U << 9U) | (1U << 19U) |
-                                     (1U << 20U) | (1U << 23U) | (1U << 25U)));
-    assert((ecx & ((1U << 12U) | (1U << 13U) | (1U << 27U) | (1U << 28U) | (1U << 30U))) == 0U);
+    assert((ecx &
+            ((1U << 0U) | (1U << 1U) | (1U << 9U) | (1U << 12U) | (1U << 19U) | (1U << 20U) |
+             (1U << 23U) | (1U << 25U) | (1U << 26U) | (1U << 27U) | (1U << 28U) | (1U << 30U))) ==
+           ((1U << 0U) | (1U << 1U) | (1U << 9U) | (1U << 12U) | (1U << 19U) | (1U << 20U) |
+            (1U << 23U) | (1U << 25U) | (1U << 26U) | (1U << 27U) | (1U << 28U) | (1U << 30U)));
+    assert((ecx & (1U << 13U)) == 0U);
     assert((edx & ((1U << 0U) | (1U << 8U) | (1U << 15U) | (1U << 23U) | (1U << 24U) | (1U << 25U) |
                    (1U << 26U))) != 0U);
-    assert(leaf7.record.final.gpr[GEM_I386_EBX] == (1U << 9U));
-    assert((ext.record.final.gpr[GEM_I386_EDX] & ((1U << 11U) | (1U << 27U) | (1U << 29U))) == 0U);
+    assert(leaf7.record.final.gpr[GEM_I386_EBX] ==
+           ((1U << 3U) | (1U << 5U) | (1U << 8U) | (1U << 9U) | (1U << 18U) | (1U << 19U)));
+    assert(leaf7.record.final.gpr[GEM_I386_ECX] == (1U << 22U));
+    assert((ext.record.final.gpr[GEM_I386_EDX] & (1U << 27U)) != 0U);
+    assert((ext.record.final.gpr[GEM_I386_EDX] & ((1U << 11U) | (1U << 29U))) == 0U);
+}
+
+static uint32_t bmi1_flags(uint32_t result, uint32_t carry) {
+    return carry | (result == 0U ? UINT32_C(0x40) : 0U) |
+           (result & UINT32_C(0x80000000) ? UINT32_C(0x80) : 0U);
+}
+
+static void verify_bmi1_instructions(void) {
+    static const uint8_t bmi1_andn[] = {0xc4U, 0xe2U, 0x60U, 0xf2U, 0xc2U};
+    static const uint8_t bmi1_bextr[] = {0xc4U, 0xe2U, 0x60U, 0xf7U, 0xd0U};
+    static const uint8_t bmi1_blsr[] = {0xc4U, 0xe2U, 0x40U, 0xf3U, 0xceU};
+    static const uint8_t bmi1_blsmsk[] = {0xc4U, 0xe2U, 0x60U, 0xf3U, 0xd2U};
+    static const uint8_t bmi1_blsi[] = {0xc4U, 0xe2U, 0x70U, 0xf3U, 0xd8U};
+    static const uint8_t bmi1_tzcnt[] = {0xf3U, 0x0fU, 0xbcU, 0xc3U};
+    const uint8_t *const code[] = {bmi1_andn,   bmi1_bextr, bmi1_blsr,
+                                   bmi1_blsmsk, bmi1_blsi,  bmi1_tzcnt};
+    const uint8_t size[] = {sizeof(bmi1_andn),   sizeof(bmi1_bextr), sizeof(bmi1_blsr),
+                            sizeof(bmi1_blsmsk), sizeof(bmi1_blsi),  sizeof(bmi1_tzcnt)};
+    uint32_t i;
+    for (i = 0U; i < 6U; ++i) {
+        const uint32_t case_id = UINT32_C(0x1200) + i;
+        const struct execution interpreter =
+            execute_case(GEM_I386_ENGINE_INTERPRETER, case_id, I386_PHASE3_SIMD, code[i], size[i]);
+        const struct execution jit =
+            execute_case(GEM_I386_ENGINE_JIT, case_id, I386_PHASE3_SIMD, code[i], size[i]);
+        assert(memcmp(&interpreter.record.final, &jit.record.final,
+                      sizeof(interpreter.record.final)) == 0);
+        assert(interpreter.record.stop_reason == GEM_STOP_HOST_RETURN);
+        assert(jit.record.stop_reason == GEM_STOP_HOST_RETURN);
+        assert(interpreter.record.retired_count == 1U && jit.record.retired_count == 1U);
+        assert(interpreter.info.jit_executions == 0U);
+        assert(jit.info.jit_executions == 1U && jit.info.jit_failures == 0U);
+        switch (i) {
+        case 0U: {
+            const uint32_t ebx = UINT32_C(0x55667788) + case_id;
+            const uint32_t edx = UINT32_C(0x90abcdef) ^ (case_id << 1U);
+            const uint32_t result = ~ebx & edx;
+            assert(interpreter.record.final.gpr[GEM_I386_EAX] == result);
+            assert((interpreter.record.final.eflags & UINT32_C(0x8c1)) == bmi1_flags(result, 0U));
+            break;
+        }
+        case 1U:
+            /* The seeded EBX control has a start index above 31. */
+            assert(interpreter.record.final.gpr[GEM_I386_EDX] == 0U);
+            assert((interpreter.record.final.eflags & UINT32_C(0x8d5)) == UINT32_C(0x40));
+            break;
+        case 2U: {
+            const uint32_t esi = DATA + 64U + (case_id & 31U);
+            const uint32_t result = esi & (esi - 1U);
+            assert(interpreter.record.final.gpr[GEM_I386_EDI] == result);
+            assert((interpreter.record.final.eflags & UINT32_C(0x8c1)) ==
+                   bmi1_flags(result, esi == 0U));
+            break;
+        }
+        case 3U: {
+            const uint32_t edx = UINT32_C(0x90abcdef) ^ (case_id << 1U);
+            const uint32_t result = edx ^ (edx - 1U);
+            assert(interpreter.record.final.gpr[GEM_I386_EBX] == result);
+            assert((interpreter.record.final.eflags & UINT32_C(0x8c1)) ==
+                   bmi1_flags(result, edx == 0U));
+            break;
+        }
+        case 4U: {
+            const uint32_t eax = UINT32_C(0x10203040) ^ case_id;
+            const uint32_t result = eax & (0U - eax);
+            assert(interpreter.record.final.gpr[GEM_I386_ECX] == result);
+            assert((interpreter.record.final.eflags & UINT32_C(0x8c1)) ==
+                   bmi1_flags(result, eax != 0U));
+            break;
+        }
+        default: {
+            const uint32_t ebx = UINT32_C(0x55667788) + case_id;
+            uint32_t count = 0U;
+            while (((ebx >> count) & 1U) == 0U)
+                ++count;
+            assert(interpreter.record.final.gpr[GEM_I386_EAX] == count);
+            assert((interpreter.record.final.eflags & UINT32_C(0x41)) ==
+                   (count == 0U ? UINT32_C(0x40) : 0U));
+            break;
+        }
+        }
+    }
+}
+
+static uint32_t bmi2_pdep(uint32_t source, uint32_t mask) {
+    uint32_t bit = 1U;
+    uint32_t result = 0U;
+    while (mask != 0U) {
+        const uint32_t lowest = mask & (0U - mask);
+        if ((source & bit) != 0U)
+            result |= lowest;
+        mask &= mask - 1U;
+        bit <<= 1U;
+    }
+    return result;
+}
+
+static uint32_t bmi2_pext(uint32_t source, uint32_t mask) {
+    uint32_t bit = 1U;
+    uint32_t result = 0U;
+    while (mask != 0U) {
+        const uint32_t lowest = mask & (0U - mask);
+        if ((source & lowest) != 0U)
+            result |= bit;
+        mask &= mask - 1U;
+        bit <<= 1U;
+    }
+    return result;
+}
+
+static void verify_bmi2_instructions(void) {
+    static const uint8_t bmi2_bzhi[] = {0xc4U, 0xe2U, 0x70U, 0xf5U, 0xd8U};
+    static const uint8_t bmi2_pdep_code[] = {0xc4U, 0xe2U, 0x7bU, 0xf5U, 0xd9U};
+    static const uint8_t bmi2_pext_code[] = {0xc4U, 0xe2U, 0x7aU, 0xf5U, 0xd9U};
+    static const uint8_t bmi2_mulx[] = {0xc4U, 0xe2U, 0x7bU, 0xf6U, 0xd9U};
+    static const uint8_t bmi2_shlx[] = {0xc4U, 0xe2U, 0x71U, 0xf7U, 0xd8U};
+    static const uint8_t bmi2_shrx[] = {0xc4U, 0xe2U, 0x73U, 0xf7U, 0xd8U};
+    static const uint8_t bmi2_sarx[] = {0xc4U, 0xe2U, 0x72U, 0xf7U, 0xd8U};
+    static const uint8_t bmi2_rorx[] = {0xc4U, 0xe3U, 0x7bU, 0xf0U, 0xd8U, 0x07U};
+    const uint8_t *const code[] = {bmi2_bzhi, bmi2_pdep_code, bmi2_pext_code, bmi2_mulx,
+                                   bmi2_shlx, bmi2_shrx,      bmi2_sarx,      bmi2_rorx};
+    const uint8_t size[] = {sizeof(bmi2_bzhi), sizeof(bmi2_pdep_code), sizeof(bmi2_pext_code),
+                            sizeof(bmi2_mulx), sizeof(bmi2_shlx),      sizeof(bmi2_shrx),
+                            sizeof(bmi2_sarx), sizeof(bmi2_rorx)};
+    uint32_t i;
+    for (i = 0U; i < 8U; ++i) {
+        const uint32_t case_id = UINT32_C(0x1300) + i;
+        const struct execution interpreter =
+            execute_case(GEM_I386_ENGINE_INTERPRETER, case_id, I386_PHASE3_SIMD, code[i], size[i]);
+        const struct execution jit =
+            execute_case(GEM_I386_ENGINE_JIT, case_id, I386_PHASE3_SIMD, code[i], size[i]);
+        const uint32_t eax = UINT32_C(0x10203040) ^ case_id;
+        const uint32_t ecx = case_id & 7U;
+        const uint32_t edx = UINT32_C(0x90abcdef) ^ (case_id << 1U);
+        assert(memcmp(&interpreter.record.final, &jit.record.final,
+                      sizeof(interpreter.record.final)) == 0);
+        assert(interpreter.record.stop_reason == GEM_STOP_HOST_RETURN);
+        assert(jit.record.stop_reason == GEM_STOP_HOST_RETURN);
+        assert(interpreter.record.retired_count == 1U && jit.record.retired_count == 1U);
+        assert(interpreter.info.jit_executions == 0U);
+        assert(jit.info.jit_executions == 1U && jit.info.jit_failures == 0U);
+        switch (i) {
+        case 0U: {
+            const uint32_t result = ecx == 0U ? 0U : eax & ((1U << ecx) - 1U);
+            assert(interpreter.record.final.gpr[GEM_I386_EBX] == result);
+            assert((interpreter.record.final.eflags & UINT32_C(0x8c1)) ==
+                   (result == 0U ? UINT32_C(0x40) : 0U));
+            break;
+        }
+        case 1U:
+            assert(interpreter.record.final.gpr[GEM_I386_EBX] == bmi2_pdep(eax, ecx));
+            break;
+        case 2U:
+            assert(interpreter.record.final.gpr[GEM_I386_EBX] == bmi2_pext(eax, ecx));
+            break;
+        case 3U: {
+            const uint64_t product = (uint64_t)edx * ecx;
+            assert(interpreter.record.final.gpr[GEM_I386_EAX] == (uint32_t)product);
+            assert(interpreter.record.final.gpr[GEM_I386_EBX] == (uint32_t)(product >> 32U));
+            break;
+        }
+        case 4U:
+            assert(interpreter.record.final.gpr[GEM_I386_EBX] == eax << ecx);
+            break;
+        case 5U:
+            assert(interpreter.record.final.gpr[GEM_I386_EBX] == eax >> ecx);
+            break;
+        case 6U:
+            assert(interpreter.record.final.gpr[GEM_I386_EBX] == (uint32_t)((int32_t)eax >> ecx));
+            break;
+        default:
+            assert(interpreter.record.final.gpr[GEM_I386_EBX] == ((eax >> 7U) | (eax << 25U)));
+            break;
+        }
+        if (i != 0U)
+            assert((interpreter.record.final.eflags & UINT32_C(0x8d5)) ==
+                   (interpreter.record.initial.eflags & UINT32_C(0x8d5)));
+    }
+}
+
+static void verify_rdtscp_instruction(void) {
+    static const uint8_t rdtscp[] = {0x66U, 0x0fU, 0x01U, 0xf9U};
+    const uint32_t case_id = UINT32_C(0x1400);
+    const struct execution interpreter = execute_case(GEM_I386_ENGINE_INTERPRETER, case_id,
+                                                      I386_PHASE3_SIMD, rdtscp, sizeof(rdtscp));
+    const struct execution jit =
+        execute_case(GEM_I386_ENGINE_JIT, case_id, I386_PHASE3_SIMD, rdtscp, sizeof(rdtscp));
+    assert(memcmp(&interpreter.record.final, &jit.record.final, sizeof(interpreter.record.final)) ==
+           0);
+    assert(interpreter.record.stop_reason == GEM_STOP_HOST_RETURN);
+    assert(jit.record.stop_reason == GEM_STOP_HOST_RETURN);
+    assert(interpreter.record.retired_count == 1U && jit.record.retired_count == 1U);
+    assert(interpreter.record.final.gpr[GEM_I386_EAX] == 0U);
+    assert(interpreter.record.final.gpr[GEM_I386_EDX] == 0U);
+    assert(interpreter.record.final.gpr[GEM_I386_ECX] == 0U);
+    assert((interpreter.record.final.eflags & UINT32_C(0x8d5)) ==
+           (interpreter.record.initial.eflags & UINT32_C(0x8d5)));
+    assert(interpreter.info.jit_executions == 0U);
+    /* Adapter-owned serializing instructions deliberately terminate a Blink
+     * path; the JIT still owns the decoded attempt and reports no fallback. */
+    assert(jit.info.jit_executions == 0U && jit.info.jit_failures == 0U);
 }
 
 static void verify_legacy_state_semantics(void) {
@@ -369,6 +595,494 @@ static void verify_segment_limit(enum gem_i386_engine_mode mode) {
     gem_memory_destroy(memory);
 }
 
+static void verify_bmi1_cross_page(enum gem_i386_engine_mode mode, int commit_second_page) {
+    static const uint8_t code[] = {0xc4U, 0xe2U, 0x60U, 0xf2U, 0x06U};
+    static const uint8_t operand[] = {0x78U, 0x56U, 0x34U, 0x12U};
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_stop_info stop = {0};
+    struct gem_i386_context initial;
+    struct gem_i386_context context;
+    struct gem_i386_runtime *runtime;
+    struct gem_memory *memory = gem_memory_create();
+    uint32_t address = CODE;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, CODE, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, CODE, code, sizeof(code)) == GEM_MEMORY_OK);
+    address = DATA;
+    assert(gem_i386_memory_reserve(memory, &address, 2U * GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, DATA, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, DATA + GEM_GUEST_PAGE_SIZE - 2U, operand, 2U) ==
+           GEM_MEMORY_OK);
+    if (commit_second_page) {
+        assert(gem_i386_memory_commit(memory, DATA + GEM_GUEST_PAGE_SIZE, GEM_GUEST_PAGE_SIZE,
+                                      GEM_PAGE_READWRITE) == GEM_MEMORY_OK);
+        assert(gem_i386_memory_write(memory, DATA + GEM_GUEST_PAGE_SIZE, operand + 2U, 2U) ==
+               GEM_MEMORY_OK);
+    }
+    config.engine_mode = mode;
+    config.host_return_sentinel = CODE + (uint32_t)sizeof(code);
+    config.max_budget = 1U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    gem_i386_context_initialize(&initial, UINT32_C(0x7ffde000));
+    initial.eip = CODE;
+    initial.gpr[GEM_I386_EBX] = UINT32_C(0x0f0f0f0f);
+    initial.gpr[GEM_I386_ESI] = DATA + GEM_GUEST_PAGE_SIZE - 2U;
+    context = initial;
+    if (commit_second_page) {
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+        assert(context.eip == CODE + sizeof(code));
+        assert(context.gpr[GEM_I386_EAX] == (~initial.gpr[GEM_I386_EBX] & UINT32_C(0x12345678)));
+    } else {
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_MEMORY_FAULT);
+        assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+        assert(stop.instructions_retired == 0U && stop.access == GEM_I386_ACCESS_READ);
+        assert(stop.fault_address == DATA + GEM_GUEST_PAGE_SIZE);
+        assert(context.eip == initial.eip && context.eflags == initial.eflags);
+        assert(memcmp(context.gpr, initial.gpr, sizeof(context.gpr)) == 0);
+    }
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void verify_bmi2_cross_page(enum gem_i386_engine_mode mode, int commit_second_page) {
+    static const uint8_t code[] = {0xc4U, 0xe2U, 0x70U, 0xf5U, 0x1eU};
+    static const uint8_t operand[] = {0x78U, 0x56U, 0x34U, 0x12U};
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_stop_info stop = {0};
+    struct gem_i386_context initial;
+    struct gem_i386_context context;
+    struct gem_i386_runtime *runtime;
+    struct gem_memory *memory = gem_memory_create();
+    uint32_t address = CODE;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, CODE, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, CODE, code, sizeof(code)) == GEM_MEMORY_OK);
+    address = DATA;
+    assert(gem_i386_memory_reserve(memory, &address, 2U * GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, DATA, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, DATA + GEM_GUEST_PAGE_SIZE - 2U, operand, 2U) ==
+           GEM_MEMORY_OK);
+    if (commit_second_page) {
+        assert(gem_i386_memory_commit(memory, DATA + GEM_GUEST_PAGE_SIZE, GEM_GUEST_PAGE_SIZE,
+                                      GEM_PAGE_READWRITE) == GEM_MEMORY_OK);
+        assert(gem_i386_memory_write(memory, DATA + GEM_GUEST_PAGE_SIZE, operand + 2U, 2U) ==
+               GEM_MEMORY_OK);
+    }
+    config.engine_mode = mode;
+    config.host_return_sentinel = CODE + (uint32_t)sizeof(code);
+    config.max_budget = 1U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    gem_i386_context_initialize(&initial, UINT32_C(0x7ffde000));
+    initial.eip = CODE;
+    initial.gpr[GEM_I386_ECX] = 16U;
+    initial.gpr[GEM_I386_ESI] = DATA + GEM_GUEST_PAGE_SIZE - 2U;
+    context = initial;
+    if (commit_second_page) {
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+        assert(context.eip == CODE + sizeof(code));
+        assert(context.gpr[GEM_I386_EBX] == UINT32_C(0x5678));
+    } else {
+        assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_MEMORY_FAULT);
+        assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+        assert(stop.instructions_retired == 0U && stop.access == GEM_I386_ACCESS_READ);
+        assert(stop.fault_address == DATA + GEM_GUEST_PAGE_SIZE);
+        assert(context.eip == initial.eip && context.eflags == initial.eflags);
+        assert(memcmp(context.gpr, initial.gpr, sizeof(context.gpr)) == 0);
+    }
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void verify_bmi2_guest_program(enum gem_i386_engine_mode mode) {
+    static const uint8_t code[] = {
+        0xb8U, 0x40U, 0x30U, 0x20U, 0x10U,       /* mov eax,0x10203040 */
+        0xb9U, 0x07U, 0x00U, 0x00U, 0x00U,       /* mov ecx,7 */
+        0xc4U, 0xe2U, 0x70U, 0xf5U, 0xd8U,       /* bzhi ecx,eax,ebx */
+        0x83U, 0xfbU, 0x40U,                     /* cmp ebx,0x40 */
+        0x75U, 0x03U,                            /* jne failure */
+        0x31U, 0xc0U,                            /* xor eax,eax */
+        0xc3U,                                   /* success return */
+        0xb8U, 0x01U, 0x00U, 0x00U, 0x00U, 0xc3U /* failure return */
+    };
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_stop_info stop = {0};
+    struct gem_i386_engine_info info = {0};
+    struct gem_i386_context context;
+    struct gem_i386_runtime *runtime;
+    struct gem_memory *memory = gem_memory_create();
+    uint32_t address = CODE;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, CODE, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, CODE, code, sizeof(code)) == GEM_MEMORY_OK);
+    config.engine_mode = mode;
+    config.host_return_sentinel = CODE + 22U;
+    config.max_budget = 6U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    gem_i386_context_initialize(&context, UINT32_C(0x7ffde000));
+    context.eip = CODE;
+    assert(gem_i386_runtime_run(runtime, &context, 6U) == GEM_STOP_HOST_RETURN);
+    assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+    assert(stop.instructions_retired == 6U);
+    assert(context.eip == CODE + 22U);
+    assert(context.gpr[GEM_I386_EAX] == 0U);
+    assert(context.gpr[GEM_I386_EBX] == UINT32_C(0x40));
+    info.abi_version = 1U;
+    info.size = sizeof(info);
+    assert(gem_i386_runtime_engine_info(runtime, &info));
+    if (mode == GEM_I386_ENGINE_JIT)
+        assert(info.jit_executions == 6U && info.jit_failures == 0U);
+    else
+        assert(info.jit_executions == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void verify_avx_guest_program(enum gem_i386_engine_mode mode) {
+    static const uint8_t code[] = {
+        0xc5U, 0xfcU, 0x10U, 0x06U, /* vmovups ymm0,[esi] */
+        0xc5U, 0xfcU, 0x58U, 0xc0U, /* vaddps ymm0,ymm0,ymm0 */
+        0xc5U, 0xfcU, 0x11U, 0x07U  /* vmovups [edi],ymm0 */
+    };
+    static const float input[8] = {1.0F, 2.0F, 4.0F, 8.0F, 16.0F, 32.0F, 64.0F, 128.0F};
+    static const float expected[8] = {2.0F, 4.0F, 8.0F, 16.0F, 32.0F, 64.0F, 128.0F, 256.0F};
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_stop_info stop = {0};
+    struct gem_i386_engine_info info = {0};
+    struct gem_i386_context context;
+    struct gem_i386_runtime *runtime;
+    enum gem_stop_reason reason;
+    struct gem_memory *memory = gem_memory_create();
+    float output[8] = {0};
+    uint32_t address = CODE;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, CODE, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, CODE, code, sizeof(code)) == GEM_MEMORY_OK);
+    address = DATA;
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, DATA, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, DATA, input, sizeof(input)) == GEM_MEMORY_OK);
+    config.engine_mode = mode;
+    config.host_return_sentinel = CODE + (uint32_t)sizeof(code);
+    config.max_budget = 3U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    gem_i386_context_initialize(&context, UINT32_C(0x7ffde000));
+    context.eip = CODE;
+    context.gpr[GEM_I386_ESI] = DATA;
+    context.gpr[GEM_I386_EDI] = DATA + 64U;
+    context.xcr0 = GEM_I386_XCR0_SUPPORTED;
+    reason = gem_i386_runtime_run(runtime, &context, 3U);
+    assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+    if (reason != GEM_STOP_HOST_RETURN)
+        fprintf(stderr, "AVX guest program stopped: mode=%u reason=%u eip=%08x status=%08x\n",
+                (unsigned)mode, (unsigned)reason, context.eip, stop.engine_status);
+    assert(reason == GEM_STOP_HOST_RETURN);
+    assert(stop.instructions_retired == 3U);
+    assert(context.eip == CODE + sizeof(code));
+    assert(gem_i386_memory_read(memory, DATA + 64U, output, sizeof(output)) == GEM_MEMORY_OK);
+    assert(memcmp(output, expected, sizeof(output)) == 0);
+    info.abi_version = 1U;
+    info.size = sizeof(info);
+    assert(gem_i386_runtime_engine_info(runtime, &info));
+    if (mode == GEM_I386_ENGINE_JIT)
+        assert(info.jit_executions == 3U && info.jit_failures == 0U);
+    else
+        assert(info.jit_executions == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void verify_avx2_guest_program(enum gem_i386_engine_mode mode) {
+    static const uint8_t code[] = {
+        0xc5U, 0xfeU, 0x6fU, 0x0eU,        /* vmovdqu ymm1,[esi] */
+        0xc5U, 0xfeU, 0x6fU, 0x56U, 0x20U, /* vmovdqu ymm2,[esi+32] */
+        0xc5U, 0xf5U, 0xfeU, 0xc2U,        /* vpaddd ymm0,ymm1,ymm2 */
+        0xc5U, 0xfeU, 0x7fU, 0x07U         /* vmovdqu [edi],ymm0 */
+    };
+    static const uint32_t input[16] = {1U,  2U,  3U,  4U,  5U,  6U,  7U,  8U,
+                                       10U, 20U, 30U, 40U, 50U, 60U, 70U, 80U};
+    static const uint32_t expected[8] = {11U, 22U, 33U, 44U, 55U, 66U, 77U, 88U};
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_stop_info stop = {0};
+    struct gem_i386_engine_info info = {0};
+    struct gem_i386_context context;
+    struct gem_i386_runtime *runtime;
+    enum gem_stop_reason reason;
+    struct gem_memory *memory = gem_memory_create();
+    uint32_t output[8] = {0};
+    uint32_t address = CODE;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, CODE, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, CODE, code, sizeof(code)) == GEM_MEMORY_OK);
+    address = DATA;
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, DATA, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, DATA, input, sizeof(input)) == GEM_MEMORY_OK);
+    config.engine_mode = mode;
+    config.host_return_sentinel = CODE + (uint32_t)sizeof(code);
+    config.max_budget = 5U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    gem_i386_context_initialize(&context, UINT32_C(0x7ffde000));
+    context.eip = CODE;
+    context.gpr[GEM_I386_ESI] = DATA;
+    context.gpr[GEM_I386_EDI] = DATA + 128U;
+    context.xcr0 = GEM_I386_XCR0_SUPPORTED;
+    reason = gem_i386_runtime_run(runtime, &context, 5U);
+    assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+    if (reason != GEM_STOP_HOST_RETURN)
+        fprintf(stderr,
+                "AVX2 guest program stopped: mode=%u reason=%u eip=%08x status=%08x retired=%u\n",
+                (unsigned)mode, (unsigned)reason, context.eip, stop.engine_status,
+                stop.instructions_retired);
+    assert(reason == GEM_STOP_HOST_RETURN);
+    assert(stop.instructions_retired == 4U);
+    assert(context.eip == CODE + sizeof(code));
+    assert(gem_i386_memory_read(memory, DATA + 128U, output, sizeof(output)) == GEM_MEMORY_OK);
+    assert(memcmp(output, expected, sizeof(output)) == 0);
+    info.abi_version = 1U;
+    info.size = sizeof(info);
+    assert(gem_i386_runtime_engine_info(runtime, &info));
+    if (mode == GEM_I386_ENGINE_JIT)
+        assert(info.jit_executions == 4U && info.jit_failures == 0U);
+    else
+        assert(info.jit_executions == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void verify_fma_guest_program(enum gem_i386_engine_mode mode) {
+    static const uint8_t code[] = {
+        0xc5U, 0xfcU, 0x10U, 0x06U,        /* vmovups ymm0,[esi] */
+        0xc5U, 0xfcU, 0x10U, 0x4eU, 0x20U, /* vmovups ymm1,[esi+32] */
+        0xc5U, 0xfcU, 0x10U, 0x56U, 0x40U, /* vmovups ymm2,[esi+64] */
+        0xc4U, 0xe2U, 0x75U, 0x98U, 0xc2U, /* vfmadd132ps ymm0,ymm1,ymm2 */
+        0xc5U, 0xfcU, 0x11U, 0x07U         /* vmovups [edi],ymm0 */
+    };
+    static const float input[24] = {2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F, 2.0F,
+                                    3.0F, 3.0F, 3.0F, 3.0F, 3.0F, 3.0F, 3.0F, 3.0F,
+                                    5.0F, 5.0F, 5.0F, 5.0F, 5.0F, 5.0F, 5.0F, 5.0F};
+    static const float expected[8] = {13.0F, 13.0F, 13.0F, 13.0F, 13.0F, 13.0F, 13.0F, 13.0F};
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_stop_info stop = {0};
+    struct gem_i386_engine_info info = {0};
+    struct gem_i386_context context;
+    struct gem_i386_runtime *runtime;
+    enum gem_stop_reason reason;
+    struct gem_memory *memory = gem_memory_create();
+    float output[8] = {0};
+    uint32_t address = CODE;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, CODE, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, CODE, code, sizeof(code)) == GEM_MEMORY_OK);
+    address = DATA;
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, DATA, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, DATA, input, sizeof(input)) == GEM_MEMORY_OK);
+    config.engine_mode = mode;
+    config.host_return_sentinel = CODE + (uint32_t)sizeof(code);
+    config.max_budget = 6U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    gem_i386_context_initialize(&context, UINT32_C(0x7ffde000));
+    context.eip = CODE;
+    context.gpr[GEM_I386_ESI] = DATA;
+    context.gpr[GEM_I386_EDI] = DATA + 128U;
+    context.xcr0 = GEM_I386_XCR0_SUPPORTED;
+    reason = gem_i386_runtime_run(runtime, &context, 6U);
+    assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+    if (reason != GEM_STOP_HOST_RETURN)
+        fprintf(stderr,
+                "FMA guest program stopped: mode=%u reason=%u eip=%08x status=%08x retired=%u\n",
+                (unsigned)mode, (unsigned)reason, context.eip, stop.engine_status,
+                stop.instructions_retired);
+    assert(reason == GEM_STOP_HOST_RETURN);
+    assert(stop.instructions_retired == 5U);
+    assert(context.eip == CODE + sizeof(code));
+    assert(gem_i386_memory_read(memory, DATA + 128U, output, sizeof(output)) == GEM_MEMORY_OK);
+    assert(memcmp(output, expected, sizeof(output)) == 0);
+    info.abi_version = 1U;
+    info.size = sizeof(info);
+    assert(gem_i386_runtime_engine_info(runtime, &info));
+    if (mode == GEM_I386_ENGINE_JIT)
+        assert(info.jit_executions == 5U && info.jit_failures == 0U);
+    else
+        assert(info.jit_executions == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void verify_adx_guest_program(enum gem_i386_engine_mode mode) {
+    static const uint8_t code[] = {
+        0xb8U, 0xffU, 0xffU, 0xffU, 0xffU, /* mov eax,-1 */
+        0x31U, 0xc9U,                      /* xor ecx,ecx */
+        0x31U, 0xd2U,                      /* xor edx,edx */
+        0xbbU, 0xffU, 0xffU, 0xffU, 0x7fU, /* mov ebx,0x7fffffff */
+        0x83U, 0xc3U, 0x01U,               /* add ebx,1 (OF=1) */
+        0xf9U,                             /* stc (CF=1, preserve OF) */
+        0x66U, 0x0fU, 0x38U, 0xf6U, 0xc8U, /* adcx ecx,eax */
+        0xf3U, 0x0fU, 0x38U, 0xf6U, 0xd0U  /* adox edx,eax */
+    };
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_stop_info stop = {0};
+    struct gem_i386_engine_info info = {0};
+    struct gem_i386_context context;
+    struct gem_i386_runtime *runtime;
+    enum gem_stop_reason reason;
+    struct gem_memory *memory = gem_memory_create();
+    uint32_t address = CODE;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, CODE, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, CODE, code, sizeof(code)) == GEM_MEMORY_OK);
+    config.engine_mode = mode;
+    config.host_return_sentinel = CODE + (uint32_t)sizeof(code);
+    config.max_budget = 9U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    gem_i386_context_initialize(&context, UINT32_C(0x7ffde000));
+    context.eip = CODE;
+    reason = gem_i386_runtime_run(runtime, &context, 9U);
+    assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+    assert(reason == GEM_STOP_HOST_RETURN);
+    assert(stop.instructions_retired == 8U);
+    assert(context.eip == CODE + sizeof(code));
+    assert(context.gpr[GEM_I386_ECX] == 0U && context.gpr[GEM_I386_EDX] == 0U);
+    assert((context.eflags & (UINT32_C(0x001) | UINT32_C(0x800))) ==
+           (UINT32_C(0x001) | UINT32_C(0x800)));
+    info.abi_version = 1U;
+    info.size = sizeof(info);
+    assert(gem_i386_runtime_engine_info(runtime, &info));
+    if (mode == GEM_I386_ENGINE_JIT)
+        assert(info.jit_executions == 8U && info.jit_failures == 0U);
+    else
+        assert(info.jit_executions == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void verify_rdpid_guest_program(enum gem_i386_engine_mode mode) {
+    static const uint8_t code[] = {
+        0xf3U, 0x0fU, 0xc7U, 0xf8U, /* rdpid eax */
+        0x89U, 0x07U                /* mov [edi],eax */
+    };
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_stop_info stop = {0};
+    struct gem_i386_engine_info info = {0};
+    struct gem_i386_context context;
+    struct gem_i386_runtime *runtime;
+    enum gem_stop_reason reason;
+    struct gem_memory *memory = gem_memory_create();
+    uint32_t output = UINT32_MAX;
+    uint32_t address = CODE;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, CODE, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, CODE, code, sizeof(code)) == GEM_MEMORY_OK);
+    address = DATA;
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, DATA, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+           GEM_MEMORY_OK);
+    config.engine_mode = mode;
+    config.host_return_sentinel = CODE + (uint32_t)sizeof(code);
+    config.max_budget = 3U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    gem_i386_context_initialize(&context, UINT32_C(0x7ffde000));
+    context.eip = CODE;
+    context.gpr[GEM_I386_EDI] = DATA;
+    reason = gem_i386_runtime_run(runtime, &context, 3U);
+    assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+    assert(reason == GEM_STOP_HOST_RETURN);
+    assert(stop.instructions_retired == 2U);
+    assert(context.eip == CODE + sizeof(code));
+    assert(context.gpr[GEM_I386_EAX] == 0U);
+    assert(gem_i386_memory_read(memory, DATA, &output, sizeof(output)) == GEM_MEMORY_OK);
+    assert(output == 0U);
+    info.abi_version = 1U;
+    info.size = sizeof(info);
+    assert(gem_i386_runtime_engine_info(runtime, &info));
+    if (mode == GEM_I386_ENGINE_JIT)
+        assert(info.jit_executions == 2U && info.jit_failures == 0U);
+    else
+        assert(info.jit_executions == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void verify_random_guest_program(enum gem_i386_engine_mode mode) {
+    static const uint8_t code[] = {
+        0x0fU, 0xc7U, 0xf0U, /* rdrand eax */
+        0x89U, 0x07U,        /* mov [edi],eax */
+        0x0fU, 0xc7U, 0xf9U, /* rdseed ecx */
+        0x89U, 0x4fU, 0x04U  /* mov [edi+4],ecx */
+    };
+    const uint32_t arithmetic_flags = UINT32_C(0x8d5);
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_stop_info stop = {0};
+    struct gem_i386_engine_info info = {0};
+    struct gem_i386_context context;
+    struct gem_i386_runtime *runtime;
+    enum gem_stop_reason reason;
+    struct gem_memory *memory = gem_memory_create();
+    uint32_t address = CODE;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, CODE, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, CODE, code, sizeof(code)) == GEM_MEMORY_OK);
+    address = DATA;
+    assert(gem_i386_memory_reserve(memory, &address, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, DATA, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+           GEM_MEMORY_OK);
+    config.engine_mode = mode;
+    config.host_return_sentinel = CODE + (uint32_t)sizeof(code);
+    config.max_budget = 5U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    gem_i386_context_initialize(&context, UINT32_C(0x7ffde000));
+    context.eip = CODE;
+    context.gpr[GEM_I386_EDI] = DATA;
+    context.eflags |= arithmetic_flags;
+    reason = gem_i386_runtime_run(runtime, &context, 5U);
+    assert(gem_i386_runtime_last_stop_info(runtime, &stop));
+    assert(reason == GEM_STOP_HOST_RETURN);
+    assert(stop.instructions_retired == 4U);
+    assert(context.eip == CODE + sizeof(code));
+    assert((context.eflags & arithmetic_flags) == UINT32_C(0x001));
+    info.abi_version = 1U;
+    info.size = sizeof(info);
+    assert(gem_i386_runtime_engine_info(runtime, &info));
+    if (mode == GEM_I386_ENGINE_JIT)
+        assert(info.jit_executions == 4U && info.jit_failures == 0U);
+    else
+        assert(info.jit_executions == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
 static void expect_masked_instruction(const uint8_t *code, size_t code_size) {
     const enum gem_i386_engine_mode modes[] = {GEM_I386_ENGINE_INTERPRETER, GEM_I386_ENGINE_JIT};
     unsigned int mode_index;
@@ -412,30 +1126,12 @@ static void expect_masked_instruction(const uint8_t *code, size_t code_size) {
 }
 
 static void verify_masked_instructions(void) {
-    static const uint8_t avx[] = {0xc5U, 0xf8U, 0x77U};
-    static const uint8_t avx2[] = {0xc5U, 0xfdU, 0xfeU, 0xc1U};
-    static const uint8_t fma[] = {0xc4U, 0xe2U, 0x71U, 0x98U, 0xc1U};
-    static const uint8_t bmi1[] = {0xc4U, 0xe2U, 0x70U, 0xf2U, 0xc1U};
-    static const uint8_t bmi2[] = {0xc4U, 0xe2U, 0x73U, 0xf5U, 0xc1U};
-    static const uint8_t adx[] = {0x66U, 0x0fU, 0x38U, 0xf6U, 0xc1U};
-    static const uint8_t rdrand[] = {0x0fU, 0xc7U, 0xf0U};
-    static const uint8_t rdseed[] = {0x0fU, 0xc7U, 0xf8U};
-    static const uint8_t rdpid[] = {0xf3U, 0x0fU, 0xc7U, 0xf8U};
+    static const uint8_t invalid_bmi2_prefix[] = {0xc4U, 0xe2U, 0x71U, 0xf5U, 0xd8U};
+    static const uint8_t invalid_legacy_bmi2[] = {0x0fU, 0x38U, 0xf5U, 0xd8U};
     static const uint8_t fsgsbase[] = {0xf3U, 0x0fU, 0xaeU, 0xc0U};
-    static const uint8_t xgetbv[] = {0x0fU, 0x01U, 0xd0U};
-    static const uint8_t rdtscp[] = {0x0fU, 0x01U, 0xf9U};
-    expect_masked_instruction(avx, sizeof(avx));
-    expect_masked_instruction(avx2, sizeof(avx2));
-    expect_masked_instruction(fma, sizeof(fma));
-    expect_masked_instruction(bmi1, sizeof(bmi1));
-    expect_masked_instruction(bmi2, sizeof(bmi2));
-    expect_masked_instruction(adx, sizeof(adx));
-    expect_masked_instruction(rdrand, sizeof(rdrand));
-    expect_masked_instruction(rdseed, sizeof(rdseed));
-    expect_masked_instruction(rdpid, sizeof(rdpid));
+    expect_masked_instruction(invalid_bmi2_prefix, sizeof(invalid_bmi2_prefix));
+    expect_masked_instruction(invalid_legacy_bmi2, sizeof(invalid_legacy_bmi2));
     expect_masked_instruction(fsgsbase, sizeof(fsgsbase));
-    expect_masked_instruction(xgetbv, sizeof(xgetbv));
-    expect_masked_instruction(rdtscp, sizeof(rdtscp));
 }
 
 int main(void) {
@@ -559,11 +1255,36 @@ int main(void) {
                         contextn, 6U);
     assert(next == I386_PHASE3_CASES);
     verify_cpuid_profile();
+    verify_bmi1_instructions();
+    verify_bmi2_instructions();
+    verify_rdtscp_instruction();
     verify_legacy_state_semantics();
     verify_restartable_rep(GEM_I386_ENGINE_INTERPRETER);
     verify_restartable_rep(GEM_I386_ENGINE_JIT);
     verify_segment_limit(GEM_I386_ENGINE_INTERPRETER);
     verify_segment_limit(GEM_I386_ENGINE_JIT);
+    verify_bmi1_cross_page(GEM_I386_ENGINE_INTERPRETER, 1);
+    verify_bmi1_cross_page(GEM_I386_ENGINE_JIT, 1);
+    verify_bmi1_cross_page(GEM_I386_ENGINE_INTERPRETER, 0);
+    verify_bmi1_cross_page(GEM_I386_ENGINE_JIT, 0);
+    verify_bmi2_cross_page(GEM_I386_ENGINE_INTERPRETER, 1);
+    verify_bmi2_cross_page(GEM_I386_ENGINE_JIT, 1);
+    verify_bmi2_cross_page(GEM_I386_ENGINE_INTERPRETER, 0);
+    verify_bmi2_cross_page(GEM_I386_ENGINE_JIT, 0);
+    verify_bmi2_guest_program(GEM_I386_ENGINE_INTERPRETER);
+    verify_bmi2_guest_program(GEM_I386_ENGINE_JIT);
+    verify_avx_guest_program(GEM_I386_ENGINE_INTERPRETER);
+    verify_avx_guest_program(GEM_I386_ENGINE_JIT);
+    verify_avx2_guest_program(GEM_I386_ENGINE_INTERPRETER);
+    verify_avx2_guest_program(GEM_I386_ENGINE_JIT);
+    verify_fma_guest_program(GEM_I386_ENGINE_INTERPRETER);
+    verify_fma_guest_program(GEM_I386_ENGINE_JIT);
+    verify_adx_guest_program(GEM_I386_ENGINE_INTERPRETER);
+    verify_adx_guest_program(GEM_I386_ENGINE_JIT);
+    verify_rdpid_guest_program(GEM_I386_ENGINE_INTERPRETER);
+    verify_rdpid_guest_program(GEM_I386_ENGINE_JIT);
+    verify_random_guest_program(GEM_I386_ENGINE_INTERPRETER);
+    verify_random_guest_program(GEM_I386_ENGINE_JIT);
     verify_masked_instructions();
     assert(capture_reference || fgetc(reference_file) == EOF);
     assert(fclose(reference_file) == 0);

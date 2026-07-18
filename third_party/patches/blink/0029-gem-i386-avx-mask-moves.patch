@@ -1,0 +1,136 @@
+From 0000000000000000000000000000000000000029 Mon Sep 17 00:00:00 2001
+From: SharpWine Contributors <sharpwine@example.invalid>
+Date: Sat, 18 Jul 2026 00:00:00 +0000
+Subject: [PATCH] gem: execute i386 avx mask moves
+
+Implement VMASKMOVPS/PD and VMASKMOVDQU with inactive-element fault
+suppression, zero-filled masked loads, and preflighted restartable stores.
+Record one bounding active access span so GEM transactions retain every
+selected lane, and enlarge the overlap stash for existing 256-bit AVX moves.
+
+---
+diff -ruN --exclude=*.orig a/blink/avx.c b/blink/avx.c
+--- a/blink/avx.c
++++ b/blink/avx.c
+@@ -148,6 +148,17 @@
+     default:
+       return false;
+   }
++}
++
++static bool SupportsMaskMove(u64 rde) {
++  unsigned map = Opmap(rde);
++  unsigned op = Opcode(rde);
++  if (Prefix(rde) != 1 || Rexw(rde)) return false;
++  if (map == XED_ILD_MAP2 && op >= 0x2c && op <= 0x2f) {
++    return !IsModrmRegister(rde);
++  }
++  return map == XED_ILD_MAP1 && op == 0xf7 && !Ymm(rde) &&
++         Vreg(rde) == 0 && IsModrmRegister(rde);
+ }
+ 
+ static bool SupportsSpecial(u64 rde) {
+@@ -208,6 +219,7 @@
+   pp = Prefix(rde);
+   if (map == XED_ILD_MAP1 && op == 0x77) return pp == 0;
+   if (SupportsStore(rde)) return true;
++  if (SupportsMaskMove(rde)) return true;
+   if (SupportsSpecial(rde)) return true;
+   if (SupportsMisc(rde)) return true;
+   if (Ymm(rde)) return map == XED_ILD_MAP1 && Supports256(op, pp);
+@@ -457,8 +469,72 @@
+     memcpy(m->ymm_upper[reg], in + 16, 16);
+   else
+     memset(m->ymm_upper[reg], 0, 16);
++}
++
++static void PreflightMaskedStore(struct Machine *m, i64 address,
++                                 const u8 mask[32], size_t size,
++                                 size_t stride) {
++  size_t i;
++  for (i = 0; i < size; i += stride) {
++    if (mask[i + stride - 1] & 0x80) {
++      ReserveAddress(m, address + i, stride, true);
++      if (m->stashaddr) CommitStash(m);
++    }
++  }
++}
++
++static void RunMaskedStore(struct Machine *m, i64 address, const u8 source[32],
++                           const u8 mask[32], size_t size, size_t stride) {
++  u8 *destination;
++  size_t first = size, i, last = 0;
++  PreflightMaskedStore(m, address, mask, size, stride);
++  for (i = 0; i < size; i += stride) {
++    if (mask[i + stride - 1] & 0x80) {
++      if (first == size) first = i;
++      last = i;
++      destination = ReserveAddress(m, address + i, stride, true);
++      memcpy(destination, source + i, stride);
++      if (m->stashaddr) CommitStash(m);
++    }
++  }
++  if (first != size) SetWriteAddr(m, address + first, last - first + stride);
+ }
+ 
++static void RunAvxMaskMove(P) {
++  u8 mask[32], result[32] = {0}, source[32];
++  i64 address;
++  size_t first, i, last, size, stride;
++  unsigned op = Opcode(rde);
++  if (Opmap(rde) == XED_ILD_MAP1) {
++    address = AddressDi(A);
++    ReadRegisterVector(m, RexrReg(rde), 16, source);
++    ReadRegisterVector(m, RexbRm(rde), 16, mask);
++    RunMaskedStore(m, address, source, mask, 16, 1);
++    return;
++  }
++  address = ComputeAddress(A);
++  size = Ymm(rde) ? 32 : 16;
++  stride = (op & 1) ? 8 : 4;
++  ReadRegisterVector(m, Vreg(rde), size, mask);
++  if (op < 0x2e) {
++    first = size;
++    last = 0;
++    for (i = 0; i < size; i += stride) {
++      if (mask[i + stride - 1] & 0x80) {
++        if (first == size) first = i;
++        last = i;
++        memcpy(result + i, ReserveAddress(m, address + i, stride, false),
++               stride);
++      }
++    }
++    if (first != size) SetReadAddr(m, address + first, last - first + stride);
++    WriteRegisterVector(m, RexrReg(rde), size, result);
++  } else {
++    ReadRegisterVector(m, RexrReg(rde), size, source);
++    RunMaskedStore(m, address, source, mask, size, stride);
++  }
++}
++
+ static void RunAvxBroadcast(P) {
+   u8 result[32];
+   const u8 *source;
+@@ -800,6 +876,10 @@
+     RunAvxStore(A);
+     return;
+   }
++  if (SupportsMaskMove(rde)) {
++    RunAvxMaskMove(A);
++    return;
++  }
+   if (SupportsSpecial(rde)) {
+     RunAvxSpecial(A);
+     return;
+diff -ruN --exclude=*.orig a/blink/machine.h b/blink/machine.h
+--- a/blink/machine.h
++++ b/blink/machine.h
+@@ -259,7 +259,7 @@
+ };
+ 
+ struct OpCache {
+-  u8 stash[16];   // for memory ops that overlap page
++  u8 stash[32];   // for memory ops that overlap page
+   u64 codevirt;   // current rip page in guest memory
+   u8 *codehost;   // current rip page in host memory
+   u32 stashsize;  // for writes that overlap page

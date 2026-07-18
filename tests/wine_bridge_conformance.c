@@ -33,6 +33,7 @@
 struct callback_state {
     uint32_t syscall_count;
     uint32_t unix_count;
+    uint64_t syscall_result;
     int corrupt_x18;
     int corrupt_reserved;
     int corrupt_version;
@@ -91,7 +92,7 @@ static enum gem_wine_status boundary_callback(void *opaque,
         assert(request->stop.reserved == 0U);
         assert(request->context.x[0] == UINT64_C(0x123456789abcdef0));
         ++state->syscall_count;
-        response->context.x[0] = UINT64_C(0x42);
+        response->context.x[0] = state->syscall_result;
         response->context.pc += 4U;
     } else if (request->event == GEM_WINE_EVENT_UNIX_CALL) {
         assert(request->context.pc == UNIX_DISPATCH);
@@ -296,6 +297,7 @@ int main(void) {
     assert(gem_wine_thread_get_native_upper_simd(thread, upper_simd_output) == GEM_WINE_OK);
     assert(memcmp(upper_simd, upper_simd_output, sizeof(upper_simd)) == 0);
     assert(gem_wine_process_destroy(process) == GEM_WINE_CONFLICT);
+    callback.syscall_result = UINT64_C(0x42);
 
     initialize_context(&input, code);
     input.reserved0 = 1U;
@@ -321,6 +323,25 @@ int main(void) {
     assert(output.x[18] == TEST_TEB);
     assert(gem_wine_thread_get_native_upper_simd(thread, upper_simd_output) == GEM_WINE_OK);
     assert(memcmp(upper_simd, upper_simd_output, sizeof(upper_simd)) == 0);
+
+    /* A Wine syscall may return a host-backed guest pointer above 4 GiB.
+     * Preserve all 64 bits through the callback response and the resumed
+     * ARM64EC load instead of treating a successful pointer-returning API as
+     * a 32-bit status value. */
+    assert((uint64_t)(uintptr_t)(mapping + UINT64_C(0x200)) > UINT32_MAX);
+    *(uint64_t *)(mapping + UINT64_C(0x200)) = UINT64_C(0x8877665544332211);
+    store_word(mapping, CODE_OFFSET, SVC_0X123);
+    store_word(mapping, CODE_OFFSET + 4U, LDR_X2_X0);
+    store_word(mapping, CODE_OFFSET + 8U, RET);
+    assert(gem_wine_process_invalidate_code(process, code, 12U) == GEM_WINE_OK);
+    initialize_context(&input, code);
+    input.x[0] = UINT64_C(0x123456789abcdef0);
+    callback.syscall_result = (uint64_t)(uintptr_t)(mapping + UINT64_C(0x200));
+    assert(gem_wine_thread_run(thread, &input, &output, &result) == GEM_WINE_OK);
+    assert(result.outcome == GEM_WINE_RUN_COMPLETE && result.boundary_callbacks == 1U);
+    assert(output.pc == HOST_RETURN && output.x[0] == callback.syscall_result &&
+           output.x[2] == UINT64_C(0x8877665544332211));
+    callback.syscall_result = UINT64_C(0x42);
 
     store_word(mapping, CODE_OFFSET, LDR_X2_X0);
     store_word(mapping, CODE_OFFSET + 4U, RET);

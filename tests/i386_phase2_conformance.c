@@ -228,6 +228,9 @@ static unsigned test_invalidation(void) {
             uint8_t code[] = {0xb8U, (uint8_t)index, 0U, 0U, 0U};
             struct gem_i386_engine_info before = {.abi_version = 1U, .size = sizeof(before)};
             struct gem_i386_engine_info after = {.abi_version = 1U, .size = sizeof(after)};
+            struct gem_i386_performance_info_v2 performance = {
+                .abi_version = GEM_I386_PERFORMANCE_INFO_V2_ABI_VERSION,
+                .size = sizeof(performance)};
             struct fixture fixture = create_fixture(modes[mode_index], code, sizeof(code), CODE);
             assert(gem_i386_runtime_run(fixture.runtime, &fixture.context, 1U) ==
                    GEM_STOP_HOST_RETURN);
@@ -242,8 +245,12 @@ static unsigned test_invalidation(void) {
                    GEM_STOP_HOST_RETURN);
             assert(fixture.context.gpr[GEM_I386_EAX] == (uint32_t)(0x80U + index));
             assert(gem_i386_runtime_engine_info(fixture.runtime, &after));
+            assert(gem_i386_runtime_performance_info_v2(fixture.runtime, &performance));
+            assert(performance.code_invalidations == 1U);
             if (modes[mode_index] == GEM_I386_ENGINE_JIT)
-                assert(after.jit_compilations == before.jit_compilations + 1U);
+                assert(after.jit_compilations == before.jit_compilations + 1U &&
+                       performance.jit_cache_hits ==
+                           performance.jit_executions - performance.jit_compilations);
             else
                 assert(after.jit_compilations == 0U);
             destroy_fixture(&fixture);

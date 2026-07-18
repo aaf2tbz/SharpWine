@@ -1,0 +1,26 @@
+--- a/blink/machine.c
++++ b/blink/machine.c
+@@ -2314,7 +2314,7 @@
+        (Mopcode(rde) == 0x101 && Modrm(rde) == 0xf9) ||
+        Mopcode(rde) == 0x2f4 ||
+        (Mopcode(rde) == 0x2f5 && (Ymm(rde) || Osz(rde))) ||
+-       (Mopcode(rde) == 0x2f6 && (Ymm(rde) || Rep(rde) != 2)) ||
++       (Mopcode(rde) == 0x2f6 && Ymm(rde)) ||
+        (Mopcode(rde) == 0x2f7 && Ymm(rde)) ||
+        (Mopcode(rde) == 0x3f0 && (Ymm(rde) || Rep(rde) != 2))))
+     return 0;
+--- a/blink/gem_embed.c
++++ b/blink/gem_embed.c
+@@ -152,9 +152,10 @@
+         return 1;
+     }
+   }
++  if (Mopcode(rde) == 0x2f6) return !Osz(rde) && Rep(rde) != 3;
+   return Mopcode(rde) == 0x2f2 || Mopcode(rde) == 0x2f3 ||
+-         Mopcode(rde) == 0x2f5 || Mopcode(rde) == 0x2f6 ||
+-         Mopcode(rde) == 0x2f7 || Mopcode(rde) == 0x3f0;
++         Mopcode(rde) == 0x2f5 || Mopcode(rde) == 0x2f7 ||
++         Mopcode(rde) == 0x3f0;
+ }
+ static int refresh_page(struct blink_gem_machine* g, struct shadow_page* p,
+                         uint32_t* error) {

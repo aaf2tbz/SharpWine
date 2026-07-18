@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000020 Mon Sep 17 00:00:00 2001
+From: SharpWine contributors <noreply@sharpwine.dev>
+Date: Sat, 18 Jul 2026 01:05:00 -0600
+Subject: [PATCH 20/20] xtajit: map i386 AVX xstate through GEM
+
+Map the standard-format WoW64 CONTEXT_EX xstate area to the ABI-v3 GEM
+YMM-upper and XCR0 fields.  Compacted or undersized areas fail closed by
+leaving the extension inert; the existing XSAVE_FORMAT legacy mapping stays
+unchanged.  Preserve GEM's normalized #GP identity across the PE boundary and
+map it to the Windows privileged-instruction exception used for XSETBV.
+---
+ dlls/xtajit/cpu.c     |  3 +++
+ dlls/xtajit/unixlib.c | 28 ++++++++++++++++++++++++++++
+ dlls/xtajit/unixlib.h |  3 ++-
+ 3 files changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/dlls/xtajit/cpu.c b/dlls/xtajit/cpu.c
+index 835d7415aa..bf5e488310 100644
+--- a/dlls/xtajit/cpu.c
++++ b/dlls/xtajit/cpu.c
+@@ -218,6 +218,9 @@ void WINAPI BTCpuSimulate(void)
+                 case XTAJIT_EXCEPTION_STACK_OVERFLOW:
+                     rec.ExceptionCode = EXCEPTION_STACK_OVERFLOW;
+                     break;
++                case XTAJIT_EXCEPTION_GENERAL_PROTECTION:
++                    rec.ExceptionCode = EXCEPTION_PRIV_INSTRUCTION;
++                    break;
+                 case XTAJIT_EXCEPTION_ILLEGAL_INSTRUCTION:
+                 default:
+                     rec.ExceptionCode = EXCEPTION_ILLEGAL_INSTRUCTION;
+
+diff --git a/dlls/xtajit/unixlib.c b/dlls/xtajit/unixlib.c
+index dfa3019c91..5ed6878d67 100644
+--- a/dlls/xtajit/unixlib.c
++++ b/dlls/xtajit/unixlib.c
+@@ -176,6 +176,22 @@ static BYTE full_tag_to_fpux( USHORT full )
+     return abridged;
+ }
+-
++
++static const XSAVE_AREA_HEADER *i386_xstate_from_context( const I386_CONTEXT *context )
++{
++    const CONTEXT_EX *context_ex;
++
++    if ((context->ContextFlags & CONTEXT_I386_XSTATE) != CONTEXT_I386_XSTATE) return NULL;
++    context_ex = (const CONTEXT_EX *)(context + 1);
++    if (context_ex->XState.Offset < 0 ||
++        context_ex->XState.Length < sizeof(XSAVE_AREA_HEADER) + 8 * sizeof(M128A)) return NULL;
++    return (const XSAVE_AREA_HEADER *)((const BYTE *)context_ex + context_ex->XState.Offset);
++}
++
++static XSAVE_AREA_HEADER *i386_xstate_from_context_mutable( I386_CONTEXT *context )
++{
++    return (XSAVE_AREA_HEADER *)i386_xstate_from_context( context );
++}
++
+ static void context_to_gem( struct gem_i386_context *dst, const I386_CONTEXT *src, ULONG teb )
+ {
+     memset( dst, 0, sizeof(*dst) );
+@@ -206,6 +222,7 @@ static void context_to_gem( struct gem_i386_context *dst, const I386_CONTEXT *s
+         GEM_I386_SEGMENT_PRESENT | GEM_I386_SEGMENT_WRITABLE | GEM_I386_SEGMENT_DEFAULT_32;
+     {
+         const XSAVE_FORMAT *xsave = (const XSAVE_FORMAT *)src->ExtendedRegisters;
++        const XSAVE_AREA_HEADER *xstate = i386_xstate_from_context( src );
+         unsigned int i;
+         dst->mxcsr = xsave->MxCsr;
+         dst->fcw = xsave->ControlWord;
+@@ -218,5 +235,11 @@ static void context_to_gem( struct gem_i386_context *dst, const I386_CONTEXT *s
+         dst->x87_environment.fds = xsave->DataSelector;
+         memcpy( dst->xmm, xsave->XmmRegisters, sizeof(dst->xmm) );
+         for (i = 0; i < 8; ++i) memcpy( &dst->x87[i], &xsave->FloatRegisters[i], 10 );
++        if (xstate && !xstate->CompactionMask)
++        {
++            dst->xcr0 = GEM_I386_XCR0_SUPPORTED;
++            if (xstate->Mask & XSTATE_MASK_AVX)
++                memcpy( dst->ymm_upper, xstate + 1, sizeof(dst->ymm_upper) );
++        }
+     }
+ }
+@@ -233,6 +256,7 @@ static void context_from_gem( I386_CONTEXT *dst, const struct gem_i386_context
+     dst->SegFs = src->segment[GEM_I386_FS]; dst->SegGs = src->segment[GEM_I386_GS];
+     {
+         XSAVE_FORMAT *xsave = (XSAVE_FORMAT *)dst->ExtendedRegisters;
++        XSAVE_AREA_HEADER *xstate = i386_xstate_from_context_mutable( dst );
+         unsigned int i;
+         xsave->MxCsr = src->mxcsr;
+         xsave->ControlWord = src->fcw;
+@@ -245,6 +269,11 @@ static void context_from_gem( I386_CONTEXT *dst, const struct gem_i386_context
+         xsave->DataSelector = src->x87_environment.fds;
+         memcpy( xsave->XmmRegisters, src->xmm, sizeof(src->xmm) );
+         for (i = 0; i < 8; ++i) memcpy( &xsave->FloatRegisters[i], &src->x87[i], 10 );
++        if (xstate && !xstate->CompactionMask && (src->xcr0 & XSTATE_MASK_AVX))
++        {
++            xstate->Mask |= XSTATE_MASK_AVX;
++            memcpy( xstate + 1, src->ymm_upper, sizeof(src->ymm_upper) );
++        }
+     }
+ }
+
+diff --git a/dlls/xtajit/unixlib.h b/dlls/xtajit/unixlib.h
+index f3fff103f4..bd57e05f77 100644
+--- a/dlls/xtajit/unixlib.h
++++ b/dlls/xtajit/unixlib.h
+@@ -36,5 +36,6 @@ enum xtajit_exception
+     XTAJIT_EXCEPTION_BREAKPOINT,
+     XTAJIT_EXCEPTION_INTEGER_DIVIDE_BY_ZERO,
+     XTAJIT_EXCEPTION_INTEGER_OVERFLOW,
+-    XTAJIT_EXCEPTION_STACK_OVERFLOW
++    XTAJIT_EXCEPTION_STACK_OVERFLOW,
++    XTAJIT_EXCEPTION_GENERAL_PROTECTION
+ };
+
+--
+2.50.1

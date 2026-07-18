@@ -11,6 +11,7 @@
 #if defined(_WIN32)
 #include <windows.h>
 #else
+#include <errno.h>
 #include <pthread.h>
 #include <unistd.h>
 #endif
@@ -76,6 +77,9 @@ static void gem_lock_destroy(gem_lock *l) {
 static void gem_lock_acquire(gem_lock *l) {
     AcquireSRWLockExclusive(l);
 }
+static bool gem_lock_try_acquire(gem_lock *l) {
+    return TryAcquireSRWLockExclusive(l) != 0;
+}
 static void gem_lock_release(gem_lock *l) {
     ReleaseSRWLockExclusive(l);
 }
@@ -89,11 +93,17 @@ static void gem_stripe_destroy(gem_stripe_lock *l) {
 static void gem_stripe_read_acquire(gem_stripe_lock *l) {
     AcquireSRWLockShared(l);
 }
+static bool gem_stripe_read_try_acquire(gem_stripe_lock *l) {
+    return TryAcquireSRWLockShared(l) != 0;
+}
 static void gem_stripe_read_release(gem_stripe_lock *l) {
     ReleaseSRWLockShared(l);
 }
 static void gem_stripe_write_acquire(gem_stripe_lock *l) {
     AcquireSRWLockExclusive(l);
+}
+static bool gem_stripe_write_try_acquire(gem_stripe_lock *l) {
+    return TryAcquireSRWLockExclusive(l) != 0;
 }
 static void gem_stripe_write_release(gem_stripe_lock *l) {
     ReleaseSRWLockExclusive(l);
@@ -125,6 +135,14 @@ static void gem_lock_acquire(gem_lock *l) {
     if (pthread_mutex_lock(l) != 0)
         abort();
 }
+static bool gem_lock_try_acquire(gem_lock *l) {
+    const int error = pthread_mutex_trylock(l);
+    if (error == 0)
+        return true;
+    if (error != EBUSY)
+        abort();
+    return false;
+}
 static void gem_lock_release(gem_lock *l) {
     if (pthread_mutex_unlock(l) != 0)
         abort();
@@ -152,6 +170,21 @@ static void gem_stripe_read_acquire(struct gem_stripe_lock *l) {
     if (pthread_mutex_unlock(&l->mutex) != 0)
         abort();
 }
+static bool gem_stripe_read_try_acquire(struct gem_stripe_lock *l) {
+    const int error = pthread_mutex_trylock(&l->mutex);
+    bool acquired = false;
+    if (error == EBUSY)
+        return false;
+    if (error != 0)
+        abort();
+    if (!l->writer && l->waiting_writers == 0U) {
+        ++l->readers;
+        acquired = true;
+    }
+    if (pthread_mutex_unlock(&l->mutex) != 0)
+        abort();
+    return acquired;
+}
 static void gem_stripe_read_release(struct gem_stripe_lock *l) {
     if (pthread_mutex_lock(&l->mutex) != 0)
         abort();
@@ -171,6 +204,21 @@ static void gem_stripe_write_acquire(struct gem_stripe_lock *l) {
     l->writer = true;
     if (pthread_mutex_unlock(&l->mutex) != 0)
         abort();
+}
+static bool gem_stripe_write_try_acquire(struct gem_stripe_lock *l) {
+    const int error = pthread_mutex_trylock(&l->mutex);
+    bool acquired = false;
+    if (error == EBUSY)
+        return false;
+    if (error != 0)
+        abort();
+    if (!l->writer && l->readers == 0U && l->waiting_writers == 0U) {
+        l->writer = true;
+        acquired = true;
+    }
+    if (pthread_mutex_unlock(&l->mutex) != 0)
+        abort();
+    return acquired;
 }
 static void gem_stripe_write_release(struct gem_stripe_lock *l) {
     if (pthread_mutex_lock(&l->mutex) != 0)
@@ -242,19 +290,28 @@ static size_t backing_stripe_index(const struct backing *backing) {
     return (size_t)(((uintptr_t)backing >> 6U) & (GEM_MEMORY_LOCK_STRIPES - 1U));
 }
 static void transaction_metadata_acquire(struct gem_memory_transaction *transaction) {
-    const uint64_t started = monotonic_nanoseconds();
+    uint64_t started;
+    if (gem_lock_try_acquire(&transaction->memory->lock))
+        return;
+    started = monotonic_nanoseconds();
     gem_lock_acquire(&transaction->memory->lock);
     transaction->lock_wait_nanoseconds += monotonic_nanoseconds() - started;
 }
 static void transaction_stripe_read_acquire(struct gem_memory_transaction *transaction,
                                             size_t index) {
-    const uint64_t started = monotonic_nanoseconds();
+    uint64_t started;
+    if (gem_stripe_read_try_acquire(&transaction->memory->stripes[index].lock))
+        return;
+    started = monotonic_nanoseconds();
     gem_stripe_read_acquire(&transaction->memory->stripes[index].lock);
     transaction->lock_wait_nanoseconds += monotonic_nanoseconds() - started;
 }
 static void transaction_stripe_write_acquire(struct gem_memory_transaction *transaction,
                                              size_t index) {
-    const uint64_t started = monotonic_nanoseconds();
+    uint64_t started;
+    if (gem_stripe_write_try_acquire(&transaction->memory->stripes[index].lock))
+        return;
+    started = monotonic_nanoseconds();
     gem_stripe_write_acquire(&transaction->memory->stripes[index].lock);
     transaction->lock_wait_nanoseconds += monotonic_nanoseconds() - started;
 }
@@ -268,8 +325,8 @@ static size_t insert_stripe(size_t stripes[GEM_MEMORY_LOCK_STRIPES], size_t coun
     stripes[i] = stripe;
     return count + 1U;
 }
-static size_t page_stripes(uint64_t address, const struct backing *backing,
-                           size_t stripes[GEM_MEMORY_LOCK_STRIPES], size_t count) {
+static size_t page_stripes(uint64_t address, const struct backing *backing, size_t *stripes,
+                           size_t count) {
     count = insert_stripe(stripes, count, address_stripe_index(address));
     if (backing != NULL)
         count = insert_stripe(stripes, count, backing_stripe_index(backing));
@@ -350,9 +407,12 @@ static void range_stripes_release(struct gem_memory *memory, bool write,
 static uint64_t content_hash(const uint8_t *data) {
     uint64_t hash = UINT64_C(1469598103934665603);
     size_t i;
-    for (i = 0; i < GEM_GUEST_PAGE_SIZE; ++i) {
-        hash ^= data[i];
+    for (i = 0; i < GEM_GUEST_PAGE_SIZE; i += sizeof(uint64_t)) {
+        uint64_t word;
+        memcpy(&word, data + i, sizeof(word));
+        hash ^= word;
         hash *= UINT64_C(1099511628211);
+        hash ^= hash >> 32U;
     }
     return hash;
 }
@@ -1104,23 +1164,28 @@ gem_memory_transaction_commit_pages(struct gem_memory_transaction *transaction,
                                     const struct gem_memory_page_write *writes, size_t count,
                                     uint64_t *fault_address, size_t *bytes_committed) {
     enum gem_memory_error error = GEM_MEMORY_OK;
-    struct backing *copies[64] = {0};
-    struct backing *commit_backings[64] = {0};
-    bool copied[64] = {false};
-    unsigned char stripe_modes[GEM_MEMORY_LOCK_STRIPES] = {0};
+    struct backing *copies[64];
+    struct backing *commit_backings[64];
+    bool copied[64];
+    unsigned char stripe_modes[GEM_MEMORY_LOCK_STRIPES];
     size_t stripes[GEM_MEMORY_LOCK_STRIPES], stripe_count, i, j;
     size_t changed_bytes = 0U;
     if (transaction == NULL || (count != 0U && writes == NULL) || count > 64U)
         return GEM_MEMORY_INVALID_ARGUMENT;
     if (bytes_committed != NULL)
         *bytes_committed = 0U;
+    for (i = 0U; i < count; ++i) {
+        copies[i] = NULL;
+        commit_backings[i] = NULL;
+        copied[i] = false;
+    }
     transaction_metadata_acquire(transaction);
     stripe_count = dependency_stripes(transaction, stripes);
     for (i = 0U; i < stripe_count; ++i)
         stripe_modes[stripes[i]] = 1U;
     for (i = 0U; i < count; ++i) {
         struct page *page = at(transaction->memory, writes[i].address);
-        size_t write_stripes[GEM_MEMORY_LOCK_STRIPES];
+        size_t write_stripes[2];
         size_t write_count =
             page_stripes(writes[i].address, page != NULL ? page->backing : NULL, write_stripes, 0U);
         for (j = 0U; j < write_count; ++j) {

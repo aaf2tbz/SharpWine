@@ -39,20 +39,17 @@ static void verify_generator(void) {
     assert(!i386_phase4_validate(&first));
 }
 
-static void verify_x87_stack_overflow_regression(void) {
+static void verify_x87_stack_overflow_regression(uint32_t ordinal, uint32_t template_id) {
     struct i386_phase4_case test;
     struct i386_phase4_record interpreter;
     struct i386_phase4_record jit;
-    assert(i386_phase4_generate(0U, 1792U, &test));
-    assert(test.template_id == 300U);
+    assert(i386_phase4_generate(0U, ordinal, &test));
+    assert(test.template_id == template_id);
     assert(i386_phase4_execute(&test, GEM_I386_ENGINE_INTERPRETER, &interpreter));
     assert(i386_phase4_execute(&test, GEM_I386_ENGINE_JIT, &jit));
     assert(i386_phase4_records_match(&interpreter, &jit));
-    assert((interpreter.final.fsw & UINT16_C(0x0241)) == UINT16_C(0x0241));
-    assert((interpreter.final.fsw & UINT16_C(0x3800)) == UINT16_C(0x3800));
-    assert(((interpreter.final.ftw >> 14U) & 3U) == 2U);
-    assert(interpreter.final.x87[7].lo == UINT64_C(0xc000000000000000));
-    assert((interpreter.final.x87[7].hi & UINT64_C(0xffff)) == UINT64_C(0xffff));
+    assert(i386_phase4_sdm_expectation_met(&test, &interpreter));
+    assert(i386_phase4_sdm_expectation_met(&test, &jit));
 }
 
 static void verify_scas_flag_regression(void) {
@@ -69,6 +66,44 @@ static void verify_scas_flag_regression(void) {
     assert((interpreter.final.eflags & test.defined.eflags_mask) == UINT32_C(0x94));
 }
 
+static void verify_bmi1_templates(void) {
+    struct i386_phase4_case test;
+    struct i386_phase4_record interpreter;
+    struct i386_phase4_record jit;
+    uint32_t i;
+    for (i = 0U; i < 6U; ++i) {
+        assert(i386_phase4_generate(I386_PHASE4_SHARDS - 1U, 1018U + i, &test));
+        assert(test.template_id == 132U + i);
+        assert(i386_phase4_execute(&test, GEM_I386_ENGINE_INTERPRETER, &interpreter));
+        assert(i386_phase4_execute(&test, GEM_I386_ENGINE_JIT, &jit));
+        assert(i386_phase4_records_match(&interpreter, &jit));
+        assert(interpreter.classification == I386_PHASE4_PASS);
+        assert(jit.classification == I386_PHASE4_PASS);
+        assert(interpreter.retired_count == 1U && jit.retired_count == 1U);
+        assert(interpreter.jit_executions == 0U);
+        assert(jit.jit_executions == 1U && jit.jit_failures == 0U);
+    }
+}
+
+static void verify_bmi2_templates(void) {
+    struct i386_phase4_case test;
+    struct i386_phase4_record interpreter;
+    struct i386_phase4_record jit;
+    uint32_t i;
+    for (i = 0U; i < 8U; ++i) {
+        assert(i386_phase4_generate(I386_PHASE4_SHARDS - 1U, 1010U + i, &test));
+        assert(test.template_id == 138U + i);
+        assert(i386_phase4_execute(&test, GEM_I386_ENGINE_INTERPRETER, &interpreter));
+        assert(i386_phase4_execute(&test, GEM_I386_ENGINE_JIT, &jit));
+        assert(i386_phase4_records_match(&interpreter, &jit));
+        assert(interpreter.classification == I386_PHASE4_PASS);
+        assert(jit.classification == I386_PHASE4_PASS);
+        assert(interpreter.retired_count == 1U && jit.retired_count == 1U);
+        assert(interpreter.jit_executions == 0U);
+        assert(jit.jit_executions == 1U && jit.jit_failures == 0U);
+    }
+}
+
 int main(void) {
     const char *full = getenv("MSWR_PHASE4_FULL");
     uint32_t shard_count = full && full[0] == '1' ? I386_PHASE4_SHARDS : 1U;
@@ -76,15 +111,21 @@ int main(void) {
     uint32_t ordinal;
     uint64_t comparisons = 0;
     verify_generator();
-    verify_x87_stack_overflow_regression();
+    verify_x87_stack_overflow_regression(1792U, 300U);
+    verify_x87_stack_overflow_regression(1806U, 301U);
     verify_scas_flag_regression();
+    verify_bmi1_templates();
+    verify_bmi2_templates();
     for (shard = 0; shard < shard_count; ++shard) {
         for (ordinal = 0; ordinal < I386_PHASE4_CASES_PER_SHARD; ++ordinal) {
             struct i386_phase4_case test;
             struct i386_phase4_record interpreter;
             struct i386_phase4_record jit;
             assert(i386_phase4_generate(shard, ordinal, &test));
-            assert(i386_phase4_execute(&test, GEM_I386_ENGINE_INTERPRETER, &interpreter));
+            if (!i386_phase4_execute(&test, GEM_I386_ENGINE_INTERPRETER, &interpreter))
+                fprintf(stderr, "Phase 4 execution failure shard=%u case=%u template=%u\n", shard,
+                        ordinal, test.template_id);
+            assert(interpreter.classification == I386_PHASE4_PASS);
             assert(i386_phase4_execute(&test, GEM_I386_ENGINE_JIT, &jit));
             if (!i386_phase4_records_match(&interpreter, &jit))
                 fprintf(stderr, "Phase 4 mismatch shard=%u case=%u template=%u category=%s\n",

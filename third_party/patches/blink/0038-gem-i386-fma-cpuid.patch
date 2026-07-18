@@ -1,0 +1,11 @@
+--- a/blink/cpuid.c
++++ b/blink/cpuid.c
+@@ -132,7 +132,7 @@
+     case 1:
+       if (legacy) {
+         ax = 0x000106c2;  // deterministic family 6 legacy profile
+-        cx = (1u << 0) | (1u << 1) | (1u << 9) | (1u << 19) |
++        cx = (1u << 0) | (1u << 1) | (1u << 9) | (1u << 12) | (1u << 19) |
+              (1u << 20) | (1u << 23) | (1u << 25) | (1u << 26) |
+              (1u << 27) | (1u << 28);
+         dx = (1u << 0) | (1u << 8) | (1u << 15) | (1u << 23) |

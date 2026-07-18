@@ -7,6 +7,7 @@ blink/alui.c
 blink/ancillary.c
 blink/argv.c
 blink/assert.c
+blink/avx.c
 blink/aes.c
 blink/bcd.c
 blink/bios.c
