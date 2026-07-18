@@ -310,8 +310,11 @@ different quantum partitions.
 
 - The ABI review gate for W5 is this document: VEX decode work may start
   against it, but OSXSAVE/XSAVE/AVX CPUID bits stay masked until W5's own
-  gate (native-Windows exact-byte oracle plus hash-bound corpus, per the
-  roadmap) passes against real implementations.
+  gate passes against real native implementations. That gate requires
+  architecture assertions, interpreter/JIT parity, precise state and fault
+  behavior, the hash-bound corpus, and application compatibility. Native
+  Windows supplies exact comparison evidence where it exposes the family; a
+  missing Prism feature does not veto a stronger proven SharpWine capability.
 - The Wine bridge boundary version and `xtajit/unixlib.c` mapping must be
   extended in the same change that grows the context: XSTATE_CONTEXT →
   XSAVE_AREA mapping for the AVX component, keeping the documented

@@ -12,8 +12,11 @@ teardown; Blink remains the selected decoder/JIT and interpreter oracle. The
 phase requires an inventory of FEX's stable x86 implementations, tests, ARM64
 lowering strategies, and licenses by exact upstream revision, recording which
 ideas are adapted, independently implemented, or rejected. FEX is used as
-implementation evidence only; the native-Windows exact-byte oracle and the
-hash-bound interpreter/JIT corpus remain the semantic acceptance authority.
+implementation evidence only. SharpWine's own architecture assertions,
+hash-bound interpreter/JIT corpus, precise state/fault tests, and application
+compatibility are the semantic acceptance authority. Native Windows supplies
+exact comparison results for families it exposes, but is only an oracle and
+does not define SharpWine's capability ceiling.
 
 This ADR is that inventory. It is the document later phase 6 commits cite when
 unmasking a CPUID family or adapting a DBT technique.
@@ -142,8 +145,11 @@ The selected guest is i386 legacy32 (Windows WoW64):
   required when the qualification VM exposes the instruction family; when it
   does not, the unavailable capability is recorded and independent SDM tests
   are the semantic authority.
-  Incomplete families stay masked, including AVX/AVX2/FMA, BMI, ADX,
-  FSGSBASE, RDRAND/RDSEED, RDPID, and RDTSCP.
+  A family is not left masked merely because the current Blink/GEM snapshot or
+  an external oracle lacks it. Phase 6 first makes a deliberate native
+  implementation attempt in SharpWine's Blink patch series, then advertises
+  every family that passes the complete gate. Only functionality SharpWine
+  itself cannot yet implement completely or qualify honestly stays masked.
 - The native Windows ARM64 qualification VM does not expose BMI1 to its i386
   process: ANDN, BEXTR, BLSR, BLSMSK, and BLSI terminate as illegal
   instructions, while the TZCNT encoding executes with legacy BSF semantics.
