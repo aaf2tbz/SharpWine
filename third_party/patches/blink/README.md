@@ -202,3 +202,11 @@ implements VEX.128 packed logical, arithmetic, and byte-lane immediate shifts.
 The opcode-extension and VEX destination fields are handled independently,
 over-wide counts follow the architectural zero/sign-fill rules, and every
 result clears its YMM upper half in both execution engines.
+
+`0028-gem-i386-avx-misc-destinations.patch` (SHA-256
+`e84cbf65f831d902f79e5ee4869203dbcd8ec7bb2390626cbb8adb1540952df1`)
+implements AVX compare flags, movemasks, MOVD/MOVQ, scalar insert/extract,
+packed-string comparisons, and LDMXCSR/STMXCSR across their GPR, flags, MXCSR,
+memory, and implicit-vector destination shapes. Exact VEX admission precedes
+reviewed legacy semantics; new portable handlers retain width and upper-lane
+contracts in interpreter and JIT modes.

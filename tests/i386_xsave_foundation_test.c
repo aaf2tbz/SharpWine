@@ -42,6 +42,14 @@ static const uint8_t vtestps_ymm[] = {0xc4U, 0xe2U, 0x7dU, 0x0eU, 0xcaU};
 static const uint8_t vblendvps_ymm[] = {0xc4U, 0xe3U, 0x75U, 0x4aU, 0xc2U, 0x30U};
 static const uint8_t vpsrld_xmm[] = {0xc5U, 0xf9U, 0x72U, 0xd1U, 0x04U};
 static const uint8_t vpslldq_xmm[] = {0xc5U, 0xe1U, 0x73U, 0xfaU, 0x03U};
+static const uint8_t vmovmskps_ymm[] = {0xc5U, 0xfcU, 0x50U, 0xc1U};
+static const uint8_t vpextrb_eax[] = {0xc4U, 0xe3U, 0x79U, 0x14U, 0xc8U, 0x05U};
+static const uint8_t vpinsrd_eax[] = {0xc4U, 0xe3U, 0x71U, 0x22U, 0xc0U, 0x02U};
+static const uint8_t vmovd_from_eax[] = {0xc5U, 0xf9U, 0x6eU, 0xc0U};
+static const uint8_t vmovd_to_eax[] = {0xc5U, 0xf9U, 0x7eU, 0xc0U};
+static const uint8_t vucomiss_xmm[] = {0xc5U, 0xf8U, 0x2eU, 0xcaU};
+static const uint8_t vldmxcsr_esi[] = {0xc5U, 0xf8U, 0xaeU, 0x16U};
+static const uint8_t vstmxcsr_esi[] = {0xc5U, 0xf8U, 0xaeU, 0x1eU};
 
 static void put32(uint8_t *p, uint32_t value) {
     p[0] = (uint8_t)value;
@@ -547,6 +555,111 @@ static void exercise_avx_immediate_shifts(enum gem_i386_engine_mode mode) {
     gem_memory_destroy(memory);
 }
 
+static void exercise_avx_misc_destinations(enum gem_i386_engine_mode mode) {
+    const uint32_t signs[8] = {UINT32_C(0x80000000), 0U, UINT32_C(0x80000000), 0U,
+                               UINT32_C(0x80000000), 0U, UINT32_C(0x80000000), 0U};
+    const uint32_t lanes[4] = {1U, 2U, 3U, 4U};
+    const uint32_t inserted[4] = {1U, 2U, UINT32_C(0x76543210), 4U};
+    struct gem_memory *memory;
+    struct gem_i386_runtime *runtime;
+    struct gem_i386_context context;
+    uint8_t bytes[16];
+    float lhs = 1.0f, rhs = 2.0f;
+    uint32_t mxcsr;
+
+    memory = make_memory(vmovmskps_ymm, sizeof(vmovmskps_ymm), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vmovmskps_ymm));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], signs, 16U);
+    memcpy(&context.ymm_upper[1], signs + 4, 16U);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(context.gpr[GEM_I386_EAX] == UINT32_C(0x55));
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    for (size_t i = 0U; i < sizeof(bytes); ++i)
+        bytes[i] = (uint8_t)(0x80U + i);
+    memory = make_memory(vpextrb_eax, sizeof(vpextrb_eax), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vpextrb_eax));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], bytes, sizeof(bytes));
+    context.gpr[GEM_I386_EAX] = UINT32_MAX;
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(context.gpr[GEM_I386_EAX] == UINT32_C(0x85));
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    memory = make_memory(vpinsrd_eax, sizeof(vpinsrd_eax), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vpinsrd_eax));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], lanes, sizeof(lanes));
+    context.gpr[GEM_I386_EAX] = UINT32_C(0x76543210);
+    context.ymm_upper[0].lo = UINT64_MAX;
+    context.ymm_upper[0].hi = UINT64_MAX;
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(memcmp(&context.xmm[0], inserted, sizeof(inserted)) == 0);
+    assert(context.ymm_upper[0].lo == 0U && context.ymm_upper[0].hi == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    memory = make_memory(vmovd_from_eax, sizeof(vmovd_from_eax), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vmovd_from_eax));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    context.gpr[GEM_I386_EAX] = UINT32_C(0x89abcdef);
+    context.xmm[0].hi = UINT64_MAX;
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(context.xmm[0].lo == UINT64_C(0x89abcdef) && context.xmm[0].hi == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    memory = make_memory(vmovd_to_eax, sizeof(vmovd_to_eax), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vmovd_to_eax));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    context.xmm[0].lo = UINT64_C(0x0123456789abcdef);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(context.gpr[GEM_I386_EAX] == UINT32_C(0x89abcdef));
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    memory = make_memory(vucomiss_xmm, sizeof(vucomiss_xmm), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vucomiss_xmm));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    memcpy(&context.xmm[1], &lhs, sizeof(lhs));
+    memcpy(&context.xmm[2], &rhs, sizeof(rhs));
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert((context.eflags & 1U) != 0U && (context.eflags & (1U << 6)) == 0U);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    mxcsr = UINT32_C(0x1fa0);
+    memory = make_memory(vldmxcsr_esi, sizeof(vldmxcsr_esi), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vldmxcsr_esi));
+    assert(runtime != NULL);
+    assert(gem_i386_memory_write(memory, DATA, &mxcsr, sizeof(mxcsr)) == GEM_MEMORY_OK);
+    initialize(&context, DATA, 0U);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(context.mxcsr == mxcsr);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+
+    memory = make_memory(vstmxcsr_esi, sizeof(vstmxcsr_esi), GEM_GUEST_PAGE_SIZE);
+    runtime = make_runtime(memory, mode, sizeof(vstmxcsr_esi));
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    context.mxcsr = UINT32_C(0x1f80);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    assert(gem_i386_memory_read(memory, DATA, &mxcsr, sizeof(mxcsr)) == GEM_MEMORY_OK);
+    assert(mxcsr == UINT32_C(0x1f80));
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
 static void exercise_promoted128(enum gem_i386_engine_mode mode, const uint8_t *code,
                                  size_t code_size, unsigned operation) {
     struct gem_memory *memory = make_memory(code, code_size, GEM_GUEST_PAGE_SIZE);
@@ -668,6 +781,8 @@ int main(void) {
     exercise_avx_special_flags_and_blend(GEM_I386_ENGINE_JIT);
     exercise_avx_immediate_shifts(GEM_I386_ENGINE_INTERPRETER);
     exercise_avx_immediate_shifts(GEM_I386_ENGINE_JIT);
+    exercise_avx_misc_destinations(GEM_I386_ENGINE_INTERPRETER);
+    exercise_avx_misc_destinations(GEM_I386_ENGINE_JIT);
     exercise_promoted128(GEM_I386_ENGINE_INTERPRETER, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_promoted128(GEM_I386_ENGINE_JIT, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_vmovhlps(GEM_I386_ENGINE_INTERPRETER);

@@ -380,13 +380,14 @@ def main():
     parser.add_argument("--avx-store-patch", type=Path, required=True)
     parser.add_argument("--avx-cross-lane-patch", type=Path, required=True)
     parser.add_argument("--avx-shift-patch", type=Path, required=True)
+    parser.add_argument("--avx-misc-patch", type=Path, required=True)
     parser.add_argument("--capability-manifest", type=Path, required=True)
     parser.add_argument("--phase3-corpus", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 24, "provenance schema")
+    need(provenance["schemaVersion"] == 25, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -457,6 +458,10 @@ def main():
     need(
         digest(args.avx_shift_patch) == provenance["avxShiftPatchSha256"],
         "AVX immediate-shift patch hash",
+    )
+    need(
+        digest(args.avx_misc_patch) == provenance["avxMiscPatchSha256"],
+        "AVX miscellaneous-destination patch hash",
     )
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
