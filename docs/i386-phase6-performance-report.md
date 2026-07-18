@@ -1,8 +1,8 @@
 # i386 Phase 6 performance report
 
-Status: W10 complete; W11 active. Engine measurements, 32-bit Notepad, and interactive 32-bit
-Notepad++ native-window loading gates pass on macOS ARM64. W11 retains the observed input-latency
-and overlay-repaint work as the final performance gate.
+Status: W10 complete; W11 active. Engine measurements, 32-bit Notepad, and the complete persistent
+32-bit Notepad++ native-window loading gate pass on macOS ARM64. W11 retains startup latency,
+input latency, and overlay repaint as the final performance gate.
 
 ## Acceptance policy
 
@@ -78,6 +78,24 @@ This is a program-loading acceptance result, not a claim that interactive perfor
 User-observed typing can take about five seconds to appear, and menus or other overlay pages can
 remain blank until pointer hover causes repaint. Those are the explicit W11 startup, input-latency,
 and invalidation targets.
+
+### Persistent-window checkpoint
+
+The window gate was reconfirmed on 2026-07-18 with the official Notepad++ 8.9.7 32-bit minimalist
+portable archive (SHA-256
+`6700cafa0ade7d79f0c51edc881d3af83f79110c3cb4a1b54cb1248454aa501e`). The PE32 editor itself
+has SHA-256 `f54d67663a6356f69c1be302f2dfb82c6b7a66f72e4d86c1e3fe3a6ac413d6e9`. A native ARM64
+SharpWine/GEM-Blink JIT runtime with deployed dylib SHA-256
+`5ee0d37d4f075b3562587765aecb9d006a02ff5932e5f3c20eb8fad5223959b3` launched the editor with
+`-noPlugin -nosession`, zero Rosetta, and `WINEDEBUG=-all`.
+
+Computer Use captured and then independently recaptured a persistent window titled
+`new 1 - Notepad++ [Administrator]`. Both captures visibly contained the complete application
+frame: title bar, File/Edit menu row, toolbar, document tab, editor surface, and status bar. This is
+the application-window proof; a typed glyph is not used as a substitute. The first qualifying
+capture occurred 139.752 seconds after the recorded launch epoch, so this checkpoint closes only
+the real-window/no-window-regression sub-gate. It does not close W11's 15-second startup, input, or
+menu-overlay requirements.
 
 ## Verification
 

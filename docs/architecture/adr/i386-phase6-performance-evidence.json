@@ -95,6 +95,20 @@
       "wineDebug": "-all",
       "rosetta": false,
       "acceptance": "W10 real guest-program loading gate passed",
+      "persistentWindowCheckpoint": {
+        "capturedAt": "2026-07-18T17:07:32-0600",
+        "distribution": "official 32-bit minimalist portable",
+        "archiveSha256": "6700cafa0ade7d79f0c51edc881d3af83f79110c3cb4a1b54cb1248454aa501e",
+        "executableSha256": "f54d67663a6356f69c1be302f2dfb82c6b7a66f72e4d86c1e3fe3a6ac413d6e9",
+        "runtimeDylibSha256": "5ee0d37d4f075b3562587765aecb9d006a02ff5932e5f3c20eb8fad5223959b3",
+        "arguments": ["-noPlugin", "-nosession"],
+        "timeToQualifyingCaptureSeconds": 139.752,
+        "persistentRecapture": true,
+        "completeFrameVisible": true,
+        "visibleComponents": ["title bar", "menu row", "toolbar", "document tab", "editor surface", "status bar"],
+        "typedGlyphUsedAsWindowProof": false,
+        "closesW11StartupTarget": false
+      },
       "w11OpenObservations": [
         "typed input can take about five seconds to appear",
         "menus and overlay pages can remain blank until pointer-hover invalidation"
