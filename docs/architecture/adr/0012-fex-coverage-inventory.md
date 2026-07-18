@@ -211,6 +211,17 @@ The selected guest is i386 legacy32 (Windows WoW64):
   and manifest profile v7. FMA is kept because SharpWine proves the complete
   native family on macOS ARM64; an external oracle is comparison evidence, not
   a reason to discard working program-loading capability.
+- ADX has two instruction classes and four legacy32 register/memory patterns.
+  Blink already contained portable ADCX/ADOX arithmetic and native ARM64
+  micro-ops, but the GEM legacy boundary masked both. Patch 0039 replaces that
+  blanket mask with exact `66` ADCX and `F3` ADOX admission while retaining
+  invalid and VEX encodings as unsupported. Tests cover both independent carry
+  chains, register and exact-width memory sources, both carry-in states, and
+  interpreter/JIT parity. Patch 0040 adds an eight-instruction loaded program
+  that establishes CF and OF simultaneously, executes both chains with zero
+  JIT failures, and atomically advertises ADX in CPUID leaf 7 and manifest v8.
+  This is native capability recovered from an overly broad mask, not inherited
+  from the comparison oracle.
 
 ## Acceptance authority
 

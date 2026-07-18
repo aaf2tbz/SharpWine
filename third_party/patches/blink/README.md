@@ -280,3 +280,16 @@ add/sub/addsub/subadd, and negated-product forms using one fused host operation.
 advertises FMA only after the complete pinned inventory, exact fused-rounding
 and fault-width semantics, interpreter/JIT parity, both golden corpora, and a
 loaded five-instruction FMA guest program pass natively on macOS ARM64.
+
+`0039-gem-i386-adx.patch` (SHA-256
+`b9aedaf691f55a2ea51c2dadea03d842dfdc73138aa785eb297ed72279b5f6da`)
+admits legacy32 ADCX and ADOX through their exact mandatory-prefix forms while
+retaining invalid and VEX encodings as unsupported. Blink's portable ARM64
+micro-ops provide the independent carry chains; interpreter/JIT tests cover
+register and memory forms with both carry-in states.
+
+`0040-gem-i386-adx-cpuid.patch` (SHA-256
+`a4e343d4fc5927fe82e02dcf2858ee2bf93518a040ccd60d1fdfd05d0af57c3d`)
+advertises ADX after exact independent-chain semantics, register/memory forms,
+interpreter/JIT parity, invalid-encoding rejection, and a loaded eight-
+instruction guest program all pass on native macOS ARM64.

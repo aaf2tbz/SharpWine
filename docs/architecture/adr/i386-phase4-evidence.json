@@ -62,7 +62,7 @@
     "prioritizationInputs": ["32-bit Wine startup", "interactive Notepad", "Steam bootstrap"]
   },
   "sourceSha256": {
-    "generatorAndTemplates": "a0976341d5011621230024ff61f2641b6c623fff19c8e82dc38386086a41db9e",
+    "generatorAndTemplates": "166d8f3a77cf79c65055842b8498db318de593159c69b358d120440fc64e803d",
     "recordSchema": "e3bb1fe0148811b8bae8685994849ad953d8f137498421c6b7d9b13fc2e80bde",
     "baselineWorker": "53190c30d366ce45ad9577d4954835207c109b62a0f892cb1977e1e242919eb7",
     "baselineAssembly": "750e5cb3962ba9223fc5aa29e877bd2009b64d9a19432692c934f55735838ae2",

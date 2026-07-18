@@ -1681,6 +1681,41 @@ static void exercise_fma_inventory(enum gem_i386_engine_mode mode) {
     gem_memory_destroy(memory);
 }
 
+static void run_adx_case(enum gem_i386_engine_mode mode, bool adox, bool memory_operand,
+                         bool carry_in) {
+    uint8_t code[5] = {adox ? 0xf3U : 0x66U, 0x0fU, 0x38U, 0xf6U,
+                       (uint8_t)(memory_operand ? (adox ? 0x16U : 0x0eU) : (adox ? 0xd0U : 0xc8U))};
+    const uint32_t source = UINT32_MAX;
+    const uint32_t target_flag = adox ? UINT32_C(0x800) : UINT32_C(0x001);
+    const uint32_t preserved_flag = adox ? UINT32_C(0x001) : UINT32_C(0x800);
+    struct gem_memory *memory = make_memory(code, sizeof(code), GEM_GUEST_PAGE_SIZE);
+    struct gem_i386_runtime *runtime = make_runtime(memory, mode, sizeof(code));
+    struct gem_i386_context context;
+    uint32_t expected;
+    assert(runtime != NULL);
+    initialize(&context, DATA, 0U);
+    context.gpr[GEM_I386_EAX] = source;
+    context.gpr[adox ? GEM_I386_EDX : GEM_I386_ECX] = 0U;
+    context.eflags = UINT32_C(0x202) | preserved_flag | (carry_in ? target_flag : 0U);
+    if (memory_operand)
+        assert(gem_i386_memory_write(memory, DATA, &source, sizeof(source)) == GEM_MEMORY_OK);
+    assert(gem_i386_runtime_run(runtime, &context, 1U) == GEM_STOP_HOST_RETURN);
+    expected = carry_in ? 0U : UINT32_MAX;
+    assert(context.gpr[adox ? GEM_I386_EDX : GEM_I386_ECX] == expected);
+    assert((context.eflags & target_flag) == (carry_in ? target_flag : 0U));
+    assert((context.eflags & preserved_flag) == preserved_flag);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
+}
+
+static void exercise_adx(enum gem_i386_engine_mode mode) {
+    unsigned adox, memory_operand, carry_in;
+    for (adox = 0U; adox < 2U; ++adox)
+        for (memory_operand = 0U; memory_operand < 2U; ++memory_operand)
+            for (carry_in = 0U; carry_in < 2U; ++carry_in)
+                run_adx_case(mode, adox != 0U, memory_operand != 0U, carry_in != 0U);
+}
+
 static void exercise_promoted128(enum gem_i386_engine_mode mode, const uint8_t *code,
                                  size_t code_size, unsigned operation) {
     struct gem_memory *memory = make_memory(code, code_size, GEM_GUEST_PAGE_SIZE);
@@ -1826,6 +1861,8 @@ int main(void) {
     exercise_avx2_gather(GEM_I386_ENGINE_JIT);
     exercise_fma_inventory(GEM_I386_ENGINE_INTERPRETER);
     exercise_fma_inventory(GEM_I386_ENGINE_JIT);
+    exercise_adx(GEM_I386_ENGINE_INTERPRETER);
+    exercise_adx(GEM_I386_ENGINE_JIT);
     exercise_promoted128(GEM_I386_ENGINE_INTERPRETER, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_promoted128(GEM_I386_ENGINE_JIT, vpaddd_xmm, sizeof(vpaddd_xmm), 0U);
     exercise_vmovhlps(GEM_I386_ENGINE_INTERPRETER);
