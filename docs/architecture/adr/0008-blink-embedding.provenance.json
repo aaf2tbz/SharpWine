@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 42,
+  "schemaVersion": 43,
   "revision": "f006a4fc6f9b8de9272504fdff0dbbe5ce5dc580",
   "archiveSha256": "e0bad68ba2927a1ca1d53537afee1644e11a1e683d26676a36e5b9b17a63d6af",
   "patchSha256": "36774371e862c7a44775b19d16b130c23ab0beccf223d755b0321225c7fbfd03",
@@ -43,6 +43,7 @@
   "randomPatchSha256": "818a706e343d97b6df7a05f52b6ccdb3e3d9dd64fff7ab2bef5379a090093424",
   "randomCpuidPatchSha256": "399d53904eb3b6320683525f44c0daf760ae81f476467a1fee4f5b683a567492",
   "residentStatePatchSha256": "e663cf701e713a181bd378d6ced9cd1cc57ad3435c33d45082476225b7f722e6",
+  "blockLinkingPatchSha256": "fed13f49d9f8dea0248d18a5b2ab40de852d3232f9fb94cd87c492bca2779853",
   "license": "ISC",
   "prePatch": {
     "blink/machine.c": "73a32c95fbc191394c116bd2f41ebba464c963718b3785adaca22c5a93e8dc89",
@@ -53,9 +54,9 @@
     "blink/fusion.c": "492f2bf80ba626b63e37de749dcc679b439e44e135d01db718d84f9cb13dd7c7",
     "blink/avx.c": "c5bdb2c6f810cd884edc402b74268606a83af52ce3819658947e213f272890c4",
     "blink/avx.h": "2aba83f058c7097e31c1a1c67ea23757c57f37dd64cf894b374dc258cecdf8bd",
-    "blink/gem_embed.c": "ea156a618bc7b2fe87e64e6a248b2b8ed0e58e364be9d301017de3f8e3add2c7",
+    "blink/gem_embed.c": "b14b93abbfb26d03a507090b4b85b4ad5a3e6702b7c865d83ab95816b5358c6c",
     "blink/flags.c": "15aa6ee3f26fc5d4a35ef579de40439877d119d21db2d2c37a5ba15640c1ec7c",
-    "blink/gem_embed.h": "5e65493ca299069673102caf3c655e670cf2bb81adc2bc121b9720ddb8740944",
+    "blink/gem_embed.h": "f3a941309e84904910df26a3650883a58d487ca9932834cb224a241fbc1ad8f0",
     "blink/instruction.c": "643b63a9af36ab8732df8643552bd8b2ccf7c8e692ca58c6a4a209348e60e380",
     "blink/machine.c": "c9c34ff247a46ad7d0bb1f85f7fb4beeb9e6927f04c554260a030dc7228aa4e9",
     "blink/legacy.c": "0dd21523bed5b9fa731a69e3b376d1c28800ada3a7c36668aace4832c0bb8cfe",

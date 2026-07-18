@@ -30,6 +30,7 @@ static void exercise_bound_ops(enum gem_i386_engine_mode mode,
     struct gem_i386_context context;
     struct gem_i386_context output;
     struct gem_i386_engine_info info;
+    struct gem_i386_block_info blocks;
     struct gem_memory *memory;
     uint32_t code_address;
     uint32_t stack_address;
@@ -78,6 +79,10 @@ static void exercise_bound_ops(enum gem_i386_engine_mode mode,
     info.size = sizeof(info);
     assert(ops->engine_info(runtime, &info));
     assert(info.engine_mode == mode);
+    memset(&blocks, 0, sizeof(blocks));
+    blocks.abi_version = GEM_I386_BLOCK_INFO_ABI_VERSION;
+    blocks.size = sizeof(blocks);
+    assert(ops->block_info(runtime, &blocks));
     assert(ops->invalidate_code(runtime, code_address, GEM_GUEST_PAGE_SIZE));
 
     gem_i386_runtime_destroy(runtime);
@@ -123,6 +128,9 @@ static void exercise_fail_closed(void) {
     assert(gem_i386_runtime_create_with_ops(memory, &config, &broken) == NULL);
     broken = gem_i386_blink_jit_ops;
     broken.run = NULL;
+    assert(gem_i386_runtime_create_with_ops(memory, &config, &broken) == NULL);
+    broken = gem_i386_blink_jit_ops;
+    broken.block_info = NULL;
     assert(gem_i386_runtime_create_with_ops(memory, &config, &broken) == NULL);
     broken = gem_i386_blink_jit_ops;
     broken.engine_mode = GEM_I386_ENGINE_DEFAULT;

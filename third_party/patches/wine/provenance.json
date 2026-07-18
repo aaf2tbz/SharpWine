@@ -150,7 +150,7 @@
     {
       "order": 21,
       "path": "third_party/patches/wine/0021-xtajit-trace-i386-diagnostics.patch",
-      "sha256": "a1a437ed39079d20034f294cc14d3b5514205157be3281d873a37c7566308f10",
+      "sha256": "789c734cf5e1e795dd5730f099cc6698438a30406cf2609aed75354ce652f15d",
       "authoringCommit": "0000000000000000000000000000000000000021",
       "purpose": "Trace stable GEM i386 engine identity, JIT/cache/failure/invalidation/zero-fallback counters, genuinely unsupported opcode evidence, and the deterministic CPUID capability profile after every xtajit run."
     }

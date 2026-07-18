@@ -204,6 +204,7 @@ if(MSWR_ENABLE_X64_ENGINE OR MSWR_ENABLE_I386_ENGINE)
         --random-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0043-gem-i386-random.patch"
         --random-cpuid-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0044-gem-i386-random-cpuid.patch"
         --resident-state-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0045-gem-i386-resident-quantum-state.patch"
+        --block-linking-patch "${CMAKE_CURRENT_SOURCE_DIR}/third_party/patches/blink/0046-gem-i386-block-linking.patch"
         --capability-manifest "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/i386-phase3-capabilities.json"
         --phase3-corpus "${CMAKE_CURRENT_SOURCE_DIR}/tests/i386_phase3_conformance.c"
         --provenance "${CMAKE_CURRENT_SOURCE_DIR}/docs/architecture/adr/0008-blink-embedding.provenance.json"

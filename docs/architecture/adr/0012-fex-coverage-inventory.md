@@ -255,6 +255,15 @@ The selected guest is i386 legacy32 (Windows WoW64):
   EFLAGS. The three-way 1..256 budget gate covers flag consumers, touched
   memory, conditional/direct branches, and YMM arithmetic across one-step
   interpreter, bounded interpreter, and production JIT execution.
+- Patch 0046 adapts block linking at GEM's checked dispatcher boundary rather
+  than bypassing it. A fixed-size tag-validated cache links observed successor
+  PCs, reuses the decoded no-fault classification that selects the resident
+  multi-instruction quantum path, and maintains a bounded return-address stack
+  for near CALL/RET prediction. Exact per-instruction budgets, stop PCs,
+  asynchronous requests, memory transactions, and fault/export boundaries are
+  unchanged. Code invalidation removes overlapping entries and incoming links;
+  the three-way 1..256 equality gate must observe real cache and direct-link
+  hits before the path is accepted.
 
 ## Acceptance authority
 

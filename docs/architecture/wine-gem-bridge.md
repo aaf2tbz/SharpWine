@@ -169,8 +169,9 @@ also fails closed as a budget expiration.
 `gem_wine_i386_thread_diagnostics()` returns a versioned 256-byte snapshot
 without exposing the thread's engine object. The snapshot carries the bound
 engine identity, host and mode, JIT compilation/execution/cache-hit/failure
-counts, precise code invalidations, the no-interpreter-fallback invariant, and
-the last genuinely unsupported decoded opcode. It also reports the exact raw
+counts, block creation/cache/direct-link and call/return prediction counts,
+precise code and block invalidations, the no-interpreter-fallback invariant,
+and the last genuinely unsupported decoded opcode. It also reports the exact raw
 CPUID registers advertised by the deterministic legacy profile. Conformance
 executes those CPUID leaves in both interpreter and production-JIT modes and
 requires bit-for-bit equality with the diagnostic snapshot.

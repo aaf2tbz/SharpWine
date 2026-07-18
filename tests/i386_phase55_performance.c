@@ -21,6 +21,7 @@ _Static_assert(sizeof(struct gem_i386_performance_info) == 88U,
 _Static_assert(sizeof(struct gem_i386_performance_info_v2) == 128U,
                "performance v2 query ABI size changed");
 _Static_assert(sizeof(struct gem_i386_diagnostics) == 256U, "diagnostics query ABI size changed");
+_Static_assert(sizeof(struct gem_i386_block_info) == 80U, "block query ABI size changed");
 
 struct fixture {
     struct gem_memory *memory;
@@ -187,6 +188,8 @@ static void verify_three_way_boundaries(void) {
         .abi_version = GEM_I386_PERFORMANCE_INFO_V2_ABI_VERSION, .size = sizeof(jit_performance)};
     struct gem_i386_diagnostics diagnostics = {.abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION,
                                                .size = sizeof(diagnostics)};
+    struct gem_i386_block_info block_info = {.abi_version = GEM_I386_BLOCK_INFO_ABI_VERSION,
+                                             .size = sizeof(block_info)};
     uint32_t budget;
     for (budget = 1U; budget <= 256U; ++budget) {
         struct gem_i386_context stepped = equality_initial_context(&stepped_lane);
@@ -256,9 +259,76 @@ static void verify_three_way_boundaries(void) {
     assert(diagnostics.cpuid_leaf7_ebx ==
            ((1U << 3U) | (1U << 5U) | (1U << 8U) | (1U << 9U) | (1U << 18U) | (1U << 19U)));
     assert(diagnostics.cpuid_leaf7_ecx == (1U << 22U));
+    assert(gem_i386_runtime_block_info(jit_lane.runtime, &block_info));
+    assert(block_info.blocks_created != 0U && block_info.block_cache_hits != 0U);
+    assert(block_info.direct_link_hits != 0U);
     equality_lane_destroy(&jit_lane);
     equality_lane_destroy(&bounded_lane);
     equality_lane_destroy(&stepped_lane);
+}
+
+static void verify_block_links_and_predictions(void) {
+    static const uint8_t program[] = {0xe8U, 0x02U, 0x00U, 0x00U, 0x00U,
+                                      0xebU, 0x02U, 0x40U, 0xc3U};
+    struct gem_i386_runtime_config config = {0};
+    struct gem_i386_block_info blocks = {0};
+    struct gem_i386_diagnostics diagnostics = {.abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION,
+                                               .size = sizeof(diagnostics)};
+    struct gem_i386_runtime *runtime;
+    struct gem_memory *memory = gem_memory_create();
+    uint32_t code = UINT32_C(0x00900000);
+    uint32_t stack = UINT32_C(0x00a00000);
+    uint32_t iteration;
+    assert(memory != NULL);
+    assert(gem_i386_memory_reserve(memory, &code, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, code, GEM_GUEST_PAGE_SIZE, GEM_PAGE_EXECUTE_READWRITE) ==
+           GEM_MEMORY_OK);
+    assert(gem_i386_memory_write(memory, code, program, sizeof(program)) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_reserve(memory, &stack, GEM_GUEST_PAGE_SIZE) == GEM_MEMORY_OK);
+    assert(gem_i386_memory_commit(memory, stack, GEM_GUEST_PAGE_SIZE, GEM_PAGE_READWRITE) ==
+           GEM_MEMORY_OK);
+    config.engine_mode = GEM_I386_ENGINE_JIT;
+    config.host_return_sentinel = code + (uint32_t)sizeof(program);
+    config.max_budget = 4U;
+    runtime = gem_i386_runtime_create(memory, &config);
+    assert(runtime != NULL);
+    for (iteration = 0U; iteration < 64U; ++iteration) {
+        struct gem_i386_context context;
+        gem_i386_context_initialize(&context, UINT32_C(0x7ffde000));
+        context.eip = code;
+        context.gpr[GEM_I386_ESP] = stack + (uint32_t)GEM_GUEST_PAGE_SIZE - 16U;
+        assert(gem_i386_runtime_run(runtime, &context, 4U) == GEM_STOP_HOST_RETURN);
+        assert(context.eip == config.host_return_sentinel);
+        assert(context.gpr[GEM_I386_EAX] == 1U);
+        assert(context.gpr[GEM_I386_ESP] == stack + (uint32_t)GEM_GUEST_PAGE_SIZE - 16U);
+    }
+    assert(!gem_i386_runtime_block_info(runtime, &blocks));
+    blocks.abi_version = GEM_I386_BLOCK_INFO_ABI_VERSION;
+    blocks.size = sizeof(blocks);
+    assert(gem_i386_runtime_block_info(runtime, &blocks));
+    assert(blocks.blocks_created >= 4U);
+    assert(blocks.block_cache_hits != 0U && blocks.direct_link_hits != 0U);
+    assert(blocks.call_predictions == 64U && blocks.return_predictions == 64U);
+    assert(blocks.return_prediction_hits == 64U && blocks.return_prediction_misses == 0U);
+    assert(blocks.block_invalidations == 0U);
+    assert(gem_i386_runtime_diagnostics(runtime, &diagnostics));
+    assert(diagnostics.blocks_created == blocks.blocks_created);
+    assert(diagnostics.block_cache_hits == blocks.block_cache_hits);
+    assert(diagnostics.direct_link_hits == blocks.direct_link_hits);
+    assert(diagnostics.call_predictions == blocks.call_predictions);
+    assert(diagnostics.return_predictions == blocks.return_predictions);
+    assert(diagnostics.return_prediction_hits == blocks.return_prediction_hits);
+    gem_i386_runtime_invalidate_code(runtime, code, sizeof(program));
+    blocks.abi_version = GEM_I386_BLOCK_INFO_ABI_VERSION;
+    blocks.size = sizeof(blocks);
+    assert(gem_i386_runtime_block_info(runtime, &blocks));
+    assert(blocks.block_invalidations >= 4U);
+    diagnostics.abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION;
+    diagnostics.size = sizeof(diagnostics);
+    assert(gem_i386_runtime_diagnostics(runtime, &diagnostics));
+    assert(diagnostics.block_invalidations == blocks.block_invalidations);
+    gem_i386_runtime_destroy(runtime);
+    gem_memory_destroy(memory);
 }
 
 static void fixture_destroy(struct fixture *fixture) {
@@ -340,6 +410,7 @@ int main(void) {
     double speedup;
     verify_boundaries(&fixture);
     verify_three_way_boundaries();
+    verify_block_links_and_predictions();
     for (sample = 0U; sample < GEM_PHASE55_PERFORMANCE_SAMPLES; ++sample) {
         uint64_t begin;
         stepped = initial_context(&fixture);

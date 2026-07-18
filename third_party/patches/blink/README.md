@@ -323,3 +323,12 @@ keeps Blink's lazy parity representation and YMM/XCR0 state resident between
 instructions in a checked GEM quantum. State is imported on entry and retry,
 then fully exported at every observable boundary. The patch also prevents the
 internal lazy-parity byte from leaking through architectural EFLAGS export.
+
+`0046-gem-i386-block-linking.patch` (SHA-256
+`fed13f49d9f8dea0248d18a5b2ab40de852d3232f9fb94cd87c492bca2779853`)
+adds a bounded, fixed-size i386 block-dispatch cache. Successor blocks are
+linked by exact guest PC and validated tags, cached no-fault classifications
+remove redundant lookahead decode, and a bounded return-address stack predicts
+near CALL/RET pairs. Every instruction still passes the existing transaction,
+budget, stop-PC, async-stop, fault, and export boundaries. Explicit and
+executable-write invalidation remove overlapping blocks and incoming links.

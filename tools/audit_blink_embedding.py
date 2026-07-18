@@ -416,13 +416,14 @@ def main():
     parser.add_argument("--random-patch", type=Path, required=True)
     parser.add_argument("--random-cpuid-patch", type=Path, required=True)
     parser.add_argument("--resident-state-patch", type=Path, required=True)
+    parser.add_argument("--block-linking-patch", type=Path, required=True)
     parser.add_argument("--capability-manifest", type=Path, required=True)
     parser.add_argument("--phase3-corpus", type=Path, required=True)
     parser.add_argument("--provenance", type=Path, required=True)
     args = parser.parse_args()
 
     provenance = json.loads(args.provenance.read_text())
-    need(provenance["schemaVersion"] == 42, "provenance schema")
+    need(provenance["schemaVersion"] == 43, "provenance schema")
     need(provenance["revision"] == PINNED_REVISION, "revision")
     need(digest(args.patch) == provenance["patchSha256"], "patch hash")
     need(digest(args.jit_patch) == provenance["jitPatchSha256"], "JIT patch hash")
@@ -554,6 +555,10 @@ def main():
         digest(args.resident_state_patch) == provenance["residentStatePatchSha256"],
         "resident quantum-state patch hash",
     )
+    need(
+        digest(args.block_linking_patch) == provenance["blockLinkingPatchSha256"],
+        "block-linking patch hash",
+    )
     for relative, expected_hash in provenance["postPatch"].items():
         need(digest(args.source / relative) == expected_hash, f"hash {relative}")
 
@@ -613,6 +618,9 @@ def main():
         "BLINK_GEM_EXCEPTION_DIVIDE",
         "BLINK_GEM_EXCEPTION_ILLEGAL_INSTRUCTION",
         "BLINK_GEM_EXCEPTION_OVERFLOW",
+        "block_linked_successor(",
+        "return_prediction_hits",
+        "invalidate_blocks(g, address, size)",
     ):
         need(required in embedding, f"missing bounded JIT embedding invariant {required}")
     need("m->gemembed || opclass == kOpBranching" in machine, "JIT path is not one instruction")

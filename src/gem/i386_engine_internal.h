@@ -47,6 +47,8 @@ enum gem_stop_reason gem_i386_blink_run(struct gem_i386_runtime *runtime,
                                         uint32_t *retired);
 bool gem_i386_blink_engine_info(const struct gem_i386_runtime *runtime,
                                 struct gem_i386_engine_info *out);
+bool gem_i386_blink_block_info(const struct gem_i386_runtime *runtime,
+                               struct gem_i386_block_info *out);
 bool gem_i386_blink_invalidate_code(struct gem_i386_runtime *runtime, uint32_t address,
                                     uint64_t size);
 

@@ -136,7 +136,7 @@
         },
         {
           "path": "third_party/patches/wine/0021-xtajit-trace-i386-diagnostics.patch",
-          "sha256": "a1a437ed39079d20034f294cc14d3b5514205157be3281d873a37c7566308f10"
+          "sha256": "789c734cf5e1e795dd5730f099cc6698438a30406cf2609aed75354ce652f15d"
         }
       ]
     },

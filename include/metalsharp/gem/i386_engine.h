@@ -31,6 +31,7 @@ extern "C" {
 #define GEM_I386_PERFORMANCE_INFO_V2_ABI_VERSION UINT32_C(2)
 #define GEM_I386_DIAGNOSTICS_ABI_VERSION UINT32_C(1)
 #define GEM_I386_DIAGNOSTIC_TEXT_BYTES UINT32_C(32)
+#define GEM_I386_BLOCK_INFO_ABI_VERSION UINT32_C(1)
 
 struct gem_i386_runtime;
 
@@ -147,7 +148,27 @@ struct gem_i386_diagnostics {
     char engine_name[GEM_I386_DIAGNOSTIC_TEXT_BYTES];
     char engine_version[GEM_I386_DIAGNOSTIC_TEXT_BYTES];
     char last_unsupported_name[GEM_I386_DIAGNOSTIC_TEXT_BYTES];
-    uint64_t reserved[7];
+    uint64_t blocks_created;
+    uint64_t block_cache_hits;
+    uint64_t direct_link_hits;
+    uint64_t call_predictions;
+    uint64_t return_predictions;
+    uint64_t return_prediction_hits;
+    uint64_t block_invalidations;
+};
+
+struct gem_i386_block_info {
+    uint32_t abi_version;
+    uint32_t size;
+    uint64_t blocks_created;
+    uint64_t block_lookups;
+    uint64_t block_cache_hits;
+    uint64_t direct_link_hits;
+    uint64_t call_predictions;
+    uint64_t return_predictions;
+    uint64_t return_prediction_hits;
+    uint64_t return_prediction_misses;
+    uint64_t block_invalidations;
 };
 
 struct gem_i386_runtime *gem_i386_runtime_create(struct gem_memory *memory,
@@ -165,6 +186,8 @@ bool gem_i386_runtime_performance_info_v2(const struct gem_i386_runtime *runtime
                                           struct gem_i386_performance_info_v2 *out);
 bool gem_i386_runtime_diagnostics(const struct gem_i386_runtime *runtime,
                                   struct gem_i386_diagnostics *out);
+bool gem_i386_runtime_block_info(const struct gem_i386_runtime *runtime,
+                                 struct gem_i386_block_info *out);
 void gem_i386_runtime_invalidate_code(struct gem_i386_runtime *runtime, uint32_t address,
                                       uint64_t size);
 void gem_i386_runtime_request_async_stop(struct gem_i386_runtime *runtime);

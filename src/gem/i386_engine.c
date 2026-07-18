@@ -38,7 +38,8 @@ gem_i386_runtime_create_with_ops(struct gem_memory *memory,
         (ops->engine_mode != GEM_I386_ENGINE_JIT &&
          ops->engine_mode != GEM_I386_ENGINE_INTERPRETER) ||
         ops->create == NULL || ops->destroy == NULL || ops->sync == NULL || ops->step == NULL ||
-        ops->run == NULL || ops->engine_info == NULL || ops->invalidate_code == NULL)
+        ops->run == NULL || ops->engine_info == NULL || ops->block_info == NULL ||
+        ops->invalidate_code == NULL)
         return NULL;
     runtime = (struct gem_i386_runtime *)calloc(1U, sizeof(*runtime));
     if (runtime == NULL)
@@ -244,12 +245,17 @@ bool gem_i386_runtime_performance_info_v2(const struct gem_i386_runtime *runtime
 bool gem_i386_runtime_diagnostics(const struct gem_i386_runtime *runtime,
                                   struct gem_i386_diagnostics *out) {
     struct gem_i386_engine_info engine = {0};
+    struct gem_i386_block_info blocks = {0};
     if (runtime == NULL || out == NULL || out->abi_version != GEM_I386_DIAGNOSTICS_ABI_VERSION ||
         out->size != sizeof(*out))
         return false;
     engine.abi_version = 1U;
     engine.size = sizeof(engine);
     if (!runtime->ops->engine_info(runtime, &engine))
+        return false;
+    blocks.abi_version = GEM_I386_BLOCK_INFO_ABI_VERSION;
+    blocks.size = sizeof(blocks);
+    if (!runtime->ops->block_info(runtime, &blocks))
         return false;
     memset(out, 0, sizeof(*out));
     out->abi_version = GEM_I386_DIAGNOSTICS_ABI_VERSION;
@@ -282,7 +288,21 @@ bool gem_i386_runtime_diagnostics(const struct gem_i386_runtime *runtime,
     snprintf(out->engine_version, sizeof(out->engine_version), "%s", runtime->ops->engine_version);
     memcpy(out->last_unsupported_name, runtime->last_unsupported_name,
            sizeof(out->last_unsupported_name));
+    out->blocks_created = blocks.blocks_created;
+    out->block_cache_hits = blocks.block_cache_hits;
+    out->direct_link_hits = blocks.direct_link_hits;
+    out->call_predictions = blocks.call_predictions;
+    out->return_predictions = blocks.return_predictions;
+    out->return_prediction_hits = blocks.return_prediction_hits;
+    out->block_invalidations = blocks.block_invalidations;
     return true;
+}
+
+bool gem_i386_runtime_block_info(const struct gem_i386_runtime *runtime,
+                                 struct gem_i386_block_info *out) {
+    if (runtime == NULL)
+        return false;
+    return runtime->ops->block_info(runtime, out);
 }
 
 void gem_i386_runtime_invalidate_code(struct gem_i386_runtime *runtime, uint32_t address,
